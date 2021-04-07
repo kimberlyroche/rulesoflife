@@ -89,7 +89,7 @@ filter_data <- function(tax_level = "ASV", host_sample_min = 75,
   return(merged_data)
 }
 
-#' This function loads the filtered ABRP data (as a phyloseq object)
+#' This function wrangles the filtered ABRP data and metadata
 #'
 #' @param tax_level taxonomic level at which to agglomerate data
 #' @param host_sample_min minimum sample number for host inclusion in the
@@ -98,8 +98,6 @@ filter_data <- function(tax_level = "ASV", host_sample_min = 75,
 #' set
 #' @param sample_threshold minimum proportion of samples within each host at
 #' which a taxon must be observed at or above count_threshold
-#' @param process_if_absent flag indicating whether to process the raw data if
-#' filtered data file is not found
 #' @details Together count_threshold and sample_threshold specify a minimum
 #' representation for a taxon. Taxa below this threshold will be grouped
 #' together into an <NA> category.
@@ -109,30 +107,38 @@ filter_data <- function(tax_level = "ASV", host_sample_min = 75,
 #' @import dplyr
 #' @importFrom tidyr pivot_wider pivot_longer
 #' @export
-load_filtered_data <- function(tax_level = "ASV", host_sample_min = 75,
-                        count_threshold = 5, sample_threshold = 0.2,
-                        process_if_absent = FALSE) {
-  filename <- file.path("input", paste0("filtered_",
+load_data <- function(tax_level = "ASV", host_sample_min = 75,
+                        count_threshold = 5, sample_threshold = 0.2) {
+  processed_filename <- file.path("input", paste0("processed_",
+                                                  tax_level,
+                                                  "_",
+                                                  count_threshold,
+                                                  "_",
+                                                  round(sample_threshold*100),
+                                                  ".rds"))
+  if(file.exists(processed_filename)) {
+    return(readRDS(processed_filename))
+  }
+  # File not found; process data afresh
+
+  filtered_filename <- file.path("input", paste0("filtered_",
                                         tax_level,
                                         "_",
                                         count_threshold,
                                         "_",
                                         round(sample_threshold*100),
                                         ".rds"))
-  if(file.exists(filename)) {
-    data <- readRDS(filename)
+  if(file.exists(filtered_filename)) {
+    data <- readRDS(filtered_filename)
   } else {
-    cat("Filtered data file not found\n")
-    if(process_if_absent) {
-      data <- filter_data(tax_level = tax_level,
-                          host_sample_min = host_sample_min,
-                          count_threshold = count_threshold,
-                          sample_threshold = sample_threshold)
-    } else {
-      return(NULL)
-    }
+    cat("Filtered data file not found. Filtering data now...\n")
+    data <- filter_data(tax_level = tax_level,
+                        host_sample_min = host_sample_min,
+                        count_threshold = count_threshold,
+                        sample_threshold = sample_threshold)
   }
 
+  cat("Wrangling data and metadata...\n")
   # Pull taxonomy -> data.frame
   long_data <- psmelt(data)
 
@@ -195,5 +201,7 @@ load_filtered_data <- function(tax_level = "ASV", host_sample_min = 75,
   counts <- counts[new_order,]
   tax <- tax[new_order,]
 
-  return(list(counts = counts, taxonomy = tax, metadata = metadata))
+  processed_data <- list(counts = counts, taxonomy = tax, metadata = metadata)
+  saveRDS(processed_data, file = processed_filename)
+  return(processed_data)
 }
