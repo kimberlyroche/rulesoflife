@@ -88,7 +88,7 @@ plot_trajectory <- function(fit, predictions, taxon, taxon_label = NULL,
         ylab(paste0("CLR(", taxon_label, ")"))
     } else {
       p <- p +
-        ylab(paste0("CLR(taxon ", taxon))
+        ylab(paste0("CLR(taxon ", taxon, ")"))
     }
     if(show_observations) {
       p <- p +
