@@ -1,24 +1,31 @@
 #' Draw predictions from a bassetfit or labraduckfit object over a given day
-#' range
+#' range. These will be in the CLR coordinate system!
 #'
 #' @param fit bassetfit or labraduckfit object (from fido)
-#' @param span optional day range over which to predict
+#' @param resolution percent of days to predict (e.g. 50 predicts half the
+#' missing days/samples)
 #' @return NULL
 #' @import fido
 #' @export
-predict_span <- function(fit, span = NULL) {
+predict_trajectory <- function(fit, resolution = 100) {
   if("bassetfit" %in% class(fit)) {
-    if(is.null(span)) {
-      span <- min(fit$X):max(fit$X)
+    if(fit$coord_system != "clr") {
+      fit <- to_clr(fit)
     }
+    first_day <- min(fit$X)
+    last_day <- max(fit$X)
+    n_days <- last_day
+    span <- round(seq(from = first_day, to = last_day, length.out = round(n_days * resolution/100)))
+    span <- sort(c(span, c(fit$X))) # include observations
+
     # Check to see if this prediction has already been rendered
-    output_dir <- check_dir(c("output", "GP_fit", "predictions"))
-    filename <- paste0(fit$sname, "_", min(span), "-", max(span), ".rds")
+    output_dir <- check_dir(c("output", "GP_fits", "predictions"))
+    filename <- paste0(fit$sname, "_resolution-", resolution, ".rds")
     dim(span) <- c(1, length(span))
     pred <- predict(fit, newdata = span, response = "Eta") # or LambdaX or Y
     predictions <- list(Eta = pred,
                         span = c(span),
-                        coord_system = fit$coord_system)
+                        resolution = resolution)
     saveRDS(predictions, file = file.path(output_dir, filename))
     return(predictions)
   } else {
@@ -68,13 +75,7 @@ plot_trajectory <- function(fit, predictions, taxon, taxon_label = NULL,
     if(show_observations) {
       # Logratio transform real data
       observations <- fit$Y
-      if(predictions$coord_system == "clr") {
-        observations <- t(driver::clr((t(observations) + 0.5)))
-      } else if(predictions$coord_system == "alr") {
-        observations <- t(driver::alr((t(observations) + 0.5)))
-      } else {
-        stop("Predictions are in unrecognized coordinate system!")
-      }
+      observations <- t(driver::clr((t(observations) + 0.5)))
       observations <- data.frame(day = c(fit$X), logratio = observations[taxon,])
 
       plot_df <- left_join(plot_df, observations, by = "day")
@@ -95,14 +96,10 @@ plot_trajectory <- function(fit, predictions, taxon, taxon_label = NULL,
         geom_point(aes(x = day, y = logratio), size = 1, na.rm = TRUE)
     }
     if(save_file) {
-      filename <- paste0(fit$sname, "_", min(span), "-", max(span), "_",
-                         "taxon", taxon, ".png")
+      filename <- paste0(fit$sname, "_resolution-", predictions$resolution, "_",
+                         "taxon-", taxon, ".png")
       output_dir <- check_dir(c("output", "images"))
-      width <- 10 * (max(predictions$span) / 4500)
-      if(width < 4) {
-        width <- 4
-      }
-      ggsave(file.path(output_dir, filename), p, units = "in", height = 3, width = width)
+      ggsave(file.path(output_dir, filename), p, units = "in", height = 3, width = 10)
     } else {
       show(p)
     }

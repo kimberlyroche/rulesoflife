@@ -11,11 +11,9 @@ data <- load_data(tax_level = "family")
 fit <- readRDS("output/GP_fits/VAP.rds")
 fit$sname
 
-# Note: predictions will occur in whatever coordinate system the model fit is in!
-# So these are ALR predictions -- fix the labels!!!
-predictions <- predict_span(fit, span = 1:600)
+predictions <- predict_trajectory(fit, resolution = 10)
 
 taxon <- 1
 taxon_label <- paste0("family ", data$taxonomy[taxon,]$family)
 plot_trajectory(fit, predictions, taxon, taxon_label = taxon_label,
-                            show_observations = TRUE, save_file = FALSE)
+                            show_observations = TRUE, save_file = TRUE)
