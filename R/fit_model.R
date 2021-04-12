@@ -151,6 +151,7 @@ fit_DLM <- function(sname, counts, metadata, point_est = TRUE, smoothed = FALSE)
                    F = F, G = G, W = W, M0 = M0, C0 = C0,
                    gamma_scale = (var_scale * 2/3), W_scale = (var_scale * 1/3),
                    apply_smoother = smoothed, n_samples = n_samples, ret_mean = ret_mean)
+
   fit$sname <- sname
   if(point_est) {
     output_pieces <- c("output", "DLM_fits", "MAP")

@@ -2,13 +2,14 @@
 % Please edit documentation in R/visuals.R
 \name{plot_trajectory}
 \alias{plot_trajectory}
-\title{Visualize inferred logratio trajectories}
+\title{Visualize inferred logratio trajectories. GP objects will be visualized in
+the CLR coordinate system; DLM objects will be visualized in the ALR (for
+now).}
 \usage{
 plot_trajectory(
   fit,
-  predictions,
-  taxon,
-  taxon_label = NULL,
+  coord,
+  coord_label = NULL,
   show_observations = FALSE,
   save_file = FALSE
 )
@@ -16,12 +17,9 @@ plot_trajectory(
 \arguments{
 \item{fit}{bassetfit or labraduckfit object (from fido)}
 
-\item{predictions}{named list of predictions from a bassetfit or
-labraduckfit object}
+\item{coord}{index of logratio to plot}
 
-\item{taxon}{index of taxon to plot}
-
-\item{taxon_label}{optional taxon label (e.g. "family Lachnospiraceae")}
+\item{coord_label}{optional coord label (e.g. "family Lachnospiraceae")}
 
 \item{show_observations}{flag indicating whether or not to logratio transform
 and render the observed data; this can be useful for judging sensitivity of
@@ -30,5 +28,7 @@ fit}
 \item{save_file}{flag indicating whether or not to save rendered plot to file}
 }
 \description{
-Visualize inferred logratio trajectories
+Visualize inferred logratio trajectories. GP objects will be visualized in
+the CLR coordinate system; DLM objects will be visualized in the ALR (for
+now).
 }

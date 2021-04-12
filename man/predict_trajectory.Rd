@@ -2,18 +2,17 @@
 % Please edit documentation in R/visuals.R
 \name{predict_trajectory}
 \alias{predict_trajectory}
-\title{Draw predictions from a bassetfit or labraduckfit object over a given day
-range. These will be in the CLR coordinate system!}
+\title{Draw predictions from a fido::basset model in the CLR coordinate system.
+This function interpolates 5% of missing observations, which gives good quick
+visuals in the ABRP data.}
 \usage{
-predict_trajectory(fit, resolution = 100)
+predict_trajectory(fit)
 }
 \arguments{
-\item{fit}{bassetfit or labraduckfit object (from fido)}
-
-\item{resolution}{percent of days to predict (e.g. 50 predicts half the
-missing days/samples)}
+\item{fit}{bassetfit object}
 }
 \description{
-Draw predictions from a bassetfit or labraduckfit object over a given day
-range. These will be in the CLR coordinate system!
+Draw predictions from a fido::basset model in the CLR coordinate system.
+This function interpolates 5% of missing observations, which gives good quick
+visuals in the ABRP data.
 }
