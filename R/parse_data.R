@@ -45,7 +45,9 @@ filter_data <- function(tax_level = "ASV", host_sample_min = 75,
       length(unique(metadata$sname)), "hosts...\n")
 
   # 2) Agglomerate taxa; from ASV level to family level this takes ~5 min (FYI)
-  if(tax_level != "ASV") {
+  if(tax_level == "ASV") {
+    agglomerated_data <- data
+  } else {
     agglomerated_data <- tax_glom(data, taxrank = tax_level, NArm = FALSE)
   }
 
