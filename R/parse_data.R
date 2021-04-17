@@ -23,7 +23,7 @@ filter_data <- function(tax_level = "ASV", host_sample_min = 75,
     tax_level <- "ASV"
   }
   if(!(tax_level %in% c("domain", "phylum", "class", "order", "family", "genus",
-                        "species", "ASV"))) {
+                        "ASV"))) {
     stop("Unrecognized tax_level specified!")
   }
   filename <- file.path("input", "ps0.rds")
@@ -45,7 +45,9 @@ filter_data <- function(tax_level = "ASV", host_sample_min = 75,
       length(unique(metadata$sname)), "hosts...\n")
 
   # 2) Agglomerate taxa; from ASV level to family level this takes ~5 min (FYI)
-  if(tax_level != "ASV") {
+  if(tax_level == "ASV") {
+    agglomerated_data <- data
+  } else {
     agglomerated_data <- tax_glom(data, taxrank = tax_level, NArm = FALSE)
   }
 
@@ -75,8 +77,14 @@ filter_data <- function(tax_level = "ASV", host_sample_min = 75,
   # The `merge_taxa` function in phyloseq will dump all the "other" taxa into
   # a new taxon in a new final index.
 
-  merge_idx <- which(!taxa_passed)[1]
-  merged_data <- merge_taxa(agglomerated_data, which(!taxa_passed))
+  merge_idx <- unname(which(!taxa_passed)[1])
+  merged_data <- merge_taxa(agglomerated_data, which(!taxa_passed), archetype = 1)
+
+  # Tag the merged taxons as "other" so we can identify them later
+  tax <- tax_table(merged_data)@.Data
+  merge_OTU <- rownames(tax)[merge_idx]
+
+  merge_obj <- list(merged_data = merged_data, merge_OTU = merge_OTU)
 
   filename <- file.path("input", paste0("filtered_",
                                         tax_level,
@@ -85,8 +93,9 @@ filter_data <- function(tax_level = "ASV", host_sample_min = 75,
                                         "_",
                                         round(sample_threshold*100),
                                         ".rds"))
-  saveRDS(merged_data, file = filename)
-  return(merged_data)
+
+  saveRDS(merge_obj, file = filename)
+  return(merge_obj)
 }
 
 #' This function wrangles the filtered ABRP data and metadata
@@ -140,7 +149,7 @@ load_data <- function(tax_level = "ASV", host_sample_min = 75,
 
   cat("Wrangling data and metadata...\n")
   # Pull taxonomy -> data.frame
-  long_data <- psmelt(data)
+  long_data <- psmelt(data$merged_data)
 
   ordered_data <- long_data %>%
     arrange(sname, collection_date) %>%
@@ -179,9 +188,12 @@ load_data <- function(tax_level = "ASV", host_sample_min = 75,
                "class",
                "order",
                "family",
-               "genus",
-               "species")
-  use_tax <- all_tax[1:which(all_tax == tax_level)]
+               "genus")
+  if(tax_level == "ASV") {
+    use_tax <- all_tax[1:length(all_tax)]
+  } else {
+    use_tax <- all_tax[1:which(all_tax == tax_level)]
+  }
 
   tax <- as.data.frame(long_data %>%
                          select(c("OTU", all_of(use_tax))) %>%
@@ -190,14 +202,20 @@ load_data <- function(tax_level = "ASV", host_sample_min = 75,
   tax_sequences <- data.frame(OTU = tax_sequences)
   tax <- left_join(tax_sequences, tax, by = "OTU")
 
+  # Update "other" taxon as other
+  merge_idx <- which(tax$OTU == data$merge_OTU)
+  tax$OTU[merge_idx] <- "other"
+
   # Reshuffle stablest relative abundance (in terms of median coefficient of
   # variation of relative abundances) to the end
+  # rel_ab <- apply(counts, 2, function(x) x/sum(x))
+  # c_of_v <- apply(rel_ab, 1, function(x) sd(x)/mean(x))
+  # median_taxon <- order(c_of_v)[round(length(c_of_v)/2)]
+  # new_order <- c(setdiff(1:nrow(counts), median_taxon), median_taxon)
 
-  rel_ab <- apply(counts, 2, function(x) x/sum(x))
-  c_of_v <- apply(rel_ab, 1, function(x) sd(x)/mean(x))
-  median_taxon <- order(c_of_v)[round(length(c_of_v)/2)]
+  # Use the "other" bucket as the reference (last index in the count table)
+  new_order <- c(setdiff(1:nrow(counts), merge_idx), merge_idx)
 
-  new_order <- c(setdiff(1:nrow(counts), median_taxon), median_taxon)
   counts <- counts[new_order,]
   tax <- tax[new_order,]
 
