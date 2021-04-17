@@ -18,7 +18,7 @@
 #' @import dplyr
 #' @export
 filter_data <- function(tax_level = "ASV", host_sample_min = 75,
-                      count_threshold = 5, sample_threshold = 0.2) {
+                      count_threshold = 1, sample_threshold = 0.2) {
   if(is.null(tax_level)) {
     tax_level <- "ASV"
   }
@@ -117,7 +117,7 @@ filter_data <- function(tax_level = "ASV", host_sample_min = 75,
 #' @importFrom tidyr pivot_wider pivot_longer
 #' @export
 load_data <- function(tax_level = "ASV", host_sample_min = 75,
-                        count_threshold = 5, sample_threshold = 0.2) {
+                        count_threshold = 1, sample_threshold = 0.2) {
   processed_filename <- file.path("input", paste0("processed_",
                                                   tax_level,
                                                   "_",
