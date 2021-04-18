@@ -24,3 +24,4 @@ plot_aligned_trajectories(host_list = c("ACA", "ALE", "CAI", "COB", "COO", "DAG"
                           save_file = TRUE)
 
 
+sigma_obj <- summarize_Sigmas()
