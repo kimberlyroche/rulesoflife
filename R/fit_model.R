@@ -35,6 +35,12 @@ fit_GP <- function(sname, counts, metadata, point_est = TRUE,
   dim(X) <- c(1, length(X)) # row matrix
 
   # Diet PCs
+  # We need to do something with NAs here
+  # For now I'm going to interpolate the mean locally in this function
+  sub_md$diet_PC1[which(is.na(sub_md$diet_PC1))] <- mean(sub_md$diet_PC1, na.rm = TRUE)
+  sub_md$diet_PC2[which(is.na(sub_md$diet_PC2))] <- mean(sub_md$diet_PC2, na.rm = TRUE)
+  sub_md$diet_PC3[which(is.na(sub_md$diet_PC3))] <- mean(sub_md$diet_PC3, na.rm = TRUE)
+
   X <- rbind(X, sub_md$diet_PC1)
   X <- rbind(X, sub_md$diet_PC2)
   X <- rbind(X, sub_md$diet_PC3)
