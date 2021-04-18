@@ -62,7 +62,7 @@ plot_rug <- function(rug, canonical_col_order = NULL,
     show(p)
   } else {
     output_dir <- check_dir(c("output", "images"))
-    ggsave(file.path(output_dir, "rug.png"),
+    ggsave(file.path(output_dir, paste0(save_name, ".png")),
            p,
            units = "in",
            height = 3,

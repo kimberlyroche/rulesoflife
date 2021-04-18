@@ -23,5 +23,8 @@ plot_aligned_trajectories(host_list = c("ACA", "ALE", "CAI", "COB", "COO", "DAG"
                           metadata = data$metadata,
                           save_file = TRUE)
 
-
 sigma_obj <- summarize_Sigmas()
+ordering2 <- plot_rug(sigma_obj$rug,
+                      canonical_col_order = ordering$col_order,
+                      canonical_row_order = ordering$row_order,
+                      save_name = "rug_diet50")
