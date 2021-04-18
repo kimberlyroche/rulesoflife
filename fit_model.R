@@ -11,8 +11,10 @@ option_list = list(
               help = "short name of host series to fit", metavar = "character"),
   make_option(c("--method"), type = "character", default = "GP",
               help = "model: GP or DLM", metavar = "character"),
-  make_option(c("--MAP"), type = "logical", default = FALSE,
-              help = "MAP estimation flag", metavar = "logical")
+  make_option(c("--MAP"), type = "logical", default = TRUE,
+              help = "MAP estimation flag", metavar = "logical"),
+  make_option(c("--diet_weight"), type = "numeric", default = 0,
+              help = "proportion of variance contributed to sample kernel by diet PCs", metavar = "numeric")
 );
 
 opt_parser = OptionParser(option_list = option_list);
@@ -36,5 +38,6 @@ if(opt$method == "DLM") {
   fit <- fit_GP(sname = opt$sname,
                 counts = data$counts,
                 metadata = data$metadata,
-                point_est = point_est)
+                point_est = point_est,
+                diet_weight = opt$diet_weight)
 }

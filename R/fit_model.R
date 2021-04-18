@@ -69,9 +69,8 @@ fit_GP <- function(sname, counts, metadata, point_est = TRUE,
              paste0("Sample variance scale: ", var_scale_samples),
              paste0("Minimum autocorrelation: ", min_correlation),
              paste0("Days to min. autocorrelation: ", days_to_baseline),
-             paste0("SE kernel proportion: ", K_proportions[1]),
-             paste0("PER kernel proportion: ", K_proportions[2])),
-             collapse = "\n\t"))
+             paste0("Diet kernel proportion: ", diet_weight)),
+             collapse = "\n\t"), "\n")
   fit <- fido::basset(Y = Y, X = X, upsilon = cov_taxa$upsilon, Xi = cov_taxa$Xi,
                       Theta, cov_sample$Gamma, n_samples = n_samples,
                       ret_mean = ret_mean)
