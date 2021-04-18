@@ -219,6 +219,18 @@ load_data <- function(tax_level = "ASV", host_sample_min = 75,
   counts <- counts[new_order,]
   tax <- tax[new_order,]
 
+  # Finally, pull in additional metadata if available
+  covariate_filename <- file.path("input", "ps_w_covs.RDS")
+  if(file.exists(covariate_filename)) {
+    covs <- readRDS(covariate_filename)
+    cov_md <- sample_data(covs) %>%
+      data.frame() %>%
+      select(sample_id, diet_PC1, diet_PC2, diet_PC3, diet_PC4)
+    metadata <- left_join(metadata, cov_md, by = "sample_id")
+  } else {
+    cat("Additional covariates not found...\n")
+  }
+
   processed_data <- list(counts = counts, taxonomy = tax, metadata = metadata)
   saveRDS(processed_data, file = processed_filename)
   return(processed_data)
