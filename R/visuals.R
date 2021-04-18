@@ -1,3 +1,77 @@
+#' Renders a kernel or covariance matrix as a square heatmap.
+#'
+#' @param K symmetric matrix object
+#' @param save_name if not NULL, a filename under which to save the plot
+#' @return NULL
+#' @import ggplot2
+#' @import tidyr
+#' @export
+plot_kernel_or_cov_matrix <- function(K, save_name = NULL) {
+  K <- cbind(sample1 = 1:nrow(K), K)
+  K <- pivot_longer(as.data.frame(K), !sample1, names_to = "sample2", values_to = "covariance")
+  K$sample2 <- as.numeric(K$sample2)
+  p <- ggplot(K, aes(x = sample1, y = sample2)) +
+    geom_raster(aes(fill = covariance)) +
+    scale_fill_gradient2(low = "navy", mid = "white", high = "red",
+                         midpoint = 0)
+  if(is.null(save_name)) {
+    show(p)
+  } else {
+    output_dir <- check_dir(c("output", "images"))
+    ggsave(file.path(output_dir, paste0(save_name, ".png")),
+           p,
+           units = "in",
+           height = 3,
+           width = 4.25)
+  }
+}
+
+#' Renders the "rug" (host x pairwise association matrix) as a heatmap.
+#'
+#' @param rug symmetric matrix object
+#' @param canonical_col_order if not NULL, order of pairs (columns) to use
+#' @param canonical_row_order if not NULL, order of rows (hosts) to use
+#' @param save_name name with which to save heatmap file
+#' @return named list with column and row ordering
+#' @import ggplot2
+#' @import tidyr
+#' @export
+plot_rug <- function(rug, canonical_col_order = NULL,
+                     canonical_row_order = NULL, save_name = NULL) {
+  # Cluster
+  if(is.null(canonical_row_order)) {
+    d <- dist(rug)
+    canonical_row_order <- hclust(d)$order
+  }
+  if(is.null(canonical_col_order)) {
+    d <- dist(t(rug))
+    canonical_col_order <- hclust(d)$order
+  }
+  rug <- rug[canonical_row_order,canonical_col_order]
+
+  rug <- cbind(1:nrow(rug), rug)
+  colnames(rug) <- c("host", paste0(1:(ncol(rug)-1)))
+  rug <- pivot_longer(as.data.frame(rug), !host, names_to = "pair", values_to = "correlation")
+  rug$pair <- as.numeric(rug$pair)
+
+  p <- ggplot(rug, aes(x = pair, y = host)) +
+    geom_raster(aes(fill = correlation)) +
+    scale_fill_gradient2(low = "navy", mid = "white", high = "red",
+                         midpoint = 0)
+  if(is.null(save_name)) {
+    show(p)
+  } else {
+    output_dir <- check_dir(c("output", "images"))
+    ggsave(file.path(output_dir, "rug.png"),
+           p,
+           units = "in",
+           height = 3,
+           width = 8)
+  }
+  return(list(row_order = canonical_row_order,
+              col_order = canonical_col_order))
+}
+
 #' Draw predictions from a fido::basset model in the CLR coordinate system.
 #' This function interpolates 5% of missing observations, which gives good quick
 #' visuals in the ABRP data.

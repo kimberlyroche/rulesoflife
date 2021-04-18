@@ -5,11 +5,18 @@
 #' @param metadata annotations data.frame
 #' @param point_est flag indicating whether or not to return (single) MAP
 #' estimate
+#' @param diet_weight relative contribution of first three diet PCs to
+#' covariance across samples
 #' @return fidofit object
 #' @import fido
 #' @import driver
+#' @import dplyr
 #' @export
-fit_GP <- function(sname, counts, metadata, point_est = TRUE) {
+fit_GP <- function(sname, counts, metadata, point_est = TRUE,
+                   diet_weight = 0) {
+  if(diet_weight > 1 | diet_weight < 0) {
+    stop("Invalid weight assigned to diet components of kernel!")
+  }
   sname_idx <- which(metadata$sname == sname)
   sub_md <- metadata[sname_idx,]
   sub_counts <- counts[,sname_idx]
@@ -27,15 +34,19 @@ fit_GP <- function(sname, counts, metadata, point_est = TRUE) {
   X <- unname(X + 1)
   dim(X) <- c(1, length(X)) # row matrix
 
+  # Diet PCs
+  X <- rbind(X, sub_md$diet_PC1)
+  X <- rbind(X, sub_md$diet_PC2)
+  X <- rbind(X, sub_md$diet_PC3)
+
   # Prior/hyperparameters for taxonomic covariance and sample covariance
   var_scale_taxa <- 1
   var_scale_samples <- 1
-  K_proportions <- c(0.5, 0.5)
   min_correlation <- 0.1
   days_to_baseline <- 90
   cov_taxa <- get_Xi(D, total_variance = var_scale_taxa)
   cov_sample <- get_Gamma(kernel_scale = var_scale_samples,
-                          proportions = K_proportions,
+                          diet_weight = diet_weight,
                           min_correlation = min_correlation,
                           days_to_baseline = days_to_baseline)
 
@@ -76,7 +87,8 @@ fit_GP <- function(sname, counts, metadata, point_est = TRUE) {
   return(fit)
 }
 
-#' Fit MLN dynamic linear model to a given host's series using fido
+#' Fit MLN dynamic linear model to a given host's series using fido. This
+#' version is not compatible with covariates.
 #'
 #' @param sname host short name indicating which baboon's series to fit
 #' @param counts filtered 16S count table (taxa x samples)
@@ -181,23 +193,6 @@ get_Xi <- function(D, total_variance = 1) {
   return(list(upsilon = upsilon, Xi = Xi))
 }
 
-#' Periodic kernel
-#'
-#' @param X covariate (dimension Q x N; i.e., covariates x samples)
-#' @param sigma scalar parameter
-#' @param rho scalar bandwidth parameter
-#' @param period period length (in days)
-#' @param jitter small scalar to add to off-diagonal of gram matrix
-#'   (for numerical underflow issues)
-#' @return Gram Matrix (N x N) (e.g., the Kernel evaluated at
-#' each pair of points)
-#' @export
-PER <- function(X, sigma=1, rho=1, period=24, jitter=0){
-  dist <- as.matrix(dist(t(X)))
-  G <- sigma^2 * exp(-2*(sin(pi*dist/period)^2)/(rho^2)) +
-    jitter*diag(ncol(dist))
-}
-
 #' Define bandwidth of squared exponential kernel
 #'
 #' @param min_correlation minimum correlation to assume between (within-host)
@@ -219,15 +214,15 @@ calc_se_decay <- function(min_correlation = 0.1, days_to_baseline = 90) {
 #' Define a kernel (function) over samples
 #'
 #' @param kernel_scale total variance for the composite kernel
-#' @param proportions proportion variance to attribute to each of 2 kernels (see
-#'  details)
+#' @param diet_weight relative contribution of first three diet PCs to
+#' covariance across samples
 #' @param rho bandwidth for SE kernel
 #' @details Composite kernel is built from (1) squared exponential kernel (base
 #' autocorrelation component) and (2) seasonal kernel (periodic)
 #' @return list containing kernel function and bandwidth parameter
 #' @import fido
 #' @export
-get_Gamma <- function(kernel_scale, proportions, min_correlation = 0.1,
+get_Gamma <- function(kernel_scale, diet_weight, min_correlation = 0.1,
                       days_to_baseline = 90) {
   rho <- calc_se_decay(min_correlation = min_correlation,
                        days_to_baseline = days_to_baseline)
@@ -237,13 +232,28 @@ get_Gamma <- function(kernel_scale, proportions, min_correlation = 0.1,
   # SE_days_to_baseline
   Gamma <- function(X) {
     jitter <- 1e-08
-    proportions <- abs(proportions)/sum(abs(proportions)) # just in case we pass
-                                                          # something that isn't
-                                                          # a composition
-    part.1 <- kernel_scale * proportions[1]
-    part.2 <- kernel_scale * proportions[2]
-    SE(X[1,,drop=F], sigma = sqrt(part.1), rho = rho, jitter = jitter) +
-      PER(X[1,,drop=F], sigma = sqrt(part.2), rho = 1, period = 365, jitter = jitter)
+    # These are the relative variances explained by diet PCs 1, 2, 3
+    # We'll scale their contribution to the sample-sample covariance
+    #   proportional to these.
+    var_prop <- c(0.676, 0.117, 0.061)
+    var_prop <- var_prop / sum(var_prop)
+    AC_component <- kernel_scale * (1 - diet_weight)
+    diet_component1 <- kernel_scale * diet_weight * var_prop[1]
+    diet_component2 <- kernel_scale * diet_weight * var_prop[2]
+    diet_component3 <- kernel_scale * diet_weight * var_prop[3]
+    K0 <- SE(X[1,,drop=F], sigma = sqrt(AC_component), rho = rho, jitter = jitter)
+    K1 <- SE(X[2,,drop=F], sigma = sqrt(diet_component1), rho = 1, jitter = jitter)
+    K2 <- SE(X[3,,drop=F], sigma = sqrt(diet_component2), rho = 1, jitter = jitter)
+    K3 <- SE(X[4,,drop=F], sigma = sqrt(diet_component3), rho = 1, jitter = jitter)
+    return(K0 + K1 + K2 + K3)
   }
   return(list(rho = rho, Gamma = Gamma))
 }
+
+
+
+
+
+
+
+

@@ -6,7 +6,7 @@
 \usage{
 get_Gamma(
   kernel_scale,
-  proportions,
+  diet_weight,
   min_correlation = 0.1,
   days_to_baseline = 90
 )
@@ -14,8 +14,8 @@ get_Gamma(
 \arguments{
 \item{kernel_scale}{total variance for the composite kernel}
 
-\item{proportions}{proportion variance to attribute to each of 2 kernels (see
-details)}
+\item{diet_weight}{relative contribution of first three diet PCs to
+covariance across samples}
 
 \item{rho}{bandwidth for SE kernel}
 }

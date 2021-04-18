@@ -9,7 +9,7 @@ and 3) merges taxa below a specified minimum abundance across hosts}
 filter_data(
   tax_level = "ASV",
   host_sample_min = 75,
-  count_threshold = 5,
+  count_threshold = 1,
   sample_threshold = 0.2
 )
 }

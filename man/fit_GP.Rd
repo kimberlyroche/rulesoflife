@@ -4,7 +4,7 @@
 \alias{fit_GP}
 \title{Fit MLN Gaussian process model to a given host's series using fido}
 \usage{
-fit_GP(sname, counts, metadata, point_est = TRUE)
+fit_GP(sname, counts, metadata, point_est = TRUE, diet_weight = 0)
 }
 \arguments{
 \item{sname}{host short name indicating which baboon's series to fit}
@@ -15,6 +15,9 @@ fit_GP(sname, counts, metadata, point_est = TRUE)
 
 \item{point_est}{flag indicating whether or not to return (single) MAP
 estimate}
+
+\item{diet_weight}{relative contribution of first three diet PCs to
+covariance across samples}
 }
 \value{
 fidofit object

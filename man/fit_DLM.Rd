@@ -2,7 +2,8 @@
 % Please edit documentation in R/fit_model.R
 \name{fit_DLM}
 \alias{fit_DLM}
-\title{Fit MLN dynamic linear model to a given host's series using fido}
+\title{Fit MLN dynamic linear model to a given host's series using fido. This
+version is not compatible with covariates.}
 \usage{
 fit_DLM(sname, counts, metadata, point_est = TRUE, smoothed = FALSE)
 }
@@ -23,5 +24,6 @@ smoother (necessary for trajectory visualization only)}
 fidofit object
 }
 \description{
-Fit MLN dynamic linear model to a given host's series using fido
+Fit MLN dynamic linear model to a given host's series using fido. This
+version is not compatible with covariates.
 }
