@@ -76,7 +76,11 @@ fit_GP <- function(sname, counts, metadata, point_est = TRUE, output_dir = NULL,
              paste0("Taxa variance scale: ", var_scale_taxa),
              paste0("Sample variance scale: ", var_scale_samples),
              paste0("Minimum autocorrelation: ", min_correlation),
+<<<<<<< HEAD
              paste0("Days to min. autocorrelation: ", days_to_min_autocorrelation),
+=======
+             paste0("Days to min. autocorrelation: ", days_to_baseline),
+>>>>>>> ec748671f958ab25dafa1748c24988b1294e766a
              paste0("Diet kernel proportion: ", diet_weight)),
              collapse = "\n\t"), "\n")
   fit <- fido::basset(Y = Y, X = X, upsilon = cov_taxa$upsilon, Xi = cov_taxa$Xi,
