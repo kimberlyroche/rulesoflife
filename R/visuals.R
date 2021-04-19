@@ -260,32 +260,76 @@ plot_trajectory <- function(fit, coord, coord_label = NULL,
 #' @param method model fit method, "GP" or "DLM"
 #' @param use_proportionality flag indicating whether to compute proportionality
 #' between features; if FALSE, CLR correlations are computed
+#' @param output_dir if supplied, specifies the subdirectory of the model fits
+#' directory in which to look for fitted model output; see details
+#' @details Uses MAP estimates from the MAP subdirectory if available. If not,
+#' uses model fits founds in the base model output directory. Parameter
+#' output_dir overrides both these behaviors.
+#' summarizes full posterior model fits
 #' @return named list of "rug" and associated labels
 #' @import fido
 #' @export
-summarize_Sigmas <- function(method = "GP", use_proportionality = FALSE) {
+summarize_Sigmas <- function(method = "GP", use_proportionality = FALSE,
+                             output_dir = NULL) {
   if(!(method %in% c("GP", "DLM"))) {
     stop("Method not recognized!")
   }
   # Get all fitted model objects
-  output_dir <- check_dir(c("output", paste0(method, "_fits"), "MAP"))
-  # Collapse to object with rownames, 2 sets column names
-  file_list <- list.files(path = output_dir, pattern = "*.rds")
+  if(!is.null(output_dir)) {
+    output_dir <- check_dir(c("output", paste0(method, "_fits"), output_dir))
+    file_list <- list.files(path = output_dir, pattern = "*.rds")
+  }
+  if(is.null(output_dir) | length(file_list) == 0) {
+    output_dir <- check_dir(c("output", paste0(method, "_fits"), "MAP"))
+    file_list <- list.files(path = output_dir, pattern = "*.rds")
+  }
   if(length(file_list) == 0) {
-    # Pull D
     output_dir <- check_dir(c("output", paste0(method, "_fits")))
     file_list <- list.files(path = output_dir, pattern = "*.rds")
-    if(length(file_list) == 0) {
-      stop("No fitted models found!")
+  }
+  if(length(file_list) == 0) {
+    stop("No model output found!")
+  }
+  # Get taxa number and posterior sample number
+  fit <- readRDS(file.path(output_dir, file_list[1]))
+  D <- fit$D
+  iter <- fit$iter
+  # Initialize the stuff we'll return
+  pairs <- combn(1:(fit$D), m = 2)
+  pair1 <- pairs[1,]
+  pair2 <- pairs[2,]
+  rug <- matrix(NA, length(file_list), D*(D - 1)/2)
+  hosts <- character(length(file_list))
+  if(iter == 1) {
+    # MAP estimates
+    for(f in 1:length(file_list)) {
+      file <- file_list[f]
+      fit <- readRDS(file.path(output_dir, file))
+      # Convert to CLR
+      if(fit$coord_system != "clr") {
+        fit <- to_clr(fit)
+      }
+      if(use_proportionality) {
+        Sigma <- fit$Sigma[,,1]
+        for(m in 1:ncol(pairs)) {
+          j <- pair1[m]
+          k <- pair2[m]
+          var_j <- Sigma[j,j] # diagonal element
+          var_k <- Sigma[k,k] # diagonal element
+          var_j_minus_k <- var_j + var_k - 2*Sigma[j,k]
+          rho_jk <- 1 - var_j_minus_k / (var_j + var_k)
+          rug[f,m] <- rho_jk
+        }
+      } else {
+        Sigma_correlation <- cov2cor(fit$Sigma[,,1])
+        vector_Sigma <- Sigma_correlation[upper.tri(Sigma_correlation,
+                                                    diag = FALSE)]
+        rug[f,] <- vector_Sigma
+      }
+      hosts[f] <- fit$sname
     }
-    fit <- readRDS(file.path(output_dir, file_list[1]))
-    D <- fit$D
-    pairs <- combn(1:(fit$D), m = 2)
-    pair1 <- pairs[1,]
-    pair2 <- pairs[2,]
-    rug <- matrix(NA, length(file_list), D*(D - 1)/2)
-    hosts <- character(length(file_list))
-    # Summarize full posteriors (via mean)
+  } else {
+    # Full posteriors
     for(f in 1:length(file_list)) {
       file <- file_list[f]
       fit <- readRDS(file.path(output_dir, file))
@@ -311,43 +355,6 @@ summarize_Sigmas <- function(method = "GP", use_proportionality = FALSE) {
         }
         Sigma_summary <- apply(Sigma_correlation, c(1,2), mean)
         vector_Sigma <- Sigma_summary[upper.tri(Sigma_summary, diag = FALSE)]
-        rug[f,] <- vector_Sigma
-      }
-      hosts[f] <- fit$sname
-    }
-  } else {
-    # Use MAP
-    # Pull D
-    fit <- readRDS(file.path(output_dir, file_list[1]))
-    D <- fit$D
-    pairs <- combn(1:(fit$D), m = 2)
-    pair1 <- pairs[1,]
-    pair2 <- pairs[2,]
-    rug <- matrix(NA, length(file_list), D*(D - 1)/2)
-    hosts <- character(length(file_list))
-    # Summarize full posteriors (via mean)
-    for(f in 1:length(file_list)) {
-      file <- file_list[f]
-      fit <- readRDS(file.path(output_dir, file))
-      # Convert to CLR
-      if(fit$coord_system != "clr") {
-        fit <- to_clr(fit)
-      }
-      if(use_proportionality) {
-        Sigma <- fit$Sigma[,,1]
-        for(m in 1:ncol(pairs)) {
-          j <- pair1[m]
-          k <- pair2[m]
-          var_j <- Sigma[j,j] # diagonal element
-          var_k <- Sigma[k,k] # diagonal element
-          var_j_minus_k <- var_j + var_k - 2*Sigma[j,k]
-          rho_jk <- 1 - var_j_minus_k / (var_j + var_k)
-          rug[f,m] <- rho_jk
-        }
-      } else {
-        Sigma_correlation <- cov2cor(fit$Sigma[,,1])
-        vector_Sigma <- Sigma_correlation[upper.tri(Sigma_correlation,
-                                                    diag = FALSE)]
         rug[f,] <- vector_Sigma
       }
       hosts[f] <- fit$sname
@@ -470,7 +477,6 @@ plot_aligned_trajectories <- function(host_list, tax_idx1, tax_idx2, metadata,
 
   # The pair_df data.frame contains the interpolated trajectories (50% CI and 95%
   # CI) for a pair of taxa in two hosts.
-  head(pair_df)
 
   p <- ggplot()
   for(ref_host in host_list) {

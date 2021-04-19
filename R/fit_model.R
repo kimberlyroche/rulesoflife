@@ -5,15 +5,18 @@
 #' @param metadata annotations data.frame
 #' @param point_est flag indicating whether or not to return (single) MAP
 #' estimate
+#' @param output_dir if supplied, specifies the subdirectory of the model fits
+#' directory in which to save the fitted model output
 #' @param diet_weight relative contribution of first three diet PCs to
 #' covariance across samples
+#' @param days_to_min_autocorrelation
 #' @return fidofit object
 #' @import fido
 #' @import driver
 #' @import dplyr
 #' @export
-fit_GP <- function(sname, counts, metadata, point_est = TRUE,
-                   diet_weight = 0) {
+fit_GP <- function(sname, counts, metadata, point_est = TRUE, output_dir = NULL,
+                   diet_weight = 0, days_to_min_autocorrelation = 90) {
   if(diet_weight > 1 | diet_weight < 0) {
     stop("Invalid weight assigned to diet components of kernel!")
   }
@@ -49,12 +52,11 @@ fit_GP <- function(sname, counts, metadata, point_est = TRUE,
   var_scale_taxa <- 1
   var_scale_samples <- 1
   min_correlation <- 0.1
-  days_to_baseline <- 90
   cov_taxa <- get_Xi(D, total_variance = var_scale_taxa)
   cov_sample <- get_Gamma(kernel_scale = var_scale_samples,
                           diet_weight = diet_weight,
                           min_correlation = min_correlation,
-                          days_to_baseline = days_to_baseline)
+                          days_to_min_autocorrelation = days_to_min_autocorrelation)
 
   # Prior over mean
   alr_ys <- driver::alr((t(Y) + 0.5))
@@ -74,18 +76,21 @@ fit_GP <- function(sname, counts, metadata, point_est = TRUE,
              paste0("Taxa variance scale: ", var_scale_taxa),
              paste0("Sample variance scale: ", var_scale_samples),
              paste0("Minimum autocorrelation: ", min_correlation),
-             paste0("Days to min. autocorrelation: ", days_to_baseline),
-             paste0("SE kernel proportion: ", K_proportions[1]),
-             paste0("PER kernel proportion: ", K_proportions[2])),
-             collapse = "\n\t"))
+             paste0("Days to min. autocorrelation: ", days_to_min_autocorrelation),
+             paste0("Diet kernel proportion: ", diet_weight)),
+             collapse = "\n\t"), "\n")
   fit <- fido::basset(Y = Y, X = X, upsilon = cov_taxa$upsilon, Xi = cov_taxa$Xi,
                       Theta, cov_sample$Gamma, n_samples = n_samples,
                       ret_mean = ret_mean)
   fit$sname <- sname
-  if(point_est) {
-    output_dir <- file.path("output", "GP_fits", "MAP")
+  if(!is.null(output_dir)) {
+    output_dir <- file.path("output", "GP_fits", output_dir)
   } else {
-    output_dir <- file.path("output", "GP_fits")
+    if(point_est) {
+      output_dir <- file.path("output", "GP_fits", "MAP")
+    } else {
+      output_dir <- file.path("output", "GP_fits")
+    }
   }
   check_dir(output_dir) # create if not exist
   output_file <- paste0(sname, ".rds")
@@ -203,16 +208,16 @@ get_Xi <- function(D, total_variance = 1) {
 #'
 #' @param min_correlation minimum correlation to assume between (within-host)
 #' samples
-#' @param days_to_baseline days at which squared exponential kernel decays to
+#' @param days_to_min_autocorrelation days at which squared exponential kernel decays to
 #' baseline correlation of ~0.1
 #' @return bandwidth parameter for squared exponential kernel
 #' @export
-calc_se_decay <- function(min_correlation = 0.1, days_to_baseline = 90) {
+calc_se_decay <- function(min_correlation = 0.1, days_to_min_autocorrelation = 90) {
   # Back-calculate the squared exponential bandwidth parameter by finding a
   # bandwidth that gives
   # A desired minimum correlation at the number of days specified by
-  # days_to_baseline
-  rho <- sqrt(-days_to_baseline^2/(2*log(min_correlation))) # back calculate the
+  # days_to_min_autocorrelation
+  rho <- sqrt(-days_to_min_autocorrelation^2/(2*log(min_correlation))) # back calculate the
                                                             # decay
   return(rho)
 }
@@ -229,13 +234,13 @@ calc_se_decay <- function(min_correlation = 0.1, days_to_baseline = 90) {
 #' @import fido
 #' @export
 get_Gamma <- function(kernel_scale, diet_weight, min_correlation = 0.1,
-                      days_to_baseline = 90) {
+                      days_to_min_autocorrelation = 90) {
   rho <- calc_se_decay(min_correlation = min_correlation,
-                       days_to_baseline = days_to_baseline)
+                       days_to_min_autocorrelation = days_to_min_autocorrelation)
   # Back-calculate the squared exponential bandwidth parameter by finding a
   # bandwidth that gives
   # A desired minimum correlation at the number of days specified by
-  # SE_days_to_baseline
+  # SE_days_to_min_autocorrelation
   Gamma <- function(X) {
     jitter <- 1e-08
     # These are the relative variances explained by diet PCs 1, 2, 3

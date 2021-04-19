@@ -23,8 +23,12 @@ plot_aligned_trajectories(host_list = c("ACA", "ALE", "CAI", "COB", "COO", "DAG"
                           metadata = data$metadata,
                           save_file = TRUE)
 
-sigma_obj <- summarize_Sigmas()
-ordering2 <- plot_rug(sigma_obj$rug,
-                      canonical_col_order = ordering$col_order,
-                      canonical_row_order = ordering$row_order,
-                      save_name = "rug_diet50")
+fit <- fit_GP(sname = "VAP",
+              counts = data$counts,
+              metadata = data$metadata,
+              point_est = FALSE,
+              output_dir = "MAP_days30",
+              diet_weight = 0,
+              days_to_min_autocorrelation = 30)
+
+sensitivity_sweep(output_dir_list = c("MAP_diet0", "MAP_diet25", "MAP_diet50"))

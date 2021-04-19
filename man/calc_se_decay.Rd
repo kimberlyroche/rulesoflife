@@ -4,13 +4,13 @@
 \alias{calc_se_decay}
 \title{Define bandwidth of squared exponential kernel}
 \usage{
-calc_se_decay(min_correlation = 0.1, days_to_baseline = 90)
+calc_se_decay(min_correlation = 0.1, days_to_min_autocorrelation = 90)
 }
 \arguments{
 \item{min_correlation}{minimum correlation to assume between (within-host)
 samples}
 
-\item{days_to_baseline}{days at which squared exponential kernel decays to
+\item{days_to_min_autocorrelation}{days at which squared exponential kernel decays to
 baseline correlation of ~0.1}
 }
 \value{

@@ -8,7 +8,7 @@ get_Gamma(
   kernel_scale,
   diet_weight,
   min_correlation = 0.1,
-  days_to_baseline = 90
+  days_to_min_autocorrelation = 90
 )
 }
 \arguments{

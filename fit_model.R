@@ -12,7 +12,9 @@ option_list = list(
   make_option(c("--method"), type = "character", default = "GP",
               help = "model: GP or DLM", metavar = "character"),
   make_option(c("--MAP"), type = "logical", default = FALSE,
-              help = "MAP estimation flag", metavar = "logical")
+              help = "MAP estimation flag", metavar = "logical"),
+  make_option(c("--output_dir"), type = "character", default = NULL,
+              help = "output subdirectory of model fit directory", metavar = "character")
 );
 
 opt_parser = OptionParser(option_list = option_list);

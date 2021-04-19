@@ -7,13 +7,16 @@ fitted models of a given type. Uses MAP estimates if available, otherwise,
 summarizes full posterior model fits to give a "rug" matrix where rows are
 hosts and columns are unique pairwise interactions between taxa.}
 \usage{
-summarize_Sigmas(method = "GP", use_proportionality = FALSE)
+summarize_Sigmas(method = "GP", use_proportionality = FALSE, output_dir = NULL)
 }
 \arguments{
 \item{method}{model fit method, "GP" or "DLM"}
 
 \item{use_proportionality}{flag indicating whether to compute proportionality
 between features; if FALSE, CLR correlations are computed}
+
+\item{output_dir}{if supplied, specifies the subdirectory of the model fits
+directory in which to look for fitted model output; see details}
 }
 \value{
 named list of "rug" and associated labels
@@ -23,4 +26,10 @@ Summarize the pairwise correlations (optionally via proportionality) from all
 fitted models of a given type. Uses MAP estimates if available, otherwise,
 summarizes full posterior model fits to give a "rug" matrix where rows are
 hosts and columns are unique pairwise interactions between taxa.
+}
+\details{
+Uses MAP estimates from the MAP subdirectory if available. If not,
+uses model fits founds in the base model output directory. Parameter
+output_dir overrides both these behaviors.
+summarizes full posterior model fits
 }
