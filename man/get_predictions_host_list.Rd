@@ -5,7 +5,7 @@
 \title{Utility function for pulling collection date-aligned trajectories for a pair
 of taxa from a set of hosts.}
 \usage{
-get_predictions_host_list(ref_hosts, metadata)
+get_predictions_host_list(ref_hosts, output_dir, metadata)
 }
 \description{
 Utility function for pulling collection date-aligned trajectories for a pair

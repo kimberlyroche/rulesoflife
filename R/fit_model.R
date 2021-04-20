@@ -3,20 +3,27 @@
 #' @param sname host short name indicating which baboon's series to fit
 #' @param counts filtered 16S count table (taxa x samples)
 #' @param metadata annotations data.frame
-#' @param point_est flag indicating whether or not to return (single) MAP
-#' estimate
-#' @param output_dir if supplied, specifies the subdirectory of the model fits
-#' directory in which to save the fitted model output
+#' @param output_dir specifies the subdirectory of the model fits directory in
+#' which to save the fitted model output
+#' @param MAP flag indicating whether or not to return (single) MAP estimate
+#' @param days_to_min_autocorrelation used in the calculation of bandwidth for
+#' the kernel over samples that models autocorrelation; indicates the number of
+#' days at which the squared exponential correlation decays to a minimum (here,
+#' 0.1)
 #' @param diet_weight relative contribution of first three diet PCs to
 #' covariance across samples
-#' @param days_to_min_autocorrelation
+#' @param var_scale_taxa scale of the prior associated with the covariance over
+#' taxa
+#' @param var_scale_samples scale of the hyperparameter associated with the
+#' covariance over samples
 #' @return fidofit object
 #' @import fido
 #' @import driver
 #' @import dplyr
 #' @export
-fit_GP <- function(sname, counts, metadata, point_est = TRUE, output_dir = NULL,
-                   diet_weight = 0, days_to_min_autocorrelation = 90) {
+fit_GP <- function(sname, counts, metadata, output_dir, MAP = TRUE,
+                   days_to_min_autocorrelation = 90, diet_weight = 0,
+                   var_scale_taxa = 1, var_scale_samples = 1) {
   if(diet_weight > 1 | diet_weight < 0) {
     stop("Invalid weight assigned to diet components of kernel!")
   }
@@ -49,8 +56,6 @@ fit_GP <- function(sname, counts, metadata, point_est = TRUE, output_dir = NULL,
   X <- rbind(X, sub_md$diet_PC3)
 
   # Prior/hyperparameters for taxonomic covariance and sample covariance
-  var_scale_taxa <- 1
-  var_scale_samples <- 1
   min_correlation <- 0.1
   cov_taxa <- get_Xi(D, total_variance = var_scale_taxa)
   cov_sample <- get_Gamma(kernel_scale = var_scale_samples,
@@ -63,11 +68,11 @@ fit_GP <- function(sname, counts, metadata, point_est = TRUE, output_dir = NULL,
   alr_means <- colMeans(alr_ys)
   Theta <- function(X) matrix(alr_means, D-1, ncol(X))
 
-  if(point_est) {
+  if(MAP) {
     n_samples <- 0
     ret_mean <- TRUE
   } else {
-    n_samples <- 1000
+    n_samples <- 100
     ret_mean <- FALSE
   }
 
@@ -77,111 +82,19 @@ fit_GP <- function(sname, counts, metadata, point_est = TRUE, output_dir = NULL,
              paste0("Sample variance scale: ", var_scale_samples),
              paste0("Minimum autocorrelation: ", min_correlation),
              paste0("Days to min. autocorrelation: ", days_to_min_autocorrelation),
-             paste0("Diet kernel proportion: ", diet_weight)),
+             paste0("Diet kernel proportion: ", diet_weight),
+             paste0("Taxa cov scale: ", var_scale_taxa),
+             paste0("Sample cov scale: ", var_scale_samples)),
              collapse = "\n\t"), "\n")
   fit <- fido::basset(Y = Y, X = X, upsilon = cov_taxa$upsilon, Xi = cov_taxa$Xi,
                       Theta, cov_sample$Gamma, n_samples = n_samples,
                       ret_mean = ret_mean)
   fit$sname <- sname
-  if(!is.null(output_dir)) {
-    output_dir <- file.path("output", "GP_fits", output_dir)
+  if(MAP) {
+    output_dir <- check_dir(c("output", "model_fits", output_dir, "MAP"))
   } else {
-    if(point_est) {
-      output_dir <- file.path("output", "GP_fits", "MAP")
-    } else {
-      output_dir <- file.path("output", "GP_fits")
-    }
+    output_dir <- check_dir(c("output", "model_fits", output_dir, "full_posterior"))
   }
-  check_dir(output_dir) # create if not exist
-  output_file <- paste0(sname, ".rds")
-  saveRDS(fit, file = file.path(output_dir, output_file))
-  return(fit)
-}
-
-#' Fit MLN dynamic linear model to a given host's series using fido. This
-#' version is not compatible with covariates.
-#'
-#' @param sname host short name indicating which baboon's series to fit
-#' @param counts filtered 16S count table (taxa x samples)
-#' @param metadata annotations data.frame
-#' @param point_est flag indicating whether or not to return (single) MAP
-#' estimate
-#' @param smoothed flag indicating whether or not to apply the simulation
-#' smoother (necessary for trajectory visualization only)
-#' @return fidofit object
-#' @import fido
-#' @import driver
-#' @export
-fit_DLM <- function(sname, counts, metadata, point_est = TRUE, smoothed = FALSE) {
-  sname_idx <- which(metadata$sname == sname)
-  sub_md <- metadata[sname_idx,]
-  sub_counts <- counts[,sname_idx]
-
-  # Response
-  Y <- sub_counts
-  N <- ncol(Y)
-  D <- nrow(Y)
-
-  # Design matrix
-  # Design matrix
-  baseline_date <- sub_md$collection_date[1]
-  X <- sapply(sub_md$collection_date, function(cd) {
-    round(difftime(cd, baseline_date, units = "days"))
-  })
-  X <- unname(X + 1)
-  T <- max(X)
-  dim(X) <- c(1, length(X)) # row matrix
-
-  Q <- 1 # number of covariates: intercept only
-
-  # Transition matrices
-  F <- matrix(1, 1, T)
-  G <- diag(Q)
-
-  W <- diag(Q)
-  # Scale the covariate-inclusive and covariate-exclusive models to have
-  # similar total variance
-  W <- W/nrow(W)
-
-  # Define the prior over baselines
-  C0 <- W
-  alr_ys <- driver::alr((t(Y) + 0.5))
-  alr_means <- colMeans(alr_ys)
-  M0 <- matrix(0, Q, D-1)
-  M0[1,] <- alr_means
-
-  # # Prior/hyperparameters for taxonomic covariance and sample covariance
-  var_scale <- 1
-  cov_taxa <- get_Xi(D, total_variance = 1)
-
-  if(point_est) {
-    n_samples <- 0
-    ret_mean <- TRUE
-  } else {
-    n_samples <- 1000
-    ret_mean <- FALSE
-  }
-
-  cat(paste0(c(paste0("Fitting fido::basset to ",sname,"'s series with the ",
-             "following hyperparams:"),
-             paste0("Overall variance scale: ", var_scale),
-             paste0("Gamma-to-W ratio: 2/3 to 1/3"),
-             paste0("Smoothed: ", smoothed)),
-             collapse = "\n\t"))
-
-  # I'm giving W about 1/2 the scale of gamma
-  fit <- labraduck(Y = Y, observations = X, upsilon = cov_taxa$upsilon, Xi = cov_taxa$Xi,
-                   F = F, G = G, W = W, M0 = M0, C0 = C0,
-                   gamma_scale = (var_scale * 2/3), W_scale = (var_scale * 1/3),
-                   apply_smoother = smoothed, n_samples = n_samples, ret_mean = ret_mean)
-
-  fit$sname <- sname
-  if(point_est) {
-    output_pieces <- c("output", "DLM_fits", "MAP")
-  } else {
-    output_pieces <- c("output", "DLM_fits")
-  }
-  output_dir <- check_dir(output_pieces) # create if not exist
   output_file <- paste0(sname, ".rds")
   saveRDS(fit, file = file.path(output_dir, output_file))
   return(fit)
@@ -260,11 +173,3 @@ get_Gamma <- function(kernel_scale, diet_weight, min_correlation = 0.1,
   }
   return(list(rho = rho, Gamma = Gamma))
 }
-
-
-
-
-
-
-
-

@@ -8,6 +8,7 @@ similar dynamics across hosts.}
 \usage{
 plot_aligned_trajectories(
   host_list,
+  output_dir,
   tax_idx1,
   tax_idx2,
   metadata,
@@ -16,6 +17,9 @@ plot_aligned_trajectories(
 }
 \arguments{
 \item{host_list}{vector of host short names}
+
+\item{output_dir}{specifies the subdirectory of the model fits directory in
+which to save the predictions}
 
 \item{tax_idx1}{index of first taxon}
 

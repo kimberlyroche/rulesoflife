@@ -6,10 +6,13 @@
 This function interpolates 5% of missing observations, which gives good quick
 visuals in the ABRP data.}
 \usage{
-predict_trajectory(fit)
+predict_trajectory(sname, output_dir)
 }
 \arguments{
-\item{fit}{bassetfit object}
+\item{sname}{host short name indicating which baboon's series to fit}
+
+\item{output_dir}{specifies the subdirectory of the model fits directory in
+which to save the predictions}
 }
 \description{
 Draw predictions from a fido::basset model in the CLR coordinate system.

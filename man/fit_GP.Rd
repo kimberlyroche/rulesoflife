@@ -8,10 +8,12 @@ fit_GP(
   sname,
   counts,
   metadata,
-  point_est = TRUE,
-  output_dir = NULL,
+  output_dir,
+  MAP = TRUE,
+  days_to_min_autocorrelation = 90,
   diet_weight = 0,
-  days_to_min_autocorrelation = 90
+  var_scale_taxa = 1,
+  var_scale_samples = 1
 )
 }
 \arguments{
@@ -21,14 +23,24 @@ fit_GP(
 
 \item{metadata}{annotations data.frame}
 
-\item{point_est}{flag indicating whether or not to return (single) MAP
-estimate}
+\item{output_dir}{specifies the subdirectory of the model fits directory in
+which to save the fitted model output}
 
-\item{output_dir}{if supplied, specifies the subdirectory of the model fits
-directory in which to save the fitted model output}
+\item{MAP}{flag indicating whether or not to return (single) MAP estimate}
+
+\item{days_to_min_autocorrelation}{used in the calculation of bandwidth for
+the kernel over samples that models autocorrelation; indicates the number of
+days at which the squared exponential correlation decays to a minimum (here,
+0.1)}
 
 \item{diet_weight}{relative contribution of first three diet PCs to
 covariance across samples}
+
+\item{var_scale_taxa}{scale of the prior associated with the covariance over
+taxa}
+
+\item{var_scale_samples}{scale of the hyperparameter associated with the
+covariance over samples}
 }
 \value{
 fidofit object
