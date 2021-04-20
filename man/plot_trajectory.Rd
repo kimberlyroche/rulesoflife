@@ -2,12 +2,11 @@
 % Please edit documentation in R/visuals.R
 \name{plot_trajectory}
 \alias{plot_trajectory}
-\title{Visualize inferred logratio trajectories. GP objects will be visualized in
-the CLR coordinate system; DLM objects will be visualized in the ALR (for
-now).}
+\title{Visualize inferred logratio trajectories (CLR by default)}
 \usage{
 plot_trajectory(
-  fit,
+  sname,
+  output_dir,
   coord,
   coord_label = NULL,
   show_observations = FALSE,
@@ -15,7 +14,10 @@ plot_trajectory(
 )
 }
 \arguments{
-\item{fit}{bassetfit or labraduckfit object (from fido)}
+\item{sname}{host short name indicating which baboon's series to fit}
+
+\item{output_dir}{specifies the subdirectory of the model fits directory in
+which to save the predictions}
 
 \item{coord}{index of logratio to plot}
 
@@ -28,7 +30,5 @@ fit}
 \item{save_file}{flag indicating whether or not to save rendered plot to file}
 }
 \description{
-Visualize inferred logratio trajectories. GP objects will be visualized in
-the CLR coordinate system; DLM objects will be visualized in the ALR (for
-now).
+Visualize inferred logratio trajectories (CLR by default)
 }

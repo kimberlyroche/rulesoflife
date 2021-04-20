@@ -9,8 +9,8 @@ library(rulesoflife)
 option_list = list(
   make_option(c("--sname"), type = "character", default = NULL,
               help = "short name of host series to fit", metavar = "character"),
-  make_option(c("--method"), type = "character", default = "GP",
-              help = "model: GP or DLM", metavar = "character"),
+  make_option(c("--tax_level"), type = "character", default = NULL,
+              help = "taxonomic level: phylum, family, ASV", metavar = "character"),
   make_option(c("--MAP"), type = "logical", default = FALSE,
               help = "MAP estimation flag", metavar = "logical"),
   make_option(c("--output_dir"), type = "character", default = NULL,
@@ -28,22 +28,18 @@ if(is.null(opt$sname)) {
   stop("No short name provided!")
 }
 
-# Load
-data <- load_data(tax_level = "family")
-
-point_est <- opt$MAP
-if(opt$method == "DLM") {
-  fit <- fit_DLM(sname = opt$sname,
-                 counts = data$counts,
-                 metadata = data$metadata,
-                 point_est = point_est,
-                 smoothed = TRUE)
-} else if(opt$method == "GP") {
-  fit <- fit_GP(sname = opt$sname,
-                counts = data$counts,
-                metadata = data$metadata,
-                output_dir = opt$output_dir,
-                point_est = point_est,
-                diet_weight = opt$diet_weight,
-                days_to_min_autocorrelation = opt$days_min_cor)
+if(!(opt$tax_level %in% c("phylum", "family", "ASV"))) {
+  stop("Invalid taxonomic level!")
 }
+
+# Load
+data <- load_data(tax_level = opt$tax_level)
+
+MAP <- opt$MAP
+fit <- fit_GP(sname = opt$sname,
+              counts = data$counts,
+              metadata = data$metadata,
+              output_dir = opt$output_dir,
+              MAP = MAP,
+              diet_weight = opt$diet_weight,
+              days_to_min_autocorrelation = opt$days_min_cor)

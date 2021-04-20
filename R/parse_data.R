@@ -235,3 +235,48 @@ load_data <- function(tax_level = "ASV", host_sample_min = 75,
   saveRDS(processed_data, file = processed_filename)
   return(processed_data)
 }
+
+#' Pull a fitted model object from the specified directory
+#'
+#' @param sname host short name indicating which baboon's series to fit
+#' @param MAP flag indicating whether or not to return (single) MAP estimate
+#' @param output_dir specifies the subdirectory of the model fits directory in
+#' which to save the predictions
+#' @return a bassetfit object or NULL if no such object exists
+#' @export
+load_fit <- function(sname, MAP, output_dir) {
+  if(MAP) {
+    fit_dir <- "MAP"
+  } else {
+    fit_dir <- "full_posterior"
+  }
+  filename <- file.path("output", "model_fits", output_dir, fit_dir, paste0(sname, ".rds"))
+  if(file.exists(filename)) {
+    return(readRDS(filename))
+  } else {
+    return(NULL)
+  }
+}
+
+#' Pull a prediction object from the specified directory
+#'
+#' @param sname host short name indicating which baboon's series to fit
+#' @param output_dir specifies the subdirectory of the model fits directory in
+#' which to save the predictions
+#' @param generate flag indicating whether or not to generate prediction data
+#' if not found
+#' @return a named list of predicted values or NULL if no such object exists
+#' @export
+load_predictions <- function(sname, output_dir, generate = FALSE) {
+  filename <- file.path("output", "model_fits", output_dir, "predictions", paste0(sname, ".rds"))
+  if(file.exists(filename)) {
+    return(readRDS(filename))
+  } else {
+    if(generate) {
+      fit_pred_obj <- predict_trajectory(sname, output_dir)
+      return(fit_pred_obj$predictions)
+    } else {
+      return(NULL)
+    }
+  }
+}

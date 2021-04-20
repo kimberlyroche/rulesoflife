@@ -25,7 +25,7 @@ plot_clr_vs_diet <- function(sname, tax_idx, counts, metadata) {
     geom_point() +
     xlab("sample index")
   filename <- paste0("dietPC1_vs_tax", tax_idx, "_", sname, ".png")
-  output_dir <- check_dir(c("output", "images"))
+  output_dir <- check_dir(c("output", "figures"))
   ggsave(file.path(output_dir, filename),
          p,
          units = "in",
@@ -54,7 +54,7 @@ sensitivity_sweep <- function(output_dir_list,
     stop("No model output directories specified!")
   }
   for(output_dir in output_dir_list) {
-    sigma_obj <- summarize_Sigmas(output_dir = "MAP_diet0")
+    sigma_obj <- summarize_Sigmas(output_dir = output_dir)
     ordering <- plot_rug(sigma_obj$rug,
                          save_name = output_dir)
     if(is.null(canonical_col_order)) {
