@@ -16,7 +16,7 @@ option_list = list(
   make_option(c("--output_dir"), type = "character", default = NULL,
               help = "output subdirectory of model fit directory", metavar = "character"),
   make_option(c("--days_min_cor"), type = "numeric", default = 0,
-              help = "days to minimum autocorrelation", metavar = "numeric")
+              help = "days to minimum autocorrelation", metavar = "numeric"),
   make_option(c("--diet_weight"), type = "numeric", default = 0,
               help = "proportion of variance contributed to sample kernel by diet PCs", metavar = "numeric")
 );
