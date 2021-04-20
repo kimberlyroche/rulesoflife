@@ -54,14 +54,25 @@ sensitivity_sweep <- function(output_dir_list,
     stop("No model output directories specified!")
   }
   for(output_dir in output_dir_list) {
-    sigma_obj <- summarize_Sigmas(output_dir = output_dir)
-    ordering <- plot_rug(sigma_obj$rug,
-                         save_name = output_dir)
-    if(is.null(canonical_col_order)) {
-      canonical_col_order <- ordering$col_order
-    }
-    if(is.null(canonical_row_order)) {
-      canonical_row_order <- ordering$row_order
+    for(prop in c(FALSE)) {
+      sigma_obj <- summarize_Sigmas(output_dir = output_dir,
+                                    use_proportionality = prop)
+      save_name <- output_dir
+      if(prop) {
+        save_name <- paste0(save_name, "_proportionality")
+      } else {
+        save_name <- paste0(save_name, "_CLR")
+      }
+      ordering <- plot_rug(sigma_obj$rug,
+                           canonical_col_order = canonical_col_order,
+                           canonical_row_order = canonical_row_order,
+                           save_name = save_name)
+      if(is.null(canonical_col_order)) {
+        canonical_col_order <- ordering$col_order
+      }
+      if(is.null(canonical_row_order)) {
+        canonical_row_order <- ordering$row_order
+      }
     }
   }
 }

@@ -159,17 +159,17 @@ plot_trajectory <- function(sname, output_dir, coord, coord_label = NULL,
 #' @export
 summarize_Sigmas <- function(output_dir, use_proportionality = FALSE) {
   # Get all fitted model objects
-  output_dir <- check_dir(c("output", "model_fits", output_dir, "MAP"))
-  file_list <- list.files(path = output_dir, pattern = "*.rds")
+  output_dir_full <- check_dir(c("output", "model_fits", output_dir, "MAP"))
+  file_list <- list.files(path = output_dir_full, pattern = "*.rds")
   if(length(file_list) == 0) {
-    output_dir <- check_dir(c("output", "model_fits", output_dir, "full_posterior"))
-    file_list <- list.files(path = output_dir, pattern = "*.rds")
+    output_dir_full <- check_dir(c("output", "model_fits", output_dir, "full_posterior"))
+    file_list <- list.files(path = output_dir_full, pattern = "*.rds")
   }
   if(length(file_list) == 0) {
     stop("No model output found!")
   }
   # Get taxa number and posterior sample number
-  fit <- readRDS(file.path(output_dir, file_list[1]))
+  fit <- readRDS(file.path(output_dir_full, file_list[1]))
   D <- fit$D
   iter <- fit$iter
   # Initialize the stuff we'll return
@@ -182,7 +182,7 @@ summarize_Sigmas <- function(output_dir, use_proportionality = FALSE) {
     # MAP estimates
     for(f in 1:length(file_list)) {
       file <- file_list[f]
-      fit <- readRDS(file.path(output_dir, file))
+      fit <- readRDS(file.path(output_dir_full, file))
       # Convert to CLR
       if(fit$coord_system != "clr") {
         fit <- to_clr(fit)
@@ -210,7 +210,7 @@ summarize_Sigmas <- function(output_dir, use_proportionality = FALSE) {
     # Full posteriors
     for(f in 1:length(file_list)) {
       file <- file_list[f]
-      fit <- readRDS(file.path(output_dir, file))
+      fit <- readRDS(file.path(output_dir_full, file))
       # Convert to CLR
       if(fit$coord_system != "clr") {
         fit <- to_clr(fit)

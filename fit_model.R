@@ -18,7 +18,11 @@ option_list = list(
   make_option(c("--days_min_cor"), type = "numeric", default = 0,
               help = "days to minimum autocorrelation", metavar = "numeric"),
   make_option(c("--diet_weight"), type = "numeric", default = 0,
-              help = "proportion of variance contributed to sample kernel by diet PCs", metavar = "numeric")
+              help = "proportion of variance contributed to sample kernel by diet PCs", metavar = "numeric"),
+  make_option(c("--var_scale_taxa"), type = "numeric", default = 1,
+              help = "scale associated with taxonomic covariance matrix", metavar = "numeric"),
+  make_option(c("--var_scale_samples"), type = "numeric", default = 1,
+              help = "scale associated with sample covariance matrix", metavar = "numeric")
 );
 
 opt_parser = OptionParser(option_list = option_list);
