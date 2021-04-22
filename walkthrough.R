@@ -50,4 +50,24 @@ plot_clr_vs_diet(sname, tax_idx = 1, data$counts, data$metadata)
 
 sensitivity_sweep(output_dir_list = c("no_diet", "diet_50"))
 
+# Downsampling plot
+data <- readRDS("output/simdata_results.rds")
+View(data)
+ggplot(data, aes(x = factor(sample_no), y = matched_CLR_sign)) +
+  geom_boxplot() +
+  xlab("sample number") +
+  ylab("proportion estimates matched for CLR sign")
+ggsave()
+
+
+
+
+
+
+
+
+
+
+
+
 
