@@ -49,3 +49,5 @@ plot_aligned_trajectories(host_list = c("ALE", "VAP"),
 plot_clr_vs_diet(sname, tax_idx = 1, data$counts, data$metadata)
 
 sensitivity_sweep(output_dir_list = c("no_diet", "diet_50"))
+
+
