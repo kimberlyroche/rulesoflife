@@ -54,7 +54,7 @@ sensitivity_sweep <- function(output_dir_list,
     stop("No model output directories specified!")
   }
   for(output_dir in output_dir_list) {
-    for(prop in c(FALSE)) {
+    for(prop in c(FALSE, TRUE)) {
       sigma_obj <- summarize_Sigmas(output_dir = output_dir,
                                     use_proportionality = prop)
       save_name <- output_dir
