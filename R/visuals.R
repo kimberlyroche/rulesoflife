@@ -200,7 +200,7 @@ summarize_Sigmas <- function(output_dir, use_proportionality = FALSE) {
         }
       } else {
         Sigma_correlation <- cov2cor(fit$Sigma[,,1])
-        vector_Sigma <- Sigma_correlation[upper.tri(Sigma_correlation,
+        vector_Sigma <- Sigma_correlation[lower.tri(Sigma_correlation,
                                                     diag = FALSE)]
         rug[f,] <- vector_Sigma
       }
@@ -232,7 +232,7 @@ summarize_Sigmas <- function(output_dir, use_proportionality = FALSE) {
           Sigma_correlation[,,i] <- cov2cor(Sigma_correlation[,,i])
         }
         Sigma_summary <- apply(Sigma_correlation, c(1,2), mean)
-        vector_Sigma <- Sigma_summary[upper.tri(Sigma_summary, diag = FALSE)]
+        vector_Sigma <- Sigma_summary[lower.tri(Sigma_summary, diag = FALSE)]
         rug[f,] <- vector_Sigma
       }
       hosts[f] <- fit$sname
