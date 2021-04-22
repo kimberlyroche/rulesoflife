@@ -75,3 +75,21 @@ downsample_counts <- function(sample_no = c(10, 20, 30, 40, 50, 75, 100, 200)) {
   }
   return(results)
 }
+
+#' Boxplot data simulated from downsample_counts()
+#'
+#' @param data data.frame containing results from downsample_counts()
+#' @import ggplot2
+#' @export
+plot_downsampling <- function(data) {
+  p <- ggplot(data, aes(x = factor(sample_no), y = matched_CLR_sign)) +
+    geom_boxplot() +
+    xlab("sample number") +
+    ylab("% CLR sign match (true, estimated)")
+  output_dir <- check_dir(c("output", "figures"))
+  ggsave(file.path(output_dir, "downsampling.png"),
+         p,
+         units = "in",
+         height = 3,
+         width = 4)
+}
