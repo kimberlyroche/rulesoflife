@@ -174,9 +174,11 @@ summarize_Sigmas <- function(output_dir, use_proportionality = FALSE) {
   iter <- fit$iter
   # Initialize the stuff we'll return
   pairs <- combn(1:(fit$D), m = 2)
-  pair1 <- pairs[1,]
-  pair2 <- pairs[2,]
-  rug <- matrix(NA, length(file_list), D*(D - 1)/2)
+  # Exclude the "other" category by default (the reference taxon, D)
+  include_pairs <- which(pairs[1,] != fit$D & pairs[2,] != fit$D)
+  pair1 <- pairs[1,include_pairs]
+  pair2 <- pairs[2,include_pairs]
+  rug <- matrix(NA, length(file_list), (D-1)*(D - 2)/2) # minus reference
   hosts <- character(length(file_list))
   if(iter == 1) {
     # MAP estimates
@@ -189,7 +191,8 @@ summarize_Sigmas <- function(output_dir, use_proportionality = FALSE) {
       }
       if(use_proportionality) {
         Sigma <- fit$Sigma[,,1]
-        for(m in 1:ncol(pairs)) {
+        Sigma <- Sigma[1:(D-1),1:(D-1)]
+        for(m in 1:length(pair1)) {
           j <- pair1[m]
           k <- pair2[m]
           var_j <- Sigma[j,j] # diagonal element
@@ -200,6 +203,7 @@ summarize_Sigmas <- function(output_dir, use_proportionality = FALSE) {
         }
       } else {
         Sigma_correlation <- cov2cor(fit$Sigma[,,1])
+        Sigma_correlation <- Sigma_correlation[1:(D-1),1:(D-1)]
         vector_Sigma <- Sigma_correlation[lower.tri(Sigma_correlation,
                                                     diag = FALSE)]
         rug[f,] <- vector_Sigma
@@ -217,7 +221,8 @@ summarize_Sigmas <- function(output_dir, use_proportionality = FALSE) {
       }
       if(use_proportionality) {
         Sigma <- apply(fit$Sigma, c(1,2), mean)
-        for(m in 1:ncol(pairs)) {
+        Sigma <- Sigma[1:(D-1),1:(D-1)]
+        for(m in 1:length(pair1)) {
           j <- pair1[m]
           k <- pair2[m]
           var_j <- Sigma[j,j] # diagonal element
@@ -232,6 +237,7 @@ summarize_Sigmas <- function(output_dir, use_proportionality = FALSE) {
           Sigma_correlation[,,i] <- cov2cor(Sigma_correlation[,,i])
         }
         Sigma_summary <- apply(Sigma_correlation, c(1,2), mean)
+        Sigma_summary <- Sigma_summary[1:(D-1),1:(D-1)]
         vector_Sigma <- Sigma_summary[lower.tri(Sigma_summary, diag = FALSE)]
         rug[f,] <- vector_Sigma
       }
