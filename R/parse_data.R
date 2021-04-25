@@ -236,6 +236,37 @@ load_data <- function(tax_level = "ASV", host_sample_min = 75,
   return(processed_data)
 }
 
+#' Load scrambled data
+#'
+#' @param tax_level taxonomic level at which to agglomerate data
+#' @param host_sample_min minimum sample number for host inclusion in the
+#' filtered data set
+#' @param count_threshold minimum count for taxon inclusion in the filtered data
+#' set
+#' @param sample_threshold minimum proportion of samples within each host at
+#' which a taxon must be observed at or above count_threshold
+#' @return a named list of count table, taxonomy, and metadata components
+#' @export
+load_scrambled_data <- function(tax_level = "ASV", host_sample_min = 75,
+                                    count_threshold = 1, sample_threshold = 0.2) {
+  scrambled_filename <- file.path("input", paste0("scrambled_",
+                                                  tax_level,
+                                                  "_",
+                                                  count_threshold,
+                                                  "_",
+                                                  round(sample_threshold*100),
+                                                  ".rds"))
+  if(file.exists(scrambled_filename)) {
+    data <- readRDS(scrambled_filename)
+  } else {
+    data <- generate_scrambled_data(tax_level = tax_level,
+                                    host_sample_min = host_sample_min,
+                                    count_threshold = count_threshold,
+                                    sample_threshold = sample_threshold)
+  }
+  return(data)
+}
+
 #' Permute the data within samples, maintaining relative abundances but
 #' scrambling patterns of variation within taxa
 #'

@@ -16,6 +16,8 @@
 #' taxa
 #' @param var_scale_samples scale of the hyperparameter associated with the
 #' covariance over samples
+#' @param use_adam optimize with Adam (occasionally this converges more reliably
+#' that default L-BFGS)
 #' @return fidofit object
 #' @import fido
 #' @import driver
@@ -23,7 +25,7 @@
 #' @export
 fit_GP <- function(sname, counts, metadata, output_dir, MAP = TRUE,
                    days_to_min_autocorrelation = 90, diet_weight = 0,
-                   var_scale_taxa = 1, var_scale_samples = 1) {
+                   var_scale_taxa = 1, var_scale_samples = 1, use_adam = FALSE) {
   if(diet_weight > 1 | diet_weight < 0) {
     stop("Invalid weight assigned to diet components of kernel!")
   }
@@ -86,9 +88,17 @@ fit_GP <- function(sname, counts, metadata, output_dir, MAP = TRUE,
              paste0("Taxa cov scale: ", var_scale_taxa),
              paste0("Sample cov scale: ", var_scale_samples)),
              collapse = "\n\t"), "\n")
-  fit <- fido::basset(Y = Y, X = X, upsilon = cov_taxa$upsilon, Xi = cov_taxa$Xi,
-                      Theta, cov_sample$Gamma, n_samples = n_samples,
-                      ret_mean = ret_mean)
+  if(use_adam) {
+    fit <- fido::basset(Y = Y, X = X, upsilon = cov_taxa$upsilon, Xi = cov_taxa$Xi,
+                        Theta, cov_sample$Gamma, n_samples = n_samples,
+                        ret_mean = ret_mean, b2 = 0.98, step_size = 0.003,
+                        eps_f = 1e-12, eps_g = 1e-05, max_iter = 10000L,
+                        optim_method = "adam")
+  } else {
+    fit <- fido::basset(Y = Y, X = X, upsilon = cov_taxa$upsilon, Xi = cov_taxa$Xi,
+                        Theta, cov_sample$Gamma, n_samples = n_samples,
+                        ret_mean = ret_mean)
+  }
   fit$sname <- sname
   if(MAP) {
     output_dir <- check_dir(c("output", "model_fits", output_dir, "MAP"))

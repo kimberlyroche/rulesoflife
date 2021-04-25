@@ -13,7 +13,8 @@ fit_GP(
   days_to_min_autocorrelation = 90,
   diet_weight = 0,
   var_scale_taxa = 1,
-  var_scale_samples = 1
+  var_scale_samples = 1,
+  use_adam = FALSE
 )
 }
 \arguments{
@@ -41,6 +42,9 @@ taxa}
 
 \item{var_scale_samples}{scale of the hyperparameter associated with the
 covariance over samples}
+
+\item{use_adam}{optimize with Adam (occasionally this converges more reliably
+that default L-BFGS)}
 }
 \value{
 fidofit object
