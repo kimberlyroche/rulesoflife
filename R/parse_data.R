@@ -110,7 +110,7 @@ filter_data <- function(tax_level = "ASV", host_sample_min = 75,
 #' @details Together count_threshold and sample_threshold specify a minimum
 #' representation for a taxon. Taxa below this threshold will be grouped
 #' together into an <NA> category.
-#' @return A named list of count table, taxonomy, and metadata components
+#' @return a named list of count table, taxonomy, and metadata components
 #' @import phyloseq
 #' @importFrom phyloseq psmelt
 #' @import dplyr
@@ -234,6 +234,49 @@ load_data <- function(tax_level = "ASV", host_sample_min = 75,
   processed_data <- list(counts = counts, taxonomy = tax, metadata = metadata)
   saveRDS(processed_data, file = processed_filename)
   return(processed_data)
+}
+
+#' Permute the data within samples, maintaining relative abundances but
+#' scrambling patterns of variation within taxa
+#'
+#' @param tax_level taxonomic level at which to agglomerate data
+#' @param host_sample_min minimum sample number for host inclusion in the
+#' filtered data set
+#' @param count_threshold minimum count for taxon inclusion in the filtered data
+#' set
+#' @param sample_threshold minimum proportion of samples within each host at
+#' which a taxon must be observed at or above count_threshold
+#' @return a named list of count table, taxonomy, and metadata components
+#' @export
+generate_scrambled_data <- function(tax_level = "ASV", host_sample_min = 75,
+                                    count_threshold = 1, sample_threshold = 0.2) {
+  processed_filename <- file.path("input", paste0("processed_",
+                                                  tax_level,
+                                                  "_",
+                                                  count_threshold,
+                                                  "_",
+                                                  round(sample_threshold*100),
+                                                  ".rds"))
+  if(!file.exists(processed_filename)) {
+    stop("Processed data file does not exist!")
+  }
+  data <- readRDS(processed_filename)
+  new_counts <- data$counts
+  for(j in 1:ncol(new_counts)) {
+    new_order <- sample(1:nrow(new_counts))
+    new_counts[,j] <- new_counts[new_order,j]
+  }
+  data$counts <- new_counts
+  data$taxonomy <- NULL
+  scrambled_filename <- file.path("input", paste0("scrambled_",
+                                                  tax_level,
+                                                  "_",
+                                                  count_threshold,
+                                                  "_",
+                                                  round(sample_threshold*100),
+                                                  ".rds"))
+  saveRDS(data, file = scrambled_filename)
+  return(data)
 }
 
 #' Pull a fitted model object from the specified directory

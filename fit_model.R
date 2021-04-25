@@ -22,7 +22,9 @@ option_list = list(
   make_option(c("--var_scale_taxa"), type = "numeric", default = 1,
               help = "scale associated with taxonomic covariance matrix", metavar = "numeric"),
   make_option(c("--var_scale_samples"), type = "numeric", default = 1,
-              help = "scale associated with sample covariance matrix", metavar = "numeric")
+              help = "scale associated with sample covariance matrix", metavar = "numeric"),
+  make_option(c("--scramble"), type = "logical", default = FALSE,
+              help = "use permuted data", metavar = "logical")
 );
 
 opt_parser = OptionParser(option_list = option_list);
@@ -37,7 +39,11 @@ if(!(opt$tax_level %in% c("phylum", "family", "ASV"))) {
 }
 
 # Load
-data <- load_data(tax_level = opt$tax_level)
+if(scramble) {
+  data <- load_scrambled_data(tax_level = opt$tax_level)
+} else {
+  data <- load_data(tax_level = opt$tax_level)
+}
 
 MAP <- opt$MAP
 fit <- fit_GP(sname = opt$sname,
