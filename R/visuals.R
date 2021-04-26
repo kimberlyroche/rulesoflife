@@ -400,20 +400,25 @@ get_predictions_host_list <- function(ref_hosts, output_dir, metadata) {
 #' This allows us to eyeball whether taxa strongly correlated within hosts show
 #' similar dynamics across hosts.
 #'
-#' @param host_list vector of host short names
 #' @param output_dir specifies the subdirectory of the model fits directory in
 #' which to save the predictions
 #' @param tax_idx1 index of first taxon
 #' @param tax_idx2 index of second taxon
+#' @param tax_label1 readable label for first taxon
+#' @param tax_label2 readable label for second taxon
 #' @param metadata metadata data.frame (with sname and collection_date column)
 #' @param save_file flag indicating whether or not to save rendered plot to file
 #' @return NULL
+#' @import dplyr
 #' @export
-plot_aligned_trajectories <- function(host_list, output_dir, tax_idx1, tax_idx2,
-                                      metadata, save_file = FALSE) {
+plot_aligned_trajectories <- function(output_dir, tax_idx1, tax_idx2,
+                                      tax_label1, tax_label2, metadata,
+                                      save_file = FALSE) {
+  # Pull "reference" hosts
+  host_list <- get_reference_hosts()$sname
   # Pull models/predictions
   pred_obj <- get_predictions_host_list(host_list, output_dir, metadata)
-  host_centers <- seq(from = 0, by = 5, length.out = length(host_list))
+  host_centers <- seq(from = 0, by = 10, length.out = length(host_list))
   names(host_centers) <- sort(host_list, decreasing = TRUE)
   pair_df <- NULL
   for(host in host_list) {
@@ -447,13 +452,14 @@ plot_aligned_trajectories <- function(host_list, output_dir, tax_idx1, tax_idx2,
                   alpha = 0.33)
   }
   p <- p + scale_y_continuous(breaks = -unname(host_centers),
-                              labels = sort(host_list, decreasing = TRUE))
+                              labels = sort(host_list, decreasing = TRUE)) +
+    labs(title = paste0("Correlation: ", tax_label1, " x ", tax_label2))
 
   if(save_file) {
     filename <- paste0("aligned_series_coords_", tax_idx1, "-", tax_idx2, "_",
                        paste0(host_list, collapse = "-"), ".png")
-    output_dir <- check_dir(c("output", "figures"))
-    ggsave(file.path(output_dir, filename),
+    save_dir <- check_dir(c("output", "figures"))
+    ggsave(file.path(save_dir, filename),
            p,
            units = "in",
            height = length(host_list),
@@ -463,3 +469,61 @@ plot_aligned_trajectories <- function(host_list, output_dir, tax_idx1, tax_idx2,
   }
 }
 
+#' Utility function to plot aligned series for the pair of taxa with the largest
+#' universality score from among a subset of association indices
+render_universal_pairs <- function(output_dir, select_idx, scores,
+                                   tax_idx1, tax_idx2, taxonomy) {
+  select_scores <- scores[select_idx]
+  select_assoc_tax1 <- tax_idx1[select_idx]
+  select_assoc_tax2 <- tax_idx2[select_idx]
+
+  max_idx <- which(select_scores == max(select_scores))
+  pair <- c(select_assoc_tax1[max_idx], select_assoc_tax2[max_idx])
+
+  plot_aligned_trajectories(output_dir = output_dir,
+                            tax_idx1 = pair[1],
+                            tax_idx2 = pair[2],
+                            tax_label1 = get_tax_label(taxonomy,
+                                                       pair[1],
+                                                       "CLR"),
+                            tax_label2 = get_tax_label(taxonomy,
+                                                       pair[2],
+                                                       "CLR"),
+                            metadata = metadata,
+                            save_file = TRUE)
+}
+
+#' Render date-aligned trajectories for the most universal positive and negative
+#' pairs of taxa in the top-sampled hosts within each social group
+#'
+#' @param output_dir specifies the subdirectory of the model fits directory in
+#' which to save the predictions
+#' @param metadata metadata data.frame (with sname and collection_date column)
+#' @param taxonomy appropriate taxonomy object for this level
+#' @return NULL
+#' @export
+plot_trajectories_top_pairs <- function(output_dir, metadata, taxonomy) {
+  rug_obj <- summarize_Sigmas(output_dir = "fam_days90_diet25_scale1")
+  rug <- rug_obj$rug
+  scores <- apply(rug, 2, calc_universality_score)
+  # Get prevailing sign of association
+  agreement_signs <- apply(rug, 2, function(x) {
+    sum(sign(x))
+  })
+  consensus_signs <- sign(agreement_signs)
+  # Most universal positive associations
+  render_universal_pairs(select_idx = which(consensus_signs > 0),
+               scores = scores,
+               tax_idx1 = rug_obj$tax_idx1,
+               tax_idx2 = rug_obj$tax_idx2,
+               taxonomy = taxonomy,
+               output_dir = output_dir)
+
+  # Most universal negative associations
+  render_universal_pairs(select_idx = which(consensus_signs < 0),
+               scores = scores,
+               tax_idx1 = rug_obj$tax_idx1,
+               tax_idx2 = rug_obj$tax_idx2,
+               taxonomy = taxonomy,
+               output_dir = output_dir)
+}

@@ -354,3 +354,25 @@ load_predictions <- function(sname, output_dir, generate = FALSE) {
     }
   }
 }
+
+#' Find host with largest number of samples in each social group
+#'
+#' @param host_sample_min minimum sample number for host inclusion in the
+#' filtered data set
+#' @return vector of host short names
+#' @import dplyr
+#' @export
+get_reference_hosts <- function(host_sample_min = 75) {
+  metadata <- load_data()$metadata
+  # For each group, select the host with the largest number of  samples in that
+  # group ()
+  grp_assignments <- as.data.frame(metadata %>%
+                                     select(grp, sname) %>%
+                                     group_by(grp) %>%
+                                     count(sname) %>%
+                                     slice_max(order_by = n, n = 1) %>%
+                                     filter(n > host_sample_min) %>%
+                                     arrange(grp) %>%
+                                     select(grp, sname))
+  return(grp_assignments)
+}

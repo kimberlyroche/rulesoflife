@@ -7,23 +7,26 @@ This allows us to eyeball whether taxa strongly correlated within hosts show
 similar dynamics across hosts.}
 \usage{
 plot_aligned_trajectories(
-  host_list,
   output_dir,
   tax_idx1,
   tax_idx2,
+  tax_label1,
+  tax_label2,
   metadata,
   save_file = FALSE
 )
 }
 \arguments{
-\item{host_list}{vector of host short names}
-
 \item{output_dir}{specifies the subdirectory of the model fits directory in
 which to save the predictions}
 
 \item{tax_idx1}{index of first taxon}
 
 \item{tax_idx2}{index of second taxon}
+
+\item{tax_label1}{readable label for first taxon}
+
+\item{tax_label2}{readable label for second taxon}
 
 \item{metadata}{metadata data.frame (with sname and collection_date column)}
 
