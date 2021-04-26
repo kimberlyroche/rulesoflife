@@ -249,7 +249,7 @@ summarize_Sigmas <- function(output_dir, use_proportionality = FALSE) {
 
 #' Renders the "rug" (host x pairwise association matrix) as a heatmap.
 #'
-#' @param rug symmetric matrix object
+#' @param rug heatmap matrix output from summarize_Sigmas()
 #' @param canonical_col_order if not NULL, order of pairs (columns) to use
 #' @param canonical_row_order if not NULL, order of rows (hosts) to use
 #' @param save_name name with which to save heatmap file
@@ -291,6 +291,31 @@ plot_rug <- function(rug, canonical_col_order = NULL,
   }
   return(list(row_order = canonical_row_order,
               col_order = canonical_col_order))
+}
+
+#' Renders the host x pairwise associations as a histogram
+#'
+#' @param rug heatmap matrix output from summarize_Sigmas()
+#' @param save_name name with which to save heatmap file
+#' @return named list with column and row ordering
+#' @import ggplot2
+#' @export
+plot_correlation_histogram <- function(rug) {
+  plot_df <- data.frame(x = c(rug))
+  p <- ggplot(plot_df, aes(x = x)) +
+    geom_histogram(bins = 30, color = "white") +
+    xlim(c(-1,1)) +
+    xlab("CLR correlation")
+  if(is.null(save_name)) {
+    show(p)
+  } else {
+    output_dir <- check_dir(c("output", "figures"))
+    ggsave(file.path(output_dir, paste0(save_name, ".png")),
+           p,
+           units = "in",
+           height = 3,
+           width = 4)
+  }
 }
 
 #' Utility function for pulling collection date-aligned trajectories from a

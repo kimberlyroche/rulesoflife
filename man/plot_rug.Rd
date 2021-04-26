@@ -12,7 +12,7 @@ plot_rug(
 )
 }
 \arguments{
-\item{rug}{symmetric matrix object}
+\item{rug}{heatmap matrix output from summarize_Sigmas()}
 
 \item{canonical_col_order}{if not NULL, order of pairs (columns) to use}
 
