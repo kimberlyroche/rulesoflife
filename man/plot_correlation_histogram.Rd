@@ -4,7 +4,7 @@
 \alias{plot_correlation_histogram}
 \title{Renders the host x pairwise associations as a histogram}
 \usage{
-plot_correlation_histogram(rug)
+plot_correlation_histogram(rug, save_name = NULL)
 }
 \arguments{
 \item{rug}{heatmap matrix output from summarize_Sigmas()}

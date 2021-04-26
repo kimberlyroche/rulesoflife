@@ -300,7 +300,7 @@ plot_rug <- function(rug, canonical_col_order = NULL,
 #' @return named list with column and row ordering
 #' @import ggplot2
 #' @export
-plot_correlation_histogram <- function(rug) {
+plot_correlation_histogram <- function(rug, save_name = NULL) {
   plot_df <- data.frame(x = c(rug))
   p <- ggplot(plot_df, aes(x = x)) +
     geom_histogram(bins = 30, color = "white") +
