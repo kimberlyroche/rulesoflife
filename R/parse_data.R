@@ -355,6 +355,27 @@ load_predictions <- function(sname, output_dir, generate = FALSE) {
   }
 }
 
+#' Assign host social group as social group in which a given host has the
+#' majority of its samples
+#'
+#' @param host_list list of host short names
+#' @return list of host short name to social group mappings
+#' @import dplyr
+#' @export
+get_host_social_groups <- function(host_list) {
+  metadata <- load_data()$metadata
+  results <- as.data.frame(metadata %>%
+                             select(sname, grp) %>%
+                             count(sname, grp) %>%
+                             group_by(sname) %>%
+                             slice_max(order_by = n, n = 1) %>%
+                             arrange(sname) %>%
+                             select(sname, grp))
+  # grp_assignments <- results$grp
+  # names(grp_assignments) <- results$sname
+  return(results)
+}
+
 #' Find host with largest number of samples in each social group
 #'
 #' @param host_sample_min minimum sample number for host inclusion in the

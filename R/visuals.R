@@ -252,13 +252,16 @@ summarize_Sigmas <- function(output_dir, use_proportionality = FALSE) {
 #' @param rug heatmap matrix output from summarize_Sigmas()
 #' @param canonical_col_order if not NULL, order of pairs (columns) to use
 #' @param canonical_row_order if not NULL, order of rows (hosts) to use
+#' @param row_labels optional parameter with row labels (ordered host short
+#' names)
 #' @param save_name name with which to save heatmap file
 #' @return named list with column and row ordering
 #' @import ggplot2
 #' @import tidyr
 #' @export
 plot_rug <- function(rug, canonical_col_order = NULL,
-                     canonical_row_order = NULL, save_name = NULL) {
+                     canonical_row_order = NULL, row_labels = NULL,
+                     save_name = NULL) {
   # Cluster
   if(is.null(canonical_row_order)) {
     d <- dist(rug)
@@ -279,6 +282,12 @@ plot_rug <- function(rug, canonical_col_order = NULL,
     geom_raster(aes(fill = correlation)) +
     scale_fill_gradient2(low = "navy", mid = "white", high = "red",
                          midpoint = 0)
+  if(!is.null(row_labels)) {
+    p <- p +
+      scale_y_continuous(breaks = 1:length(row_labels),
+                         labels = row_labels) +
+      theme(axis.text = element_text(size = 4))
+  }
   if(is.null(save_name)) {
     show(p)
   } else {

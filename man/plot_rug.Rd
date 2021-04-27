@@ -8,6 +8,7 @@ plot_rug(
   rug,
   canonical_col_order = NULL,
   canonical_row_order = NULL,
+  row_labels = NULL,
   save_name = NULL
 )
 }
@@ -17,6 +18,9 @@ plot_rug(
 \item{canonical_col_order}{if not NULL, order of pairs (columns) to use}
 
 \item{canonical_row_order}{if not NULL, order of rows (hosts) to use}
+
+\item{row_labels}{optional parameter with row labels (ordered host short
+names)}
 
 \item{save_name}{name with which to save heatmap file}
 }
