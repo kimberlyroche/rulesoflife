@@ -1,7 +1,4 @@
-if(R.version$major == 4) {
-  cat("Updating lib paths...\n")
-  .libPaths(c("/gpfs/fs1/data/mukherjeelab/roche/Rlibs", .libPaths()[2]))
-}
+source("path_fix.R")
 
 library(stringr)
 

@@ -1,4 +1,4 @@
-rm(list = ls())
+source("path_fix.R")
 
 library(tidyverse)
 library(rulesoflife)
