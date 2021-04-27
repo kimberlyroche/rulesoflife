@@ -1,5 +1,5 @@
 # This script plots the "rug" heatmap over hosts and pairwise correlation over
-# taxa using various row and column orderings
+# taxa using various row and column orderings.
 
 library(rulesoflife)
 library(ggplot2)
