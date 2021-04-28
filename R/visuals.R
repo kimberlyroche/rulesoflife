@@ -1,3 +1,28 @@
+#' Generate a color palette suitable for stacked bar plots given a feature number (S)
+#'
+#' @param S number of features (colors to generate)
+#' @return list of hex colors
+#' @import RColorBrewer
+#' @export
+generate_highcontrast_palette <- function(S) {
+  getPalette <- colorRampPalette(brewer.pal(9, "Set1"))
+  sample(getPalette(S))
+}
+
+#' Generate a color palette suitable for stacked bar plots given a feature number (S)
+#'
+#' @param hex_min hex code for min color in ramp
+#' @param hex_mid hex code for median color in ramp
+#' @param hex_max hex code for max color in ramp
+#' @param S number of colors to generate
+#' @return list of hex colors
+#' @import RColorBrewer
+#' @export
+generate_palette <- function(hex_min, hex_mid, hex_max, S) {
+  getPalette <- colorRampPalette(c(hex_min, hex_mid, hex_max))
+  getPalette(S)
+}
+
 #' Renders a kernel or covariance matrix as a square heatmap.
 #'
 #' @param K symmetric matrix object
@@ -416,18 +441,23 @@ get_predictions_host_list <- function(ref_hosts, output_dir, metadata) {
 #' @param tax_label1 readable label for first taxon
 #' @param tax_label2 readable label for second taxon
 #' @param metadata metadata data.frame (with sname and collection_date column)
+#' @param bind_taxa plot all trajectories for taxon 1 together; ditto taxon 2
 #' @param save_file flag indicating whether or not to save rendered plot to file
 #' @return NULL
 #' @import dplyr
 #' @export
 plot_aligned_trajectories <- function(output_dir, tax_idx1, tax_idx2,
                                       tax_label1, tax_label2, metadata,
-                                      save_file = FALSE) {
+                                      bind_taxa = FALSE, save_file = FALSE) {
   # Pull "reference" hosts
   host_list <- get_reference_hosts()$sname
   # Pull models/predictions
   pred_obj <- get_predictions_host_list(host_list, output_dir, metadata)
-  host_centers <- seq(from = 0, by = 10, length.out = length(host_list))
+  if(bind_taxa) {
+    host_centers <- rep(0, length(host_list))
+  } else {
+    host_centers <- seq(from = 0, by = 10, length.out = length(host_list))
+  }
   names(host_centers) <- sort(host_list, decreasing = TRUE)
   pair_df <- NULL
   for(host in host_list) {
@@ -449,32 +479,61 @@ plot_aligned_trajectories <- function(output_dir, tax_idx1, tax_idx2,
   # CI) for a pair of taxa in two hosts.
 
   p <- ggplot()
-  for(ref_host in host_list) {
-    p <- p +
-      geom_ribbon(data = pair_df[pair_df$host == ref_host & pair_df$coord == tax_idx1, ],
-                  aes(x = day, ymin = p25, ymax = p75),
-                  fill = "red",
-                  alpha = 0.33) +
-      geom_ribbon(data = pair_df[pair_df$host == ref_host & pair_df$coord == tax_idx2, ],
-                  aes(x = day, ymin = p25, ymax = p75),
-                  fill = "blue",
-                  alpha = 0.33)
-  }
-  p <- p + scale_y_continuous(breaks = -unname(host_centers),
-                              labels = sort(host_list, decreasing = TRUE)) +
-    labs(title = paste0("Correlation: ", tax_label1, " x ", tax_label2))
-
-  if(save_file) {
-    filename <- paste0("aligned_series_coords_", tax_idx1, "-", tax_idx2, "_",
-                       paste0(host_list, collapse = "-"), ".png")
-    save_dir <- check_dir(c("output", "figures"))
-    ggsave(file.path(save_dir, filename),
-           p,
-           units = "in",
-           height = length(host_list),
-           width = 10)
+  if(bind_taxa) {
+    for(ref_host in host_list) {
+      p <- p +
+        geom_ribbon(data = pair_df[pair_df$host == ref_host & pair_df$coord == tax_idx1, ],
+                    aes(x = day, ymin = p25, ymax = p75, fill = factor(host)),
+                    # fill = "red",
+                    alpha = 0.33) +
+        geom_ribbon(data = pair_df[pair_df$host == ref_host & pair_df$coord == tax_idx2, ],
+                    aes(x = day, ymin = p25 - 10, ymax = p75 - 10, fill = factor(host)),
+                    # fill = "blue",
+                    alpha = 0.33) +
+        labs(fill = "Host")
+    }
+    p <- p + scale_y_continuous(breaks = c(0, -10),
+                                labels = c("taxon 1", "taxon 2")) +
+      labs(title = paste0("Correlation: ", tax_label1, " x ", tax_label2))
+    if(save_file) {
+      filename <- paste0("aligned_series_coords_", tax_idx1, "-", tax_idx2, "_",
+                         paste0(host_list, collapse = "-"), "_boundtaxa.png")
+      save_dir <- check_dir(c("output", "figures"))
+      ggsave(file.path(save_dir, filename),
+             p,
+             units = "in",
+             height = 3,
+             width = 10)
+    } else {
+      show(p)
+    }
   } else {
-    show(p)
+    for(ref_host in host_list) {
+      p <- p +
+        geom_ribbon(data = pair_df[pair_df$host == ref_host & pair_df$coord == tax_idx1, ],
+                    aes(x = day, ymin = p25, ymax = p75),
+                    fill = "red",
+                    alpha = 0.33) +
+        geom_ribbon(data = pair_df[pair_df$host == ref_host & pair_df$coord == tax_idx2, ],
+                    aes(x = day, ymin = p25, ymax = p75),
+                    fill = "blue",
+                    alpha = 0.33)
+    }
+    p <- p + scale_y_continuous(breaks = -unname(host_centers),
+                                labels = sort(host_list, decreasing = TRUE)) +
+      labs(title = paste0("Correlation: ", tax_label1, " x ", tax_label2))
+    if(save_file) {
+      filename <- paste0("aligned_series_coords_", tax_idx1, "-", tax_idx2, "_",
+                         paste0(host_list, collapse = "-"), ".png")
+      save_dir <- check_dir(c("output", "figures"))
+      ggsave(file.path(save_dir, filename),
+             p,
+             units = "in",
+             height = length(host_list),
+             width = 10)
+    } else {
+      show(p)
+    }
   }
 }
 
@@ -489,17 +548,20 @@ render_universal_pairs <- function(output_dir, select_idx, scores,
   max_idx <- which(select_scores == max(select_scores))
   pair <- c(select_assoc_tax1[max_idx], select_assoc_tax2[max_idx])
 
-  plot_aligned_trajectories(output_dir = output_dir,
-                            tax_idx1 = pair[1],
-                            tax_idx2 = pair[2],
-                            tax_label1 = get_tax_label(taxonomy,
-                                                       pair[1],
-                                                       "CLR"),
-                            tax_label2 = get_tax_label(taxonomy,
-                                                       pair[2],
-                                                       "CLR"),
-                            metadata = metadata,
-                            save_file = TRUE)
+  for(bind_taxa in c(FALSE, TRUE)) {
+    plot_aligned_trajectories(output_dir = output_dir,
+                              tax_idx1 = pair[1],
+                              tax_idx2 = pair[2],
+                              tax_label1 = get_tax_label(taxonomy,
+                                                         pair[1],
+                                                         "CLR"),
+                              tax_label2 = get_tax_label(taxonomy,
+                                                         pair[2],
+                                                         "CLR"),
+                              metadata = metadata,
+                              bind_taxa = bind_taxa,
+                              save_file = TRUE)
+  }
 }
 
 #' Render date-aligned trajectories for the most universal positive and negative
@@ -512,7 +574,7 @@ render_universal_pairs <- function(output_dir, select_idx, scores,
 #' @return NULL
 #' @export
 plot_trajectories_top_pairs <- function(output_dir, metadata, taxonomy) {
-  rug_obj <- summarize_Sigmas(output_dir = "fam_days90_diet25_scale1")
+  rug_obj <- summarize_Sigmas(output_dir = output_dir)
   rug <- rug_obj$rug
   scores <- apply(rug, 2, calc_universality_score)
   # Get prevailing sign of association

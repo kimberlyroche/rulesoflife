@@ -13,6 +13,7 @@ plot_aligned_trajectories(
   tax_label1,
   tax_label2,
   metadata,
+  bind_taxa = FALSE,
   save_file = FALSE
 )
 }
@@ -29,6 +30,8 @@ which to save the predictions}
 \item{tax_label2}{readable label for second taxon}
 
 \item{metadata}{metadata data.frame (with sname and collection_date column)}
+
+\item{bind_taxa}{plot all trajectories for taxon 1 together; ditto taxon 2}
 
 \item{save_file}{flag indicating whether or not to save rendered plot to file}
 }
