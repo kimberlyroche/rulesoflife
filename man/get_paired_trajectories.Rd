@@ -2,8 +2,8 @@
 % Please edit documentation in R/visuals.R
 \name{get_paired_trajectories}
 \alias{get_paired_trajectories}
-\title{Utility function for pulling collection date-aligned trajectories for a pair
-of taxa from a given host's prediction set.}
+\title{Pull a collection date-aligned trajectories for a pair of taxa from a given
+host's prediction set (list returned by get_predictions_host_list())}
 \usage{
 get_paired_trajectories(
   dates,
@@ -12,10 +12,30 @@ get_paired_trajectories(
   host,
   common_baseline,
   predictions,
-  center = NULL
+  center = NULL,
+  mean_only = FALSE
 )
 }
+\arguments{
+\item{dates}{named list of dates in YYYY-MM-DD format indexed by host short
+name}
+
+\item{coord1}{index of taxon 1}
+
+\item{coord2}{index of taxon 2}
+
+\item{host}{host short name}
+
+\item{common_baseline}{earliest date to use for all hosts (YYYY-MM-DD format)}
+
+\item{predictions}{named list of predicted (interpolated) Eta matrices
+indexed by host short name}
+
+\item{center}{center to use for taxa (e.g. 0)}
+
+\item{mean_only}{return mean rather than quantiles}
+}
 \description{
-Utility function for pulling collection date-aligned trajectories for a pair
-of taxa from a given host's prediction set.
+Pull a collection date-aligned trajectories for a pair of taxa from a given
+host's prediction set (list returned by get_predictions_host_list())
 }

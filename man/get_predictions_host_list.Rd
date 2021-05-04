@@ -2,12 +2,20 @@
 % Please edit documentation in R/visuals.R
 \name{get_predictions_host_list}
 \alias{get_predictions_host_list}
-\title{Utility function for pulling collection date-aligned trajectories for a pair
-of taxa from a set of hosts.}
+\title{Pulling a collection date-aligned trajectories for a pair of taxa from a set
+of hosts}
 \usage{
-get_predictions_host_list(ref_hosts, output_dir, metadata)
+get_predictions_host_list(host_list, output_dir, metadata)
+}
+\arguments{
+\item{host_list}{list of host short names}
+
+\item{output_dir}{specifies the subdirectory of the model fits directory in
+which to save the predictions}
+
+\item{metadata}{metadata data.frame (with sname and collection_date column)}
 }
 \description{
-Utility function for pulling collection date-aligned trajectories for a pair
-of taxa from a set of hosts.
+Pulling a collection date-aligned trajectories for a pair of taxa from a set
+of hosts
 }

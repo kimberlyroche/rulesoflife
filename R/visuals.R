@@ -59,10 +59,12 @@ plot_kernel_or_cov_matrix <- function(K, save_name = NULL) {
 #' @param sname host short name indicating which baboon's series to fit
 #' @param output_dir specifies the subdirectory of the model fits directory in
 #' which to save the predictions
+#' @param resolution percent of missing days to interpolate; default is 5% which
+#' is plenty good enough for plotting
 #' @return NULL
 #' @import fido
 #' @export
-predict_trajectory <- function(sname, output_dir) {
+predict_trajectory <- function(sname, output_dir, resolution = 5) {
   fit <- load_fit(sname = sname, MAP = FALSE, output_dir = output_dir)
   if(fit$coord_system != "clr") {
     fit <- to_clr(fit)
@@ -70,7 +72,6 @@ predict_trajectory <- function(sname, output_dir) {
   first_day <- min(fit$X[1,])
   last_day <- max(fit$X[1,])
   n_days <- last_day
-  resolution <- 5
   span <- round(seq(from = first_day, to = last_day, length.out = round(n_days * resolution/100)))
   span <- sort(c(span, c(fit$X[1,]))) # include observations
 
@@ -352,12 +353,22 @@ plot_correlation_histogram <- function(rug, save_name = NULL) {
   }
 }
 
-#' Utility function for pulling collection date-aligned trajectories from a
-#' given host's prediction set.
+#' Pull collection date-aligned trajectories from a given host's prediction set
 #'
+#' @param dates named list of dates in YYYY-MM-DD format indexed by host short
+#' name
+#' @param coord index of taxon
+#' @param common_baseline earliest date to use for all hosts (YYYY-MM-DD format)
+#' @param predictions named list of predicted (interpolated) Eta matrices
+#' indexed by host short name
+#' @param center center to use for taxa (e.g. 0)
+#' @param mean_only return mean rather than quantiles
+#' @return NULL
+#' @import driver
 #' @import fido
+#' @export
 get_trajectory_df <- function(dates, coord, common_baseline, predictions,
-                              center = NULL) {
+                              center = NULL, mean_only = FALSE) {
   # Get days from common baseline
   days <- round(unname(sapply(dates, function(x) {
       difftime(x, common_baseline, units = "days")
@@ -371,51 +382,86 @@ get_trajectory_df <- function(dates, coord, common_baseline, predictions,
   eta_df <- left_join(eta_df, map, by = "sample")
   eta_df <- eta_df %>%
     select(coord, day, iteration, val) %>%
-    group_by(coord, day) %>%
-    summarize(p2.5 = quantile(val, probs = c(0.025)),
-              p25 = quantile(val, probs = c(0.25)),
-              mean = mean(val),
-              p75 = quantile(val, probs = c(0.75)),
-              p97.5 = quantile(val, probs = c(0.975)), .groups = "keep")
+    group_by(coord, day)
+  if(mean_only) {
+    eta_df <- eta_df %>%
+      summarize(mean = mean(val), .groups = "keep")
+  } else {
+    eta_df <- eta_df %>%
+      summarize(p2.5 = quantile(val, probs = c(0.025)),
+                p25 = quantile(val, probs = c(0.25)),
+                mean = mean(val),
+                p75 = quantile(val, probs = c(0.75)),
+                p97.5 = quantile(val, probs = c(0.975)), .groups = "keep")
+  }
   plot_df <- eta_df[eta_df$coord == coord,]
   if(!is.null(center)) {
     new_center <- mean(plot_df$mean) + center
-    plot_df <- plot_df %>%
-      mutate(p2.5 = p2.5 - new_center,
-             p25 = p25 - new_center,
-             p75 = p75 - new_center,
-             p97.5 = p97.5 - new_center,
-             mean = mean - new_center)
+    if(mean_only) {
+      plot_df <- plot_df %>%
+        mutate(mean = mean - new_center)
+    } else {
+      plot_df <- plot_df %>%
+        mutate(p2.5 = p2.5 - new_center,
+               p25 = p25 - new_center,
+               p75 = p75 - new_center,
+               p97.5 = p97.5 - new_center,
+               mean = mean - new_center)
+    }
   }
   return(plot_df)
 }
 
-#' Utility function for pulling collection date-aligned trajectories for a pair
-#' of taxa from a given host's prediction set.
+#' Pull a collection date-aligned trajectories for a pair of taxa from a given
+#' host's prediction set (list returned by get_predictions_host_list())
+#'
+#' @param dates named list of dates in YYYY-MM-DD format indexed by host short
+#' name
+#' @param coord1 index of taxon 1
+#' @param coord2 index of taxon 2
+#' @param host host short name
+#' @param common_baseline earliest date to use for all hosts (YYYY-MM-DD format)
+#' @param predictions named list of predicted (interpolated) Eta matrices
+#' indexed by host short name
+#' @param center center to use for taxa (e.g. 0)
+#' @param mean_only return mean rather than quantiles
+#' @return NULL
+#' @import dplyr
+#' @export
 get_paired_trajectories <- function(dates, coord1, coord2, host, common_baseline,
-                                    predictions, center = NULL) {
+                                    predictions, center = NULL, mean_only = FALSE) {
   pair_df_tax1 <- get_trajectory_df(dates,
                                     coord1,
                                     common_baseline,
                                     predictions,
-                                    center = center)
+                                    center = center,
+                                    mean_only = mean_only)
   pair_df_tax1 <- cbind(host = host, pair_df_tax1)
   pair_df_tax2 <- get_trajectory_df(dates,
                                     coord2,
                                     common_baseline,
                                     predictions,
-                                    center = center)
+                                    center = center,
+                                    mean_only = mean_only)
   pair_df_tax2 <- cbind(host = host, pair_df_tax2)
   pair_df <- rbind(pair_df_tax1, pair_df_tax2)
   return(pair_df)
 }
 
-#' Utility function for pulling collection date-aligned trajectories for a pair
-#' of taxa from a set of hosts.
-get_predictions_host_list <- function(ref_hosts, output_dir, metadata) {
+#' Pulling a collection date-aligned trajectories for a pair of taxa from a set
+#' of hosts
+#'
+#' @param host_list list of host short names
+#' @param output_dir specifies the subdirectory of the model fits directory in
+#' which to save the predictions
+#' @param metadata metadata data.frame (with sname and collection_date column)
+#' @return NULL
+#' @import dplyr
+#' @export
+get_predictions_host_list <- function(host_list, output_dir, metadata) {
   prediction_list <- list()
   date_list <- list()
-  for(host in ref_hosts) {
+  for(host in host_list) {
     predictions <- load_predictions(host, output_dir, generate = TRUE)
     dates <- metadata %>%
       filter(sname == host) %>%
