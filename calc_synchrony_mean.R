@@ -1,5 +1,6 @@
 library(rulesoflife)
 library(tidyverse)
+library(driver)
 
 plot_dir <- check_dir(c("output", "figures"))
 output_dir <- "asv_days90_diet25_scale1"
@@ -46,7 +47,7 @@ ggplot(host_days, aes(x = min_day,
   geom_segment(size = 1) +
   scale_color_manual(values = c("#aaaaaa", "#000000")) +
   scale_y_continuous(breaks = host_days$index,
-                   labels = host_days$host) +
+                     labels = host_days$host) +
   theme(axis.text.y = element_text(size = 6)) +
   labs(x = "sampled days",
        y = "host",
@@ -59,33 +60,6 @@ ggsave(file.path(plot_dir, "host_day_overlap.png"),
 
 selected_hosts <- host_days[host_days$type == "included",]$host
 cat("No. selected hosts:", length(selected_hosts), "\n")
-
-# ------------------------------------------------------------------------------
-#   Render any predictions that haven't already been run for selected hosts
-# ------------------------------------------------------------------------------
-
-pred_dir <- check_dir(c("output", "model_fits", output_dir, "predictions"))
-for(host in selected_hosts) {
-  if(!file.exists(file.path(pred_dir, paste0(host, ".rds")))) {
-    cat("Predicting on", host, "...\n")
-    temp <- predict_trajectory(host, output_dir, 5)
-  }
-}
-
-# Runtime ~30 sec.
-pred_obj <- get_predictions_host_list(selected_hosts, output_dir, metadata)
-
-# ------------------------------------------------------------------------------
-#   Functions
-# ------------------------------------------------------------------------------
-
-pull_series <- function(filtered_obj, sname, idx) {
-  filtered_obj %>%
-    filter(host == sname) %>%
-    arrange(day) %>%
-    filter(coord == idx) %>%
-    pull(centered_series)
-}
 
 # ------------------------------------------------------------------------------
 #   Pull interesting pairs (strong and weak universality)
@@ -112,15 +86,121 @@ negative_ranks <- order(universalities[negative_idx], decreasing = TRUE)
 k <- 3
 
 top_k_positive <- positive_ranks[1:k]
-# universalities[positive_idx[positive_ranks[1:10]]]
+# Indexed as: universalities[positive_idx[positive_ranks[1:10]]]
 top_k_negative <- negative_ranks[1:k]
-# universalities[negative_idx[negative_ranks[1:10]]]
+# Indexed as: universalities[negative_idx[negative_ranks[1:10]]]
 bottom_k <- order(universalities)[1:k]
-# universalities[bottom_k]
+# Indexed as: universalities[bottom_k]
+
+# ------------------------------------------------------------------------------
+#   Render all host predictions once
+#
+#   Code pulled from basset prediction: predict mean of Lambda
+# ------------------------------------------------------------------------------
+
+# Runtime ~10 sec. per host
+predict_GP_mean <- function(output_dir, host) {
+  cat("Predicting mean Lambda for host", host, "...\n")
+  fit <- readRDS(file.path("output", "model_fits", output_dir, "full_posterior", paste0(host, ".rds")))
+
+  # Observed data
+  X_o <- fit$X
+
+  # Build unobserved data set
+  first_day <- min(X_o[1,])
+  last_day <- max(X_o[1,])
+  n_days <- last_day
+  span <- seq(from = first_day, to = last_day)
+  X_u <- matrix(NA, nrow(X_o), length(span))
+  X_u[1,] <- span
+  # Linearly interpolate the diet PCs for lack of a better option
+  x <- fit$X[1,]
+  for(cov_idx in 2:4) {
+    y <- fit$X[cov_idx,]
+    X_u[cov_idx,] <- approx(x = x, y = y, xout = span, ties = "ordered")$y
+  }
+
+  Gamma <- fit$Gamma(cbind(X_o, X_u))
+  obs <- c(rep(TRUE, ncol(fit$X)), rep(FALSE, ncol(X_u)))
+
+  # Predict Lambda
+  Gamma_oo <- Gamma[obs, obs, drop=F]
+  Gamma_ou <- Gamma[obs, !obs, drop=F]
+
+  Theta_o <- fit$Theta(X_o)
+  Theta_u <- fit$Theta(X_u)
+  Lambda_o <- apply(fit$Lambda, c(1,2), mean)
+  mean_Lambda_pred <- Theta_u + (Lambda_o-Theta_o)%*%solve(Gamma_oo, Gamma_ou)
+
+  # convert to CLR
+  mean_Lambda.clr <- clr_array(alrInv_array(mean_Lambda_pred, fit$alr_base, 1), 1)
+
+  return(list(predictions = mean_Lambda.clr, span = span))
+}
+
+pred_filename <- file.path("output", "host_mean_predictions.rds")
+if(file.exists(pred_filename)) {
+  predictions <- readRDS(pred_filename)
+} else {
+  # Runtime: ~7 min.
+  predictions <- data.frame(host = c(),
+                            coord = c(),
+                            day = c(),
+                            clr_abundance = c())
+  for(host in selected_hosts) {
+    host_pred_obj <- predict_GP_mean(output_dir, host)
+    pred_obj <- host_pred_obj$predictions
+    host_dates <- data$metadata[data$metadata$sname == host,]$collection_date
+    host_days <- round(unname(sapply(host_dates, function(x) {
+      difftime(x, common_baseline, units = "days")
+    }))) + 1
+    # Recalculate the "days" index for this host given the new baseline
+    offset <- host_days[1] - 1
+    days_obj <- host_pred_obj$span + offset
+    # Roll this into a data.frame
+
+    pred_obj <- cbind(1:nrow(pred_obj), pred_obj)
+    colnames(pred_obj) <- c("coord", days_obj)
+    pred_long <- pivot_longer(as.data.frame(pred_obj),
+                              !coord,
+                              names_to = "day",
+                              values_to = "clr_abundance")
+    pred_long <- cbind(host = host, pred_long)
+    predictions <- rbind(predictions, pred_long)
+  }
+  saveRDS(predictions, file = pred_filename)
+}
+
+cat("Filtering to days in common across retained hosts...\n")
+shared_days <- predictions[predictions$host == selected_hosts[1],]$day
+for(host in selected_hosts[2:length(selected_hosts)]) {
+  shared_days <- intersect(shared_days,
+                           predictions[predictions$host == host,]$day)
+}
+
+filtered_predictions <- predictions %>%
+  filter(day %in% shared_days) %>%
+  arrange(day)
+
+cat("Centering the series...\n")
+centered_predictions <- filtered_predictions %>%
+  group_by(host, coord) %>%
+  mutate(offset = mean(clr_abundance)) %>%
+  # mutate(centered_clr = clr_abundance - offset) %>%
+  mutate(centered_clr = scale(clr_abundance)) %>%
+  select(host, coord, day, centered_clr)
 
 # ------------------------------------------------------------------------------
 #   Align and fully interpolate host series
 # ------------------------------------------------------------------------------
+
+pull_series <- function(df, sname, idx) {
+  df %>%
+    filter(host == sname) %>%
+    arrange(day) %>%
+    filter(coord == idx) %>%
+    pull(centered_clr)
+}
 
 named_pairs <- list(positive1 = positive_idx[positive_ranks[1]],
                     negative1 = negative_idx[negative_ranks[1]],
@@ -132,116 +212,50 @@ named_pairs <- list(positive1 = positive_idx[positive_ranks[1]],
                     negative3 = negative_idx[negative_ranks[3]],
                     neutral3 = bottom_k[3])
 
+# Each iteration of this loop takes about 40 sec. if we look at all pairs of
+# hosts. If we subset to 100 hosts, it's about 9 sec.
+subset_hosts <- FALSE
 for(pair_name in names(named_pairs)) {
   cat("Evaluating pair", pair_name, "...\n")
   pair <- named_pairs[[pair_name]]
   coord1 <- rug_obj$tax_idx1[pair]
   coord2 <- rug_obj$tax_idx2[pair]
 
-  cat("Aligning and interpolating host series ...\n")
-  # This takes 1-2 min.
-  aligned_obj <- NULL
-  for(host in selected_hosts) {
-    aligned_obj_host <- get_paired_trajectories(pred_obj$dates[[host]],
-                                            coord1,
-                                            coord2,
-                                            host,
-                                            pred_obj$common_baseline,
-                                            pred_obj$predictions[[host]],
-                                            center = NULL,
-                                            mean_only = TRUE)
-    # Linearly interpolate any missing days
-    coord1_days <- aligned_obj_host %>%
-      filter(coord == coord1) %>%
-      arrange(day) %>%
-      pull(day)
-    coord1_mean <- aligned_obj_host %>%
-      filter(coord == coord1) %>%
-      arrange(day) %>%
-      pull(mean)
-    coord1_days_interp <- min(coord1_days):max(coord1_days)
-    coord1_mean_interp <- approx(coord1_days, coord1_mean, coord1_days_interp)$y
-    coord2_days <- aligned_obj_host %>%
-      filter(coord == coord2) %>%
-      arrange(day) %>%
-      pull(day)
-    coord2_mean <- aligned_obj_host %>%
-      filter(coord == coord2) %>%
-      arrange(day) %>%
-      pull(mean)
-    coord2_days_interp <- min(coord2_days):max(coord2_days)
-    coord2_mean_interp <- approx(coord2_days, coord2_mean, coord2_days_interp)$y
-
-    # Center the series before adding them to the full data.frame
-    aligned_obj_host_coord1 <- data.frame(host = host,
-                                          coord = coord1,
-                                          day = coord1_days_interp,
-                                          mean = coord1_mean_interp)
-    aligned_obj_host_coord2 <- data.frame(host = host,
-                                          coord = coord2,
-                                          day = coord2_days_interp,
-                                          mean = coord2_mean_interp)
-
-    if(is.null(aligned_obj)) {
-      aligned_obj <- rbind(aligned_obj_host_coord1, aligned_obj_host_coord2)
-    } else {
-      aligned_obj <- rbind(aligned_obj,
-                           rbind(aligned_obj_host_coord1, aligned_obj_host_coord2))
-    }
-  }
-
-  # Filtering to days in common across retained hosts
-  shared_days <- aligned_obj[aligned_obj$host == selected_hosts[1],]$day
-  for(host in selected_hosts[2:length(selected_hosts)]) {
-    shared_days <- intersect(shared_days,
-                             aligned_obj[aligned_obj$host == host,]$day)
-  }
-
-  filtered_obj <- aligned_obj %>%
-    filter(day %in% shared_days) %>%
-    arrange(day)
-
-  # Center the series after subsetting for days-in-common
-  filtered_obj <- aligned_obj %>%
-    filter(day %in% shared_days) %>%
-    arrange(day) %>%
-    group_by(host, coord) %>%
-    mutate(offset = mean(mean)) %>%
-    mutate(centered_series = mean - offset) %>%
-    select(host, coord, day, centered_series)
+  cat("Subsetting predictions to coordinates of interest...\n")
+  subset_predictions <- centered_predictions %>%
+    filter(coord %in% c(coord1, coord2))
 
   # ------------------------------------------------------------------------------
   #   Estimate within- and between-host correlation distributions
   # ------------------------------------------------------------------------------
 
-  cat("Building within- and between-host distributions ...\n")
-
-  # Within hosts
+  cat("Building within-host distribution...\n")
   within_distro <- c()
   for(host in selected_hosts) {
-    series1 <- pull_series(filtered_obj, host, coord1)
-    series2 <- pull_series(filtered_obj, host, coord2)
+    series1 <- pull_series(subset_predictions, host, coord1)
+    series2 <- pull_series(subset_predictions, host, coord2)
     within_distro <- c(within_distro, cor(series1, series2))
   }
 
-  # Across hosts
+  cat("Building between-host distribution...\n")
   host_combos <- combn(selected_hosts, m = 2)
-  between_distro_1 <- sapply(1:ncol(host_combos), function(i) {
-    cor(pull_series(filtered_obj, host_combos[1,i], coord1),
-        pull_series(filtered_obj, host_combos[2,i], coord1))
-  })
-  between_distro_2 <- sapply(1:ncol(host_combos), function(i) {
-    cor(pull_series(filtered_obj, host_combos[1,i], coord2),
-        pull_series(filtered_obj, host_combos[2,i], coord2))
+  if(subset_hosts) {
+    host_combos <- host_combos[,sample(1:ncol(host_combos), size = 100)]
+  }
+  between_distros <- sapply(1:ncol(host_combos), function(i) {
+    c(cor(pull_series(subset_predictions, host_combos[1,i], coord1),
+          pull_series(subset_predictions, host_combos[2,i], coord1)),
+      cor(pull_series(subset_predictions, host_combos[1,i], coord2),
+          pull_series(subset_predictions, host_combos[2,i], coord2)))
   })
 
   plot_df <- data.frame(correlation = within_distro,
                         type = "within hosts")
   plot_df <- rbind(plot_df,
-                   data.frame(correlation = between_distro_1,
+                   data.frame(correlation = between_distros[1,],
                               type = "between hosts (1)"))
   plot_df <- rbind(plot_df,
-                   data.frame(correlation = between_distro_2,
+                   data.frame(correlation = between_distros[2,],
                               type = "between hosts (2)"))
 
   label1 <- get_tax_label(data$taxonomy, coord1, "clr")
@@ -264,13 +278,14 @@ for(pair_name in names(named_pairs)) {
     labs(fill = "Correlation type",
          x = "CLR correlation",
          title = paste0("Between- and within-host correlation of series\n",
-                        label1,
-                        " x ",
-                        label2,
-                        "\n"))
+                        "(1) ", label1,
+                        "\n",
+                        "(2) ", label2,
+                        "\n")) #+
+    # theme(plot.title = element_text(size = 12))
   ggsave(file.path(plot_dir, paste0("within-between_", pair_name, ".png")),
          units = "in",
          dpi = 100,
-         height = 4,
+         height = 4.5,
          width = 6)
 }

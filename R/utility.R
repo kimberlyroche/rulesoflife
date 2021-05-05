@@ -157,3 +157,54 @@ order_rug_row_group <- function(rug_obj) {
   temp <- left_join(grp_assignments, temp, by = "sname")
   return(temp$index)
 }
+
+#' Reorder rows of the "rug" based on known pedigree
+#'
+#' @param rug_obj output of the summarize_Sigmas function
+#' @return row ordering
+#' @export
+order_rug_row_pedigree <- function(rug_obj) {
+  pedigree <- readRDS(file.path("input", "pedigree_56hosts.RDS"))
+
+  # The pedigree has an arbitrary(?) ordering of hosts. We need to make sure this
+  # order matches our current indexing in the rug (alphabetical).
+  host_order_rug <- data.frame(host = rug_obj$hosts,
+                               index_rug = 1:length(rug_obj$hosts))
+  host_order_ped <- data.frame(host = rownames(pedigree),
+                               index_ped = 1:nrow(pedigree))
+  host_reordering <- left_join(host_order_rug, host_order_ped, by = "host")$index_ped
+
+  # `host_reodering` is the mapping of indices from the pedigree back to
+  # alphabetical. Perform this ordering of the pedigree matrix.
+  pedigree2 <- pedigree[host_reordering,host_reordering]
+
+  # Use 1 - % genes shared as the distance to cluster rows on.
+  row_order <- hclust(as.dist(1-pedigree2))$order
+  return(row_order)
+}
+
+#' Reorder columns of the "rug" based on phylogenetic distance
+#'
+#' @param rug_obj output of the summarize_Sigmas function
+#' @param taxonomy taxonomy appropriate for data at the same level as the rug
+#' object
+#' @return row ordering
+#' @import Biostrings
+#' @import phangorn
+#' @import DECIPHER
+#' @export
+order_rug_row_pedigree <- function(rug_obj, taxonomy) {
+  # Calculate distances across sequences associated with the ASVs we've retained,
+  # post-filtering.
+  seqs <- taxonomy$OTU
+  seqs <- seqs[1:(length(seqs)-1)]
+  alignment <- AlignSeqs(DNAStringSet(seqs), anchor = NA)
+  phang.align <- phyDat(as(alignment, "matrix"), type = "DNA")
+  dm <- dist.ml(phang.align)
+  dm <- as.matrix(dm)
+  # Reorder rug based on these distances
+  tax_distances <- sapply(1:length(rug_obj$tax_idx1), function(i) {
+    dm[rug_obj$tax_idx1[i], rug_obj$tax_idx2[i]]
+  })
+  return(order(tax_distances))
+}
