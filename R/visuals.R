@@ -507,6 +507,7 @@ plot_aligned_trajectories <- function(output_dir, tax_idx1, tax_idx2,
   names(host_centers) <- sort(host_list, decreasing = TRUE)
   pair_df <- NULL
   for(host in host_list) {
+    cat("Getting paired trajectory for",host,"\n")
     pair_df_host <- get_paired_trajectories(pred_obj$dates[[host]],
                                             tax_idx1,
                                             tax_idx2,
