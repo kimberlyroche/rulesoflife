@@ -74,9 +74,7 @@ rug_subset <- rug_obj$rug[subset_idx,]
 rug_host_subset <- rug_obj$hosts[subset_idx]
 
 universalities <- apply(rug_subset, 2, calc_universality_score)
-consensus_sign <- apply(rug_subset, 2, function(x) {
-  sign(sum(sign(x)))
-})
+consensus_sign <- apply(rug_subset, 2, calc_consensus_sign)
 
 positive_idx <- which(consensus_sign > 0)
 negative_idx <- which(consensus_sign < 0)

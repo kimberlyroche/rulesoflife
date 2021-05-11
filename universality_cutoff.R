@@ -89,11 +89,13 @@ cat("This taxon has net sign:",
 #   Print table of top 250 universal pairs
 # ------------------------------------------------------------------------------
 
+k <- 250
 table_df <- scores_df %>%
   arrange(desc(score)) %>%
-  slice(1:250) %>%
-  select(index, score)
-table_df$rank <- 1:250
+  slice(1:k) %>%
+  select(index, score) %>%
+  arrange(desc(score))
+table_df$rank <- 1:k
 table_df$net_sign <- sapply(table_df$index, function(x) {
   sign(sum(sign(rug_obj$rug[,x])))
 })
@@ -121,10 +123,9 @@ table_df$sequence_2 <- sapply(table_df$idx2, function(x) {
 })
 
 write.table(table_df %>% select(rank, score, net_sign, taxonomy_1, taxonomy_2, sequence_1, sequence_2),
-            file = file.path("output", "top100_universal.tsv"),
+            file = file.path("output", paste0("top", k, "_universal.tsv")),
             sep = "\t",
             quote = FALSE,
             row.names = FALSE)
 
 table(table_df$net_sign) / 250
-

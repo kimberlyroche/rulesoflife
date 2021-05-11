@@ -2,6 +2,7 @@
 # taxa using various row and column orderings.
 
 source("path_fix.R")
+source("ggplot_fix.R")
 
 library(rulesoflife)
 library(tidyverse)
@@ -108,9 +109,7 @@ ggsave(file.path(plot_dir, "distro_phylogenetic_distances.png"),
        width = 4)
 
 universalities <- apply(rug_obj$rug, 2, calc_universality_score)
-consensus_sign <- apply(rug_obj$rug, 2, function(x) {
-  sign(sum(sign(x)))
-})
+consensus_sign <- apply(rug_obj$rug, 2, consensus_signs)
 
 plot_df <- data.frame(universality = universalities[canonical_col_order],
                       universality_sign = consensus_sign[canonical_col_order],

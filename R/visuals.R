@@ -625,10 +625,7 @@ plot_trajectories_top_pairs <- function(output_dir, metadata, taxonomy) {
   rug <- rug_obj$rug
   scores <- apply(rug, 2, calc_universality_score)
   # Get prevailing sign of association
-  agreement_signs <- apply(rug, 2, function(x) {
-    sum(sign(x))
-  })
-  consensus_signs <- sign(agreement_signs)
+  consensus_signs <- apply(rug, 2, calc_consensus_sign)
   # Most universal positive associations
   render_universal_pairs(select_idx = which(consensus_signs > 0),
                scores = scores,

@@ -79,6 +79,15 @@ calc_universality_score <- function(x) {
   score
 }
 
+#' Calculate a consensus CLR correlation sign for a given association pair
+#'
+#' @param x vector of correlations between a pair of CLR microbes across hosts
+#' @return positive or negative consensus sign
+#' @export
+calc_consensus_sign <- function(x) {
+  sign(sum(sign(x)))
+}
+
 #' Reorder columns of the "rug" from taxa with the least to most difference in
 #' mean CLR abundance
 #'
