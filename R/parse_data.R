@@ -73,6 +73,8 @@ filter_data <- function(tax_level = "ASV", host_sample_min = 75,
 
   # It doesn't look like there are instances of family Mitochondria or order
   # Chloroplast in this data set. Remove archaea though.
+  # tax <- tax_table(agglomerated_data)@.Data
+  # View(tax[taxa_passed,])
 
   # The `merge_taxa` function in phyloseq will dump all the "other" taxa into
   # a new taxon in a new final index.
