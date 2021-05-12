@@ -8,65 +8,70 @@ library(driver)
 source("path_fix.R")
 source("ggplot_fix.R")
 
-# Simulate data to test the usage/performance of lmekin
-n_pairs <- 30
-n_hosts <- 10
+# ------------------------------------------------------------------------------
+#   Simulate data and fit
+# ------------------------------------------------------------------------------
 
-rho <- 0.8 # within-group correlation / between group anticorrelation
-K <- matrix(-rho, n_hosts, n_hosts)
-K[1:(n_hosts/2),1:(n_hosts/2)] <- rho
-K[(n_hosts/2+1):n_hosts,(n_hosts/2+1):n_hosts] <- rho
-diag(K) <- 1
-K_scale <- 1
-K <- K_scale * K
+if(FALSE) {
+  # Simulate data to test the usage/performance of lmekin
+  n_pairs <- 30
+  n_hosts <- 10
 
-mu_mat <- matrix(rnorm(n_pairs), n_hosts, n_pairs, byrow = TRUE)
-# y <- rmatrixnormal(1, mu_mat, diag(n_hosts), diag(n_pairs))[,,1]
-y <- rmatrixnormal(1, mu_mat, K, diag(n_pairs))[,,1]
+  rho <- 0.8 # within-group correlation / between group anticorrelation
+  K <- matrix(-rho, n_hosts, n_hosts)
+  K[1:(n_hosts/2),1:(n_hosts/2)] <- rho
+  K[(n_hosts/2+1):n_hosts,(n_hosts/2+1):n_hosts] <- rho
+  diag(K) <- 1
+  K_scale <- 1
+  K <- K_scale * K
 
-data <- data.frame(y = c(y),
-                   host = rep(1:n_hosts, n_pairs),
-                   pair = rep(1:n_pairs, each = n_hosts))
-data <- data %>%
-  mutate(host_pair = paste0(host, "_", pair))
-data$host <- factor(data$host)
-data$pair <- factor(data$pair)
-data$host_pair <- factor(data$host_pair, levels = data$host_pair)
+  mu_mat <- matrix(rnorm(n_pairs), n_hosts, n_pairs, byrow = TRUE)
+  y <- rmatrixnormal(1, mu_mat, K, diag(n_pairs))[,,1]
 
-# Linearize all...
-K_large <- kronecker(diag(n_pairs), K)
-# fit <- lmekin(y ~ pair + (1 | host_pair), data = data, varlist = list(diag(nrow(K_large))))
-fit <- lmekin(y ~ pair + (1 | host_pair), data = data, varlist = list(K_large))
-fit
+  data <- data.frame(y = c(y),
+                     host = rep(1:n_hosts, n_pairs),
+                     pair = rep(1:n_pairs, each = n_hosts))
+  data <- data %>%
+    mutate(host_pair = paste0(host, "_", pair))
+  data$host <- factor(data$host)
+  data$pair <- factor(data$pair)
+  data$host_pair <- factor(data$host_pair, levels = data$host_pair)
 
-# Get fixed and random effect estimates
-mu_pred <- matrix(fit$coefficients$fixed, n_hosts, n_pairs, byrow = TRUE)
-re_pred <- matrix(NA, n_hosts, n_pairs)
-for(re_idx in 1:length(fit$coefficients$random$host_pair)) {
-  re <- fit$coefficients$random$host_pair[re_idx]
-  pieces <- as.numeric(strsplit(names(re), "_")[[1]])
-  re_pred[pieces[1], pieces[2]] <- unname(re)
+  # Linearize all...
+  K_large <- kronecker(diag(n_pairs), K)
+  fit <- lmekin(y ~ pair + (1 | host_pair), data = data, varlist = list(K_large))
+  fit
+
+  # Get fixed and random effect estimates
+  mu_pred <- matrix(fit$coefficients$fixed, n_hosts, n_pairs, byrow = TRUE)
+  re_pred <- matrix(NA, n_hosts, n_pairs)
+  for(re_idx in 1:length(fit$coefficients$random$host_pair)) {
+    re <- fit$coefficients$random$host_pair[re_idx]
+    pieces <- as.numeric(strsplit(names(re), "_")[[1]])
+    re_pred[pieces[1], pieces[2]] <- unname(re)
+  }
+
+  # Visualize true (L), fixed effect prediction (C), fixed + RE prediction (R)
+  # par(mfrow = c(1,3))
+  # image(t(y))
+  # image(t(mu_pred))
+  # image(t(mu_pred) + t(re_pred))
+
+  # Total variation in the data
+  var_y <- var(c(y))
+  # Residual variance (fixed + RE)
+  var_model_fe <- var(c(y - mu_pred))
+  var_model_re <- var(c(y - (mu_pred + re_pred)))
+
+  (var_y - var_model_fe)/var_y
+  (var_y - var_model_re)/var_y
 }
-
-# Visualize true (L), fixed effect prediction (C), fixed + RE prediction (R)
-par(mfrow = c(1,3))
-image(t(y))
-image(t(mu_pred))
-image(t(mu_pred) + t(re_pred))
-
-# Total variation in the data
-var_y <- var(c(y))
-# Residual variance (fixed + RE)
-var_model_fe <- var(c(y - mu_pred))
-var_model_re <- var(c(y - (mu_pred + re_pred)))
-
-(var_y - var_model_fe)/var_y
-(var_y - var_model_re)/var_y
 
 # ------------------------------------------------------------------------------
 #   Try this with pedigree on a small subset of the rug
 # ------------------------------------------------------------------------------
 
+start <- Sys.time()
 rug_obj <- summarize_Sigmas(output_dir = "asv_days90_diet25_scale1")
 
 # Code pulled from R/utility.R
@@ -82,19 +87,19 @@ K <- pedigree2
 K <- cov2cor(K)
 
 # CLR BASELINE
-data <- load_data(tax_level = "ASV")
-clr.counts <- clr_array(data$counts + 0.5, parts = 1)
-# Get each host's "baseline" composition (avg. CLR composition)
-hosts <- rug_obj$hosts
-host_baselines <- matrix(NA, length(hosts), nrow(clr.counts))
-for(i in 1:length(hosts)) {
-  host <- hosts[i]
-  host_data <- clr.counts[, data$metadata$sname == host]
-  host_baselines[i,] <- rowMeans(host_data)
-}
-K <- as.matrix(dist(host_baselines))
-K <- max(K) - K
-K <- cov2cor(K)
+# data <- load_data(tax_level = "ASV")
+# clr.counts <- clr_array(data$counts + 0.5, parts = 1)
+# # Get each host's "baseline" composition (avg. CLR composition)
+# hosts <- rug_obj$hosts
+# host_baselines <- matrix(NA, length(hosts), nrow(clr.counts))
+# for(i in 1:length(hosts)) {
+#   host <- hosts[i]
+#   host_data <- clr.counts[, data$metadata$sname == host]
+#   host_baselines[i,] <- rowMeans(host_data)
+# }
+# K <- as.matrix(dist(host_baselines))
+# K <- max(K) - K
+# K <- cov2cor(K)
 
 # Subset for testing
 host_idx <- 31:51
@@ -116,7 +121,6 @@ data$host_pair <- factor(data$host_pair, levels = data$host_pair)
 # Linearize all...
 K_large <- kronecker(diag(n_pairs), K)
 fit <- lmekin(y ~ pair + (1 | host_pair), data = data, varlist = list(K_large))
-fit
 
 # Get fixed and random effect estimates
 mu_pred <- matrix(fit$coefficients$fixed, n_hosts, n_pairs, byrow = TRUE)
@@ -127,11 +131,11 @@ for(re_idx in 1:length(fit$coefficients$random$host_pair)) {
   re_pred[pieces[1], pieces[2]] <- unname(re)
 }
 
-# Visualize true (L), fixed effect prediction (C), fixed + RE prediction (R)
-par(mfrow = c(1,3))
-image(t(y))
-image(t(mu_pred))
-image(t(mu_pred) + t(re_pred))
+saveRDS(list(fit = fit,
+             y = y,
+             fe_pred = mu_pred,
+             me_pred = mu_pred + re_pred),
+        file.path(check_dir(c("output")), "pedigree_LMM_predicted.rds"))
 
 # Total variation in the data
 var_y <- var(c(y))
