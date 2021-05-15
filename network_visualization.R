@@ -2,8 +2,6 @@ library(rulesoflife)
 library(ggraph)
 library(igraph)
 
-head(highschool)
-
 data <- load_data(tax_level = "ASV")
 
 rug_obj <- summarize_Sigmas(output_dir = "asv_days90_diet25_scale1")

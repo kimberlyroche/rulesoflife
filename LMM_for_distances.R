@@ -18,16 +18,18 @@ if(FALSE) {
   n_pairs <- 30
   n_hosts <- 10
 
-  rho <- 0.8 # within-group correlation / between group anticorrelation
+  rho <- 0.5 # within-group correlation / between group anticorrelation
   K <- matrix(-rho, n_hosts, n_hosts)
   K[1:(n_hosts/2),1:(n_hosts/2)] <- rho
   K[(n_hosts/2+1):n_hosts,(n_hosts/2+1):n_hosts] <- rho
   diag(K) <- 1
   K_scale <- 1
   K <- K_scale * K
+  # plot_kernel_or_cov_matrix(K)
 
   mu_mat <- matrix(rnorm(n_pairs), n_hosts, n_pairs, byrow = TRUE)
   y <- rmatrixnormal(1, mu_mat, K, diag(n_pairs))[,,1]
+  # y <- rmatrixnormal(1, mu_mat, diag(n_hosts), diag(n_pairs))[,,1]
 
   data <- data.frame(y = c(y),
                      host = rep(1:n_hosts, n_pairs),
@@ -41,7 +43,6 @@ if(FALSE) {
   # Linearize all...
   K_large <- kronecker(diag(n_pairs), K)
   fit <- lmekin(y ~ pair + (1 | host_pair), data = data, varlist = list(K_large))
-  fit
 
   # Get fixed and random effect estimates
   mu_pred <- matrix(fit$coefficients$fixed, n_hosts, n_pairs, byrow = TRUE)
@@ -53,10 +54,15 @@ if(FALSE) {
   }
 
   # Visualize true (L), fixed effect prediction (C), fixed + RE prediction (R)
-  # par(mfrow = c(1,3))
-  # image(t(y))
-  # image(t(mu_pred))
-  # image(t(mu_pred) + t(re_pred))
+  orderings <- plot_rug(y, save_name = "LMM_simulated")
+  plot_rug(mu_pred,
+           canonical_col_order = orderings$col_order,
+           canonical_row_order = orderings$row_order,
+           save_name = "LMM_fe_estimate")
+  plot_rug(mu_pred + re_pred,
+           canonical_col_order = orderings$col_order,
+           canonical_row_order = orderings$row_order,
+           save_name = "LMM_me_estimate")
 
   # Total variation in the data
   var_y <- var(c(y))
@@ -113,7 +119,7 @@ K <- cov2cor(K)
 # K <- K[host_idx,host_idx]
 
 if(subset_pairs) {
-  n_pairs <- 200
+  n_pairs <- 1000
   y <- rug_obj$rug[,sample(1:ncol(rug_obj$rug), size = n_pairs)]
   n_hosts <- length(rug_obj$hosts)
   save_filename <- file.path(check_dir(c("output")),
