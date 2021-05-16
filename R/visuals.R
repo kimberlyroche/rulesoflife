@@ -280,13 +280,21 @@ summarize_Sigmas <- function(output_dir, use_proportionality = FALSE) {
 #' @param canonical_row_order if not NULL, order of rows (hosts) to use
 #' @param row_labels optional parameter with row labels (ordered host short
 #' names)
+#' @param cluster_obj an optional pre-computed hierarchical clustering; if
+#' included, a dendrogram will be rendered from this
 #' @param save_name name with which to save heatmap file
 #' @return named list with column and row ordering
 #' @import ggplot2
 #' @import tidyr
+#' @import grid
+#' @import ggdendro
+#' @import cowplot
 #' @export
-plot_rug <- function(rug, canonical_col_order = NULL,
-                     canonical_row_order = NULL, row_labels = NULL,
+plot_rug <- function(rug,
+                     canonical_col_order = NULL,
+                     canonical_row_order = NULL,
+                     row_labels = NULL,
+                     cluster_obj = NULL,
                      save_name = NULL) {
   # Cluster
   if(is.null(canonical_row_order)) {
@@ -298,6 +306,7 @@ plot_rug <- function(rug, canonical_col_order = NULL,
     canonical_col_order <- hclust(d)$order
   }
   rug <- rug[canonical_row_order,canonical_col_order]
+  row_labels <- row_labels[canonical_row_order]
 
   rug <- cbind(1:nrow(rug), rug)
   colnames(rug) <- c("host", paste0(1:(ncol(rug)-1)))
@@ -307,23 +316,61 @@ plot_rug <- function(rug, canonical_col_order = NULL,
   p <- ggplot(rug, aes(x = pair, y = host)) +
     geom_raster(aes(fill = correlation)) +
     scale_fill_gradient2(low = "navy", mid = "white", high = "red",
-                         midpoint = 0)
-  if(!is.null(row_labels)) {
+                         midpoint = 0) +
+    labs(y = "")
+
+  if(is.null(row_labels)) {
+    row_labels <- 1:length(rug$host)
+  }
+  p <- p +
+    scale_x_continuous(expand = c(0, 0)) +
+    scale_y_continuous(breaks = 1:length(row_labels),
+                       labels = row_labels,
+                       expand = c(0, 0)) +
+    theme(axis.text.x = element_blank(),
+          axis.ticks.x = element_blank(),
+          axis.ticks.y = element_blank()) +
+    labs(fill = "correlation\nmetric")
+
+  output_dir <- check_dir(c("output", "figures", "rug_plots"))
+  if(!is.null(cluster_obj)) {
     p <- p +
-      scale_y_continuous(breaks = 1:length(row_labels),
-                         labels = row_labels) +
-      theme(axis.text = element_text(size = 4))
-  }
-  if(is.null(save_name)) {
-    show(p)
+      theme(axis.text = element_text(size = 10),
+            axis.title = element_text(size = 14, face = "plain"),
+            legend.title = element_text(size = 14))
+    dhc <- as.dendrogram(cluster_obj)
+    ddata <- dendro_data(dhc, type = "rectangle")
+    pd <- ggplot(segment(ddata)) +
+      geom_segment(aes(x = x, y = y, xend = xend, yend = yend)) +
+      coord_flip() +
+      scale_y_reverse() +
+      theme_nothing()
+    if(!is.null(save_name)) {
+      png(file.path(output_dir, paste0(save_name, ".png")), height = 600, width = 1200)
+    }
+    grid.newpage()
+    print(pd, vp = viewport(x = 0.10, y = 0.515, width = 0.15, height = 0.995))
+    print(p, vp = viewport(x = 0.57, y = 0.5, width = 0.8, height = 0.97))
+    if(!is.null(save_name)) {
+      dev.off()
+    }
   } else {
-    output_dir <- check_dir(c("output", "figures"))
-    ggsave(file.path(output_dir, paste0(save_name, ".png")),
-           p,
-           units = "in",
-           height = 3,
-           width = 8)
+    p <- p +
+      theme(axis.text = element_text(size = 7),
+            axis.title = element_text(size = 12, face = "plain"),
+            legend.title = element_text(size = 12))
+    if(is.null(save_name)) {
+      show(p)
+    } else {
+      ggsave(file.path(output_dir, paste0(save_name, ".png")),
+             plot = p,
+             dpi = 100,
+             units = "in",
+             height = 6,
+             width = 12)
+    }
   }
+
   return(list(row_order = canonical_row_order,
               col_order = canonical_col_order))
 }

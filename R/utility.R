@@ -125,7 +125,9 @@ order_rug_row_baseline <- function(rug_obj, counts, metadata) {
     host_baselines[i,] <- rowMeans(host_data)
   }
   host_dist <- dist(host_baselines)
-  return(hclust(host_dist)$order)
+  hc <- hclust(host_dist)
+  return(list(order = hc$order,
+              hc = hc))
 }
 
 #' Reorder rows of the "rug" based on average taxonomic average host alpha
@@ -149,7 +151,10 @@ order_rug_row_diversity <- function(rug_obj) {
     host_counts <- otu_table(host_samples)@.Data
     host_diversity[i] <- mean(unname(apply(host_counts, 1, diversity)))
   }
-  return(order(host_diversity))
+  host_dist <- dist(host_diversity)
+  hc <- hclust(host_dist)
+  return(list(order = hc$order,
+              hc = hc))
 }
 
 #' Reorder rows of the "rug" based on primary social group
@@ -162,9 +167,21 @@ order_rug_row_group <- function(rug_obj) {
   grp_assignments <- get_host_social_groups(rug_obj$hosts)
   grp_assignments <- grp_assignments %>%
     arrange(grp)
-  temp <- data.frame(sname = rug_obj$hosts, index = 1:length(rug_obj$hosts))
-  temp <- left_join(grp_assignments, temp, by = "sname")
-  return(temp$index)
+  temp <- data.frame(sname = rug_obj$hosts)
+  temp <- temp %>%
+    left_join(grp_assignments, temp, by = "sname") %>%
+    mutate(new_label = paste0(sname, " (", grp, ")"))
+  labels <- temp %>%
+    pull(new_label)
+  temp <- temp %>%
+    arrange(grp)
+  map <- data.frame(sname = rug_obj$hosts,
+                    index = 1:length(rug_obj$hosts))
+  index <- temp %>%
+    right_join(map, by = "sname") %>%
+    pull(index)
+  return(list(order = index,
+              label = labels))
 }
 
 #' Reorder rows of the "rug" based on known pedigree
@@ -188,8 +205,9 @@ order_rug_row_pedigree <- function(rug_obj) {
   pedigree2 <- pedigree[host_reordering,host_reordering]
 
   # Use 1 - % genes shared as the distance to cluster rows on.
-  row_order <- hclust(as.dist(1-pedigree2))$order
-  return(row_order)
+  hc <- hclust(as.dist(1-pedigree2))
+  return(list(order = hc$order,
+              hc = hc))
 }
 
 #' Reorder columns of the "rug" based on phylogenetic distance
@@ -202,7 +220,7 @@ order_rug_row_pedigree <- function(rug_obj) {
 #' @import phangorn
 #' @import DECIPHER
 #' @export
-order_rug_row_pedigree <- function(rug_obj, taxonomy) {
+order_rug_col_phylogenetic <- function(rug_obj, taxonomy) {
   # Calculate distances across sequences associated with the ASVs we've retained,
   # post-filtering.
   seqs <- taxonomy$OTU
@@ -215,5 +233,6 @@ order_rug_row_pedigree <- function(rug_obj, taxonomy) {
   tax_distances <- sapply(1:length(rug_obj$tax_idx1), function(i) {
     dm[rug_obj$tax_idx1[i], rug_obj$tax_idx2[i]]
   })
-  return(order(tax_distances))
+  return(list(order = order(tax_distances)))
 }
+

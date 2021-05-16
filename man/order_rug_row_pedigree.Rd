@@ -4,23 +4,14 @@
 \alias{order_rug_row_pedigree}
 \title{Reorder rows of the "rug" based on known pedigree}
 \usage{
-order_rug_row_pedigree(rug_obj, taxonomy)
-
-order_rug_row_pedigree(rug_obj, taxonomy)
+order_rug_row_pedigree(rug_obj)
 }
 \arguments{
 \item{rug_obj}{output of the summarize_Sigmas function}
-
-\item{taxonomy}{taxonomy appropriate for data at the same level as the rug
-object}
 }
 \value{
-row ordering
-
 row ordering
 }
 \description{
 Reorder rows of the "rug" based on known pedigree
-
-Reorder columns of the "rug" based on phylogenetic distance
 }

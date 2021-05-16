@@ -9,6 +9,7 @@ plot_rug(
   canonical_col_order = NULL,
   canonical_row_order = NULL,
   row_labels = NULL,
+  cluster_obj = NULL,
   save_name = NULL
 )
 }
@@ -21,6 +22,9 @@ plot_rug(
 
 \item{row_labels}{optional parameter with row labels (ordered host short
 names)}
+
+\item{cluster_obj}{an optional pre-computed hierarchical clustering; if
+included, a dendrogram will be rendered from this}
 
 \item{save_name}{name with which to save heatmap file}
 }

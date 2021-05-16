@@ -1,7 +1,12 @@
+source("path_fix.R")
+
 library(rulesoflife)
 library(driver)
 library(tidyr)
 library(ggplot2)
+library(cowplot)
+
+source("ggplot_fix.R")
 
 # PCA plot components (over filtered CLR ASVs)
 
@@ -106,7 +111,8 @@ ggsave(file.path(plot_dir, "PCA_2.png"),
        units = "in",
        dpi = 100,
        height = 7,
-       width = 11)
+       width = 11,
+       type = "cairo")
 
 # ------------------------------------------------------------------------------
 #   Plot relative abundances
@@ -119,33 +125,52 @@ for(j in 1:ncol(relative_abundances)) {
 }
 
 # Collapse rare stuff for visualization
-retain_taxa <- which(apply(relative_abundances, 1, max) >= 0.2)
+retain_taxa <- which(apply(relative_abundances, 1, mean) >= 0.01)
 collapse_taxa <- setdiff(1:nrow(relative_abundances), retain_taxa)
 trimmed_relab <- relative_abundances[retain_taxa,]
 trimmed_relab <- rbind(trimmed_relab,
                        colSums(relative_abundances[collapse_taxa,]))
-dim(trimmed_relab)
 
-palette <- generate_highcontrast_palette(nrow(trimmed_relab))
+# ref_hosts <- get_reference_hosts()$sname
+ref_hosts <- unique(data$metadata$sname)
 
-ref_hosts <- get_reference_hosts()$sname
-host <- ref_hosts[1]
-host_relab <- trimmed_relab[,data$metadata$sname == host]
+plot_dir <- file.path(plot_dir, "Johnson_plots")
+saved_palette <- file.path(plot_dir, "saved_palette.rds")
+if(file.exists(saved_palette)) {
+  palette <- readRDS(saved_palette)
+} else {
+  palette <- generate_highcontrast_palette(nrow(trimmed_relab))
+  saveRDS(palette, file = saved_palette)
+}
 
-plot_df <- cbind(1:nrow(host_relab), as.data.frame(host_relab))
-colnames(plot_df) <- c("taxon", 1:(ncol(plot_df)-1))
-plot_df <- pivot_longer(plot_df, !taxon, names_to = "sample", values_to = "relative_abundance")
-plot_df$taxon <- factor(plot_df$taxon)
-plot_df$sample <- as.numeric(plot_df$sample)
-head(plot_df)
+for(host in ref_hosts) {
+  host_relab <- trimmed_relab[,data$metadata$sname == host]
 
-ggplot(plot_df, aes(x = sample, y = relative_abundance, fill = taxon)) +
-  geom_area() +
-  scale_fill_manual(values = palette) +
-  theme(legend.position = "none")
-plot_dir <- check_dir(c("output", "figures"))
-ggsave(file.path(plot_dir, paste0(host, "_shortseries.png")),
-       units = "in",
-       dpi = 100,
-       height = 3,
-       width = 3)
+  # Downsample
+  ds_idx <- round(seq(1, ncol(host_relab), length.out = min(ncol(host_relab), 50)))
+  ds_idx[1] <- 1
+  ds_idx[length(ds_idx)] <- ncol(host_relab)
+  host_ds <- host_relab[,ds_idx]
+
+  plot_df <- cbind(1:nrow(host_ds), as.data.frame(host_ds))
+  colnames(plot_df) <- c("taxon", 1:(ncol(plot_df)-1))
+  plot_df <- pivot_longer(plot_df, !taxon, names_to = "sample", values_to = "relative_abundance")
+  plot_df$taxon <- factor(plot_df$taxon)
+  plot_df$sample <- as.numeric(plot_df$sample)
+  head(plot_df)
+
+  p <- ggplot(plot_df, aes(x = sample, y = relative_abundance, fill = taxon)) +
+    geom_area() +
+    scale_fill_manual(values = palette) +
+    theme_nothing() +
+    scale_x_continuous(expand = c(0, 0)) +
+    scale_y_continuous(expand = c(0, 0))
+  # show(p)
+  ggsave(file.path(plot_dir, paste0(host, "_shortseries.pdf")),
+         p,
+         units = "in",
+         dpi = 100,
+         height = 4,
+         width = 4)
+}
+
