@@ -3,6 +3,12 @@ source("path_fix.R")
 library(rulesoflife)
 library(uuid)
 
+if(TRUE) {
+  data <- load_data(tax_level = "ASV", alr_median = TRUE)
+  #data <- load_data(tax_level = "family")
+  #data <- load_data(tax_level = "phylum")
+}
+
 if(FALSE) {
   results <- downsample_counts(sample_no = c(10, 20, 30, 40, 50, 75, 100, 200))
   saveRDS(results, paste0("output/simdata_", UUIDgenerate(), ".rds"))
@@ -27,7 +33,7 @@ if(FALSE) {
                                         "asv_days90_diet25_scale1_scrambled"))
 }
 
-if(TRUE) {
+if(FALSE) {
   #levels <- list(phy = "phylum", fam = "family", asv = "ASV")
   levels <- list(phy = "phylum")
   for(ll in 1:length(levels)) {

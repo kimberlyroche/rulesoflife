@@ -73,6 +73,7 @@ filter_data <- function(tax_level = "ASV", host_sample_min = 75,
 
   # It doesn't look like there are instances of family Mitochondria or order
   # Chloroplast in this data set. Remove archaea though.
+  tax <- tax_table(agglomerated_data)@.Data
   archaea_rowidx <- which(tax[taxa_passed,] == "Archaea", arr.ind = TRUE)
   if(length(archaea_rowidx) > 0) {
     archaea_rowidx <- unname(archaea_rowidx[1,1])
@@ -112,6 +113,9 @@ filter_data <- function(tax_level = "ASV", host_sample_min = 75,
 #' set
 #' @param sample_threshold minimum proportion of samples within each host at
 #' which a taxon must be observed at or above count_threshold
+#' @param alr_median if TRUE, uses the taxon with the median coefficient of 
+#' variation in relative abundance as the ALR reference taxon, otherwise uses
+#' the taxon in the last index in the count table
 #' @details Together count_threshold and sample_threshold specify a minimum
 #' representation for a taxon. Taxa below this threshold will be grouped
 #' together into an <NA> category.
@@ -122,7 +126,8 @@ filter_data <- function(tax_level = "ASV", host_sample_min = 75,
 #' @importFrom tidyr pivot_wider pivot_longer
 #' @export
 load_data <- function(tax_level = "ASV", host_sample_min = 75,
-                        count_threshold = 1, sample_threshold = 0.2) {
+                      count_threshold = 1, sample_threshold = 0.2,
+                      alr_median = FALSE) {
   processed_filename <- file.path("input", paste0("processed_",
                                                   tax_level,
                                                   "_",
@@ -211,15 +216,17 @@ load_data <- function(tax_level = "ASV", host_sample_min = 75,
   merge_idx <- which(tax$OTU == data$merge_OTU)
   tax$OTU[merge_idx] <- "other"
 
-  # Reshuffle stablest relative abundance (in terms of median coefficient of
-  # variation of relative abundances) to the end
-  # rel_ab <- apply(counts, 2, function(x) x/sum(x))
-  # c_of_v <- apply(rel_ab, 1, function(x) sd(x)/mean(x))
-  # median_taxon <- order(c_of_v)[round(length(c_of_v)/2)]
-  # new_order <- c(setdiff(1:nrow(counts), median_taxon), median_taxon)
-
-  # Use the "other" bucket as the reference (last index in the count table)
-  new_order <- c(setdiff(1:nrow(counts), merge_idx), merge_idx)
+  if(alr_median) {
+    # Reshuffle stablest relative abundance (in terms of median coefficient of
+    # variation of relative abundances) to the end
+    rel_ab <- apply(counts, 2, function(x) x/sum(x))
+    c_of_v <- apply(rel_ab, 1, function(x) sd(x)/mean(x))
+    median_taxon <- order(c_of_v)[round(length(c_of_v)/2)]
+    new_order <- c(setdiff(1:nrow(counts), median_taxon), median_taxon)
+  } else {
+    # Use the "other" bucket as the reference (last index in the count table)
+    new_order <- c(setdiff(1:nrow(counts), merge_idx), merge_idx)
+  }
 
   counts <- counts[new_order,]
   tax <- tax[new_order,]
