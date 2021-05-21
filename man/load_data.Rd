@@ -8,7 +8,8 @@ load_data(
   tax_level = "ASV",
   host_sample_min = 75,
   count_threshold = 1,
-  sample_threshold = 0.2
+  sample_threshold = 0.2,
+  alr_median = FALSE
 )
 }
 \arguments{
@@ -22,6 +23,10 @@ set}
 
 \item{sample_threshold}{minimum proportion of samples within each host at
 which a taxon must be observed at or above count_threshold}
+
+\item{alr_median}{if TRUE, uses the taxon with the median coefficient of 
+variation in relative abundance as the ALR reference taxon, otherwise uses
+the taxon in the last index in the count table}
 }
 \value{
 a named list of count table, taxonomy, and metadata components

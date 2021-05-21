@@ -14,7 +14,7 @@ plot_aligned_trajectories(
   tax_label2,
   metadata,
   bind_taxa = FALSE,
-  save_file = FALSE
+  file_tag = NULL
 )
 }
 \arguments{
@@ -33,7 +33,7 @@ which to save the predictions}
 
 \item{bind_taxa}{plot all trajectories for taxon 1 together; ditto taxon 2}
 
-\item{save_file}{flag indicating whether or not to save rendered plot to file}
+\item{file_tag}{if not NULL, a tag to append to the saved filename}
 }
 \description{
 Render date-aligned trajectories for a pair of taxa and a given set of hosts.

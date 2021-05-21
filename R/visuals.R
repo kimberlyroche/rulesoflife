@@ -105,7 +105,6 @@ predict_trajectory <- function(sname, output_dir, resolution = 5) {
 #' @param show_observations flag indicating whether or not to logratio transform
 #' and render the observed data; this can be useful for judging sensitivity of
 #' fit
-#' @param save_file flag indicating whether or not to save rendered plot to file
 #' @return NULL
 #' @import driver
 #' @import fido
@@ -114,7 +113,7 @@ predict_trajectory <- function(sname, output_dir, resolution = 5) {
 #' @import tidyr
 #' @export
 plot_trajectory <- function(sname, output_dir, coord, coord_label = NULL,
-                            show_observations = FALSE, save_file = FALSE) {
+                            show_observations = FALSE) {
   predictions <- load_predictions(sname, output_dir)
   if(is.null(predictions)) {
     fit_and_predictions <- predict_trajectory(fit)
@@ -144,9 +143,7 @@ plot_trajectory <- function(sname, output_dir, coord, coord_label = NULL,
 
     plot_df <- left_join(plot_df, observations, by = "day")
   }
-  if(save_file) {
-    filename <- paste0("GP_", fit$sname, "_", "coord-", coord, ".png")
-  }
+  filename <- paste0("GP_", fit$sname, "_", "coord-", coord, ".png")
 
   p <- ggplot(plot_df) +
     geom_ribbon(aes(x = day, ymin = p2.5, ymax = p97.5), fill = "grey80") +
@@ -163,12 +160,8 @@ plot_trajectory <- function(sname, output_dir, coord, coord_label = NULL,
     p <- p +
       geom_point(aes(x = day, y = logratio), size = 1, na.rm = TRUE)
   }
-  if(save_file) {
-    output_dir <- check_dir(c("output", "figures"))
-    ggsave(file.path(output_dir, filename), p, units = "in", height = 3, width = 10)
-  } else {
-    show(p)
-  }
+  output_dir <- check_dir(c("output", "figures"))
+  ggsave(file.path(output_dir, filename), p, units = "in", height = 3, width = 10)
 }
 
 #' Summarize the pairwise correlations (optionally via proportionality) from all
@@ -535,13 +528,13 @@ get_predictions_host_list <- function(host_list, output_dir, metadata) {
 #' @param tax_label2 readable label for second taxon
 #' @param metadata metadata data.frame (with sname and collection_date column)
 #' @param bind_taxa plot all trajectories for taxon 1 together; ditto taxon 2
-#' @param save_file flag indicating whether or not to save rendered plot to file
+#' @param file_tag if not NULL, a tag to append to the saved filename
 #' @return NULL
 #' @import dplyr
 #' @export
 plot_aligned_trajectories <- function(output_dir, tax_idx1, tax_idx2,
                                       tax_label1, tax_label2, metadata,
-                                      bind_taxa = FALSE, save_file = FALSE) {
+                                      bind_taxa = FALSE, file_tag = NULL) {
   # Pull "reference" hosts
   host_list <- get_reference_hosts()$sname
   # Pull models/predictions
@@ -589,18 +582,18 @@ plot_aligned_trajectories <- function(output_dir, tax_idx1, tax_idx2,
     p <- p + scale_y_continuous(breaks = c(0, -10),
                                 labels = c("taxon 1", "taxon 2")) +
       labs(title = paste0("Correlation: ", tax_label1, " x ", tax_label2))
-    if(save_file) {
-      filename <- paste0("aligned_series_coords_", tax_idx1, "-", tax_idx2, "_",
-                         paste0(host_list, collapse = "-"), "_boundtaxa.png")
-      save_dir <- check_dir(c("output", "figures"))
-      ggsave(file.path(save_dir, filename),
-             p,
-             units = "in",
-             height = 3,
-             width = 10)
-    } else {
-      show(p)
+    filename <- paste0("aligned_series_coords_", tax_idx1, "-", tax_idx2, "_",
+                       paste0(host_list, collapse = "-"), "_boundtaxa")
+    if(!is.null(file_tag)) {
+      filename <- paste0(filename, "_", file_tag)
     }
+    filename <- paste0(filename, ".png")
+    save_dir <- check_dir(c("output", "figures"))
+    ggsave(file.path(save_dir, filename),
+           p,
+           units = "in",
+           height = 3,
+           width = 10)
   } else {
     for(ref_host in host_list) {
       p <- p +
@@ -616,18 +609,18 @@ plot_aligned_trajectories <- function(output_dir, tax_idx1, tax_idx2,
     p <- p + scale_y_continuous(breaks = -unname(host_centers),
                                 labels = sort(host_list, decreasing = TRUE)) +
       labs(title = paste0("Correlation: ", tax_label1, " x ", tax_label2))
-    if(save_file) {
-      filename <- paste0("aligned_series_coords_", tax_idx1, "-", tax_idx2, "_",
-                         paste0(host_list, collapse = "-"), ".png")
-      save_dir <- check_dir(c("output", "figures"))
-      ggsave(file.path(save_dir, filename),
-             p,
-             units = "in",
-             height = length(host_list),
-             width = 10)
-    } else {
-      show(p)
+    filename <- paste0("aligned_series_coords_", tax_idx1, "-", tax_idx2, "_",
+                       paste0(host_list, collapse = "-"))
+    if(!is.null(file_tag)) {
+      filename <- paste0(filename, "_", file_tag)
     }
+    filename <- paste0(filename, ".png")
+    save_dir <- check_dir(c("output", "figures"))
+    ggsave(file.path(save_dir, filename),
+           p,
+           units = "in",
+           height = length(host_list),
+           width = 10)
   }
 }
 
@@ -653,8 +646,7 @@ render_universal_pairs <- function(output_dir, select_idx, scores,
                                                          pair[2],
                                                          "CLR"),
                               metadata = metadata,
-                              bind_taxa = bind_taxa,
-                              save_file = TRUE)
+                              bind_taxa = bind_taxa)
   }
 }
 
@@ -688,4 +680,39 @@ plot_trajectories_top_pairs <- function(output_dir, metadata, taxonomy) {
                tax_idx2 = rug_obj$tax_idx2,
                taxonomy = taxonomy,
                output_dir = output_dir)
+}
+
+#' Render line plot of a given CLR taxon against diet PC1 for a given host.
+#' This plot is meant to demonstrate the largely uncorrelated nature of the diet
+#' data with the observed logratio abundances.
+#'
+#' @param sname host short name indicating which baboon's series to fit
+#' @param tax_idx symmetric matrix object
+#' @param counts filtered 16S count table (taxa x samples)
+#' @param metadata annotations data.frame
+#' @return NULL
+#' @import driver
+#' @import ggplot2
+#' @export
+plot_clr_vs_diet <- function(sname, tax_idx, counts, metadata) {
+  sname_idx <- which(metadata$sname == sname)
+  sub_md <- metadata[sname_idx,]
+  sub_counts <- counts[,sname_idx]
+  clr_counts <- clr_array(sub_counts + 0.5, parts = 1)
+  plot_df <- data.frame(time = rep(1:nrow(sub_md), 2),
+                        value = c(scale(sub_md$diet_PC1, center = TRUE, scale = FALSE),
+                                  scale(clr_counts[tax_idx,], center = TRUE, scale = FALSE)),
+                        type = c(rep("diet", nrow(sub_md)), rep("taxon", nrow(sub_md))))
+  plot_df$type <- factor(plot_df$type)
+  p <- ggplot(plot_df, aes(x = time, y = value, color = type)) +
+    geom_line(size = 0.5) +
+    geom_point() +
+    xlab("sample index")
+  filename <- paste0("dietPC1_vs_tax", tax_idx, "_", sname, ".png")
+  output_dir <- check_dir(c("output", "figures"))
+  ggsave(file.path(output_dir, filename),
+         p,
+         units = "in",
+         height = 3,
+         width = 6)
 }

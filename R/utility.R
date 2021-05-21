@@ -46,9 +46,12 @@ get_tax_label <- function(tax, coord, coord_system_label) {
 #' pair
 #'
 #' @param x vector of correlations between a pair of CLR microbes across hosts
+#' @param return_pieces if TRUE, returns the two components of the universality
+#' score: the proportion agreement in direction and the median magnitude of
+#' correlation in that set
 #' @return numeric "score"
 #' @export
-calc_universality_score <- function(x) {
+calc_universality_score <- function(x, return_pieces = FALSE) {
   x.sign <- sapply(x, sign)
   neg.idx <- which(x.sign < 0)
   pos.idx <- which(x.sign > 0)
@@ -65,18 +68,26 @@ calc_universality_score <- function(x) {
   if(!is.na(neg.abs.median) & !is.na(pos.abs.median)) {
     if(length(pos.idx) > length(neg.idx)) {
       # use this as majority direction
-      score <- (length(pos.idx)/length(x))*(pos.abs.median)
+      p1 <- length(pos.idx)/length(x)
+      p2 <- pos.abs.median
     } else {
-      score <- (length(neg.idx)/length(x))*(neg.abs.median)
+      p1 <- length(neg.idx)/length(x)
+      p2 <- neg.abs.median
     }
   } else {
     if(is.na(neg.abs.median)) {
-      score <- (length(pos.idx)/length(x))*(pos.abs.median)
+      p1 <- length(pos.idx)/length(x)
+      p2 <- pos.abs.median
     } else {
-      score <- (length(neg.idx)/length(x))*(neg.abs.median)
+      p1 <- length(neg.idx)/length(x)
+      p2 <- neg.abs.median
     }
   }
-  score
+  if(return_pieces) {
+    return(c(p1, p2))
+  } else {
+    return (p1*p2)
+  }
 }
 
 #' Calculate a consensus CLR correlation sign for a given association pair
@@ -210,6 +221,34 @@ order_rug_row_pedigree <- function(rug_obj) {
               hc = hc))
 }
 
+#' Calculate phylogenetic distances on pairs of taxa
+#'
+#' @param rug_obj output of the summarize_Sigmas function
+#' @param taxonomy taxonomy appropriate for data at the same level as the rug
+#' object
+#' @param as_matrix if TRUE, returns the distance matrix, not the vectorized
+#' result
+#' @return row ordering
+#' @import Biostrings
+#' @import phangorn
+#' @import DECIPHER
+#' @export
+rug_phylogenetic_distances <- function(rug_obj, taxonomy, as_matrix = FALSE) {
+  seqs <- taxonomy$OTU
+  seqs <- seqs[1:(length(seqs)-1)]
+  alignment <- AlignSeqs(DNAStringSet(seqs), anchor = NA)
+  phang.align <- phyDat(as(alignment, "matrix"), type = "DNA")
+  dm <- dist.ml(phang.align)
+  dm <- as.matrix(dm)
+  if(as_matrix) {
+    return(dm)
+  }
+  tax_distances <- sapply(1:length(rug_obj$tax_idx1), function(i) {
+    dm[rug_obj$tax_idx1[i], rug_obj$tax_idx2[i]]
+  })
+  return(tax_distances)
+}
+
 #' Reorder columns of the "rug" based on phylogenetic distance
 #'
 #' @param rug_obj output of the summarize_Sigmas function
@@ -221,18 +260,40 @@ order_rug_row_pedigree <- function(rug_obj) {
 #' @import DECIPHER
 #' @export
 order_rug_col_phylogenetic <- function(rug_obj, taxonomy) {
-  # Calculate distances across sequences associated with the ASVs we've retained,
-  # post-filtering.
-  seqs <- taxonomy$OTU
-  seqs <- seqs[1:(length(seqs)-1)]
-  alignment <- AlignSeqs(DNAStringSet(seqs), anchor = NA)
-  phang.align <- phyDat(as(alignment, "matrix"), type = "DNA")
-  dm <- dist.ml(phang.align)
-  dm <- as.matrix(dm)
-  # Reorder rug based on these distances
-  tax_distances <- sapply(1:length(rug_obj$tax_idx1), function(i) {
-    dm[rug_obj$tax_idx1[i], rug_obj$tax_idx2[i]]
-  })
+  tax_distances <- rug_phylogenetic_distances(rug_obj, taxonomy)
   return(list(order = order(tax_distances)))
 }
 
+#' Get the mean CLR abundance for all taxa
+#'
+#' @param tax_level taxonomic level at which to calculate average CLR abundance
+#' @return vector of mean CLR abundances
+#' @import driver
+#' @export
+get_mean_clr_abundance <- function(tax_level = "ASV") {
+  data <- load_data(tax_level = tax_level)
+  clr.counts <- clr_array(data$counts + 0.5, parts = 1)
+  rowMeans(clr.counts)
+}
+
+#' Get the mean CLR abundance for all taxa
+#'
+#' @param tax_level taxonomic level at which to calculate average CLR abundance
+#' @return vector of mean CLR abundances
+#' @import driver
+#' @export
+get_mean_clr_abundance <- function(tax_level = "ASV") {
+  data <- load_data(tax_level = tax_level)
+  clr.counts <- clr_array(data$counts + 0.5, parts = 1)
+  rowMeans(clr.counts)
+}
+
+#' Converts a percent to a relative count
+#'
+#' @param percent percent
+#' @param n_features total number of features
+#' @return relative count
+#' @export
+percent_to_k <- function(percent, n_features) {
+  round(n_features*(percent/100))
+}

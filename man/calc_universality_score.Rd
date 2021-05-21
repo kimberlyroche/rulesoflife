@@ -5,10 +5,14 @@
 \title{Calculate a score (0.0 to 1.0) for the "universality" of given association
 pair}
 \usage{
-calc_universality_score(x)
+calc_universality_score(x, return_pieces = FALSE)
 }
 \arguments{
 \item{x}{vector of correlations between a pair of CLR microbes across hosts}
+
+\item{return_pieces}{if TRUE, returns the two components of the universality
+score: the proportion agreement in direction and the median magnitude of
+correlation in that set}
 }
 \value{
 numeric "score"

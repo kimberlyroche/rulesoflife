@@ -1,6 +1,10 @@
+source("path_fix.R")
+
 library(rulesoflife)
 library(tidyverse)
 library(driver)
+
+source("ggplot_fix.R")
 
 plot_dir <- check_dir(c("output", "figures"))
 output_dir <- "asv_days90_diet25_scale1"
@@ -39,7 +43,7 @@ host_days$type <- factor(sapply(1:nrow(host_days), function(i) {
 }))
 levels(host_days$type) <- c("excluded", "included")
 
-ggplot(host_days, aes(x = min_day,
+p <- ggplot(host_days, aes(x = min_day,
                       xend = max_day,
                       y = index,
                       yend = index,
@@ -53,10 +57,12 @@ ggplot(host_days, aes(x = min_day,
        y = "host",
        color = "Host status")
 ggsave(file.path(plot_dir, "host_day_overlap.png"),
+       plot = p,
        units = "in",
        dpi = 100,
        height = 5,
        width = 8)
+show(p)
 
 selected_hosts <- host_days[host_days$type == "included",]$host
 cat("No. selected hosts:", length(selected_hosts), "\n")
@@ -81,13 +87,12 @@ negative_idx <- which(consensus_sign < 0)
 positive_ranks <- order(universalities[positive_idx], decreasing = TRUE)
 negative_ranks <- order(universalities[negative_idx], decreasing = TRUE)
 
-k <- 3
-
-top_k_positive <- positive_ranks[1:k]
+# k is 1 here
+top_k_positive <- positive_ranks[1]
 # Indexed as: universalities[positive_idx[positive_ranks[1:10]]]
-top_k_negative <- negative_ranks[1:k]
+top_k_negative <- negative_ranks[1]
 # Indexed as: universalities[negative_idx[negative_ranks[1:10]]]
-bottom_k <- order(universalities)[1:k]
+bottom_k <- order(universalities)[1]
 # Indexed as: universalities[bottom_k]
 
 # ------------------------------------------------------------------------------
@@ -96,10 +101,11 @@ bottom_k <- order(universalities)[1:k]
 #   Code pulled from basset prediction: predict mean of Lambda
 # ------------------------------------------------------------------------------
 
-# Runtime ~10 sec. per host
+# Runtime ~10 sec. per host at ASV level
 predict_GP_mean <- function(output_dir, host) {
   cat("Predicting mean Lambda for host", host, "...\n")
-  fit <- readRDS(file.path("output", "model_fits", output_dir, "full_posterior", paste0(host, ".rds")))
+  fit <- readRDS(file.path("output", "model_fits", output_dir,
+                           "full_posterior", paste0(host, ".rds")))
 
   # Observed data
   X_o <- fit$X
@@ -184,8 +190,8 @@ cat("Centering the series...\n")
 centered_predictions <- filtered_predictions %>%
   group_by(host, coord) %>%
   mutate(offset = mean(clr_abundance)) %>%
-  # mutate(centered_clr = clr_abundance - offset) %>%
-  mutate(centered_clr = scale(clr_abundance)) %>%
+  mutate(centered_clr = clr_abundance - offset) %>%
+  # mutate(centered_clr = scale(clr_abundance)) %>%
   select(host, coord, day, centered_clr)
 
 # ------------------------------------------------------------------------------
@@ -202,13 +208,7 @@ pull_series <- function(df, sname, idx) {
 
 named_pairs <- list(positive1 = positive_idx[positive_ranks[1]],
                     negative1 = negative_idx[negative_ranks[1]],
-                    neutral1 = bottom_k[1],
-                    positive2 = positive_idx[positive_ranks[2]],
-                    negative2 = negative_idx[negative_ranks[2]],
-                    neutral2 = bottom_k[2],
-                    positive3 = positive_idx[positive_ranks[3]],
-                    negative3 = negative_idx[negative_ranks[3]],
-                    neutral3 = bottom_k[3])
+                    neutral1 = bottom_k[1])
 
 # Each iteration of this loop takes about 40 sec. if we look at all pairs of
 # hosts. If we subset to 100 hosts, it's about 9 sec.
@@ -223,9 +223,9 @@ for(pair_name in names(named_pairs)) {
   subset_predictions <- centered_predictions %>%
     filter(coord %in% c(coord1, coord2))
 
-  # ------------------------------------------------------------------------------
+  # ----------------------------------------------------------------------------
   #   Estimate within- and between-host correlation distributions
-  # ------------------------------------------------------------------------------
+  # ----------------------------------------------------------------------------
 
   cat("Building within-host distribution...\n")
   within_distro <- c()
@@ -259,7 +259,7 @@ for(pair_name in names(named_pairs)) {
   label1 <- get_tax_label(data$taxonomy, coord1, "clr")
   label2 <- get_tax_label(data$taxonomy, coord2, "clr")
   alpha <- 0.5
-  ggplot() +
+  p <- ggplot() +
     geom_histogram(data = plot_df[plot_df$type == "between hosts (1)",],
                    mapping = aes(x = correlation, fill = type),
                    color = "white",
@@ -279,11 +279,12 @@ for(pair_name in names(named_pairs)) {
                         "(1) ", label1,
                         "\n",
                         "(2) ", label2,
-                        "\n")) #+
-    # theme(plot.title = element_text(size = 12))
+                        "\n"))
   ggsave(file.path(plot_dir, paste0("within-between_", pair_name, ".png")),
+         plot = p,
          units = "in",
          dpi = 100,
          height = 4.5,
          width = 6)
+  show(p)
 }

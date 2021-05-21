@@ -1,14 +1,17 @@
+source("path_fix.R")
+
 library(rulesoflife)
 library(tidyverse)
 library(coxme)
-# library(GMMAT)
 library(MASS)
 library(matrixsampling)
 
-source("path_fix.R")
 source("ggplot_fix.R")
 
-# Simulate data to make sure we're thinking of the right model.
+# ------------------------------------------------------------------------------
+#   Simulate data to make sure we're thinking of the right model
+# ------------------------------------------------------------------------------
+
 n_pairs <- 10
 n_hosts <- 6
 
@@ -38,8 +41,10 @@ data$pair <- factor(data$pair)
 data$host_pair <- factor(data$host_pair, levels = data$host_pair)
 head(data)
 
-fit <- lmekin(y ~ pair + (1 | host_pair), data = data, varlist = list(K_large))
-# fit <- lmekin(y ~ pair + (1 | host_pair), data = data, varlist = list(diag(nrow(K_large))))
+fit <- lmekin(y ~ pair + (1 | host_pair),
+              data = data, varlist = list(K_large))
+# fit <- lmekin(y ~ pair + (1 | host_pair),
+#               data = data, varlist = list(diag(nrow(K_large))))
 fit
 
 mu_pred <- matrix(fit$coefficients$fixed, n_hosts, n_pairs, byrow = TRUE)

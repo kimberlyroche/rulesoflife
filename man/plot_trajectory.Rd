@@ -9,8 +9,7 @@ plot_trajectory(
   output_dir,
   coord,
   coord_label = NULL,
-  show_observations = FALSE,
-  save_file = FALSE
+  show_observations = FALSE
 )
 }
 \arguments{
@@ -26,8 +25,6 @@ which to save the predictions}
 \item{show_observations}{flag indicating whether or not to logratio transform
 and render the observed data; this can be useful for judging sensitivity of
 fit}
-
-\item{save_file}{flag indicating whether or not to save rendered plot to file}
 }
 \description{
 Visualize inferred logratio trajectories (CLR by default)

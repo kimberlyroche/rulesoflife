@@ -1,6 +1,3 @@
-# This script plots the "rug" heatmap over hosts and pairwise correlation over
-# taxa using various row and column orderings.
-
 source("path_fix.R")
 
 library(rulesoflife)
@@ -24,6 +21,20 @@ for(level in map$level) {
   ordering <- plot_rug(rug = rug_obj$rug,
                        row_labels = rug_obj$hosts,
                        save_name = output_dir)
+
+  cat("Rendering on COMPOSITION for", level, "\n")
+  data <- load_data(tax_level = level)
+  order_obj <- order_rug_row_baseline(rug_obj = rug_obj,
+                                      counts = data$counts,
+                                      metadata = data$metadata)
+  row_order <- order_obj$order
+  discard <- plot_rug(rug = rug_obj$rug,
+                      canonical_col_order = ordering$col_order,
+                      canonical_row_order = row_order,
+                      row_labels = rug_obj$hosts,
+                      cluster_obj = order_obj$hc,
+                      save_name = paste0(output_dir, "_roworder-baseline"))
+
   # Scrambled rug
   cat("Rendering SCRAMBLED parameterization for", level, "\n")
   output_dir <- paste0(map[map$level == level,]$short_name,
@@ -60,23 +71,6 @@ for(param in alt_parameterizations) {
 # ------------------------------------------------------------------------------
 #   Host/row reorderings
 # ------------------------------------------------------------------------------
-
-cat("Loading data and baseline ASV rug...\n")
-data <- load_data(tax_level = "ASV")
-output_dir <- "asv_days90_diet25_scale1"
-rug_obj <- summarize_Sigmas(output_dir = output_dir)
-
-cat("Rendering on COMPOSITION for", level, "\n")
-order_obj <- order_rug_row_baseline(rug_obj = rug_obj,
-                                    counts = data$counts,
-                                    metadata = data$metadata)
-row_order <- order_obj$order
-discard <- plot_rug(rug = rug_obj$rug,
-                    canonical_col_order = ordering$col_order,
-                    canonical_row_order = row_order,
-                    row_labels = rug_obj$hosts,
-                    cluster_obj = order_obj$hc,
-                    save_name = paste0(output_dir, "_roworder-baseline"))
 
 cat("Rendering on PEDIGREE for", level, "\n")
 order_obj <- order_rug_row_pedigree(rug_obj)
