@@ -67,6 +67,8 @@ show(p)
 selected_hosts <- host_days[host_days$type == "included",]$host
 cat("No. selected hosts:", length(selected_hosts), "\n")
 
+saveRDS(selected_hosts, file.path("output", "overlapped_hosts.rds"))
+
 # ------------------------------------------------------------------------------
 #   Pull interesting pairs (strong and weak universality)
 # ------------------------------------------------------------------------------
@@ -101,47 +103,6 @@ bottom_k <- order(universalities)[1]
 #   Code pulled from basset prediction: predict mean of Lambda
 # ------------------------------------------------------------------------------
 
-# Runtime ~10 sec. per host at ASV level
-predict_GP_mean <- function(output_dir, host) {
-  cat("Predicting mean Lambda for host", host, "...\n")
-  fit <- readRDS(file.path("output", "model_fits", output_dir,
-                           "full_posterior", paste0(host, ".rds")))
-
-  # Observed data
-  X_o <- fit$X
-
-  # Build unobserved data set
-  first_day <- min(X_o[1,])
-  last_day <- max(X_o[1,])
-  n_days <- last_day
-  span <- seq(from = first_day, to = last_day)
-  X_u <- matrix(NA, nrow(X_o), length(span))
-  X_u[1,] <- span
-  # Linearly interpolate the diet PCs for lack of a better option
-  x <- fit$X[1,]
-  for(cov_idx in 2:4) {
-    y <- fit$X[cov_idx,]
-    X_u[cov_idx,] <- approx(x = x, y = y, xout = span, ties = "ordered")$y
-  }
-
-  Gamma <- fit$Gamma(cbind(X_o, X_u))
-  obs <- c(rep(TRUE, ncol(fit$X)), rep(FALSE, ncol(X_u)))
-
-  # Predict Lambda
-  Gamma_oo <- Gamma[obs, obs, drop=F]
-  Gamma_ou <- Gamma[obs, !obs, drop=F]
-
-  Theta_o <- fit$Theta(X_o)
-  Theta_u <- fit$Theta(X_u)
-  Lambda_o <- apply(fit$Lambda, c(1,2), mean)
-  mean_Lambda_pred <- Theta_u + (Lambda_o-Theta_o)%*%solve(Gamma_oo, Gamma_ou)
-
-  # convert to CLR
-  mean_Lambda.clr <- clr_array(alrInv_array(mean_Lambda_pred, fit$alr_base, 1), 1)
-
-  return(list(predictions = mean_Lambda.clr, span = span))
-}
-
 pred_filename <- file.path("output", "host_mean_predictions.rds")
 if(file.exists(pred_filename)) {
   predictions <- readRDS(pred_filename)
@@ -175,24 +136,31 @@ if(file.exists(pred_filename)) {
   saveRDS(predictions, file = pred_filename)
 }
 
-cat("Filtering to days in common across retained hosts...\n")
-shared_days <- predictions[predictions$host == selected_hosts[1],]$day
-for(host in selected_hosts[2:length(selected_hosts)]) {
-  shared_days <- intersect(shared_days,
-                           predictions[predictions$host == host,]$day)
+pred2_filename <- file.path("output", "host_mean_predictions_adjusted.rds")
+if(file.exists(pred2_filename)) {
+  predictions <- readRDS(pred2_filename)
+} else {
+  cat("Filtering to days in common across retained hosts...\n")
+  shared_days <- predictions[predictions$host == selected_hosts[1],]$day
+  for(host in selected_hosts[2:length(selected_hosts)]) {
+    shared_days <- intersect(shared_days,
+                             predictions[predictions$host == host,]$day)
+  }
+
+  filtered_predictions <- predictions %>%
+    filter(day %in% shared_days) %>%
+    arrange(day)
+
+  cat("Centering the series...\n")
+  centered_predictions <- filtered_predictions %>%
+    group_by(host, coord) %>%
+    mutate(offset = mean(clr_abundance)) %>%
+    mutate(centered_clr = clr_abundance - offset) %>%
+    # mutate(centered_clr = scale(clr_abundance)) %>%
+    select(host, coord, day, centered_clr)
+
+  saveRDS(centered_predictions, file = pred2_filename)
 }
-
-filtered_predictions <- predictions %>%
-  filter(day %in% shared_days) %>%
-  arrange(day)
-
-cat("Centering the series...\n")
-centered_predictions <- filtered_predictions %>%
-  group_by(host, coord) %>%
-  mutate(offset = mean(clr_abundance)) %>%
-  mutate(centered_clr = clr_abundance - offset) %>%
-  # mutate(centered_clr = scale(clr_abundance)) %>%
-  select(host, coord, day, centered_clr)
 
 # ------------------------------------------------------------------------------
 #   Align and fully interpolate host series

@@ -90,6 +90,40 @@ calc_universality_score <- function(x, return_pieces = FALSE) {
   }
 }
 
+#' Calculate a score (0.0 to 1.0) for the "universality" of association pairs
+#' for each taxon
+#'
+#' @param rug_obj output of the summarize_Sigmas function
+#' @param collapse if value is "signed", computes an average
+#' universality score for a taxon split up for consensus positive and negative
+#' associations; if "unsigned" (default), computes na overall average universality score
+#' for a taxon
+#' @return list of numeric "scores"
+#' @export
+calc_universality_score_taxon <- function(rug_obj, collapse = "unsigned") {
+  scores <- apply(rug_obj$rug, 2, calc_universality_score)
+  signs <- apply(rug_obj$rug, 2, calc_consensus_sign)
+  df <- data.frame(score = scores,
+                   sign = signs,
+                   tax1 = rug_obj$tax_idx1,
+                   tax2 = rug_obj$tax_idx2)
+  df <- df %>%
+    filter(sign != 0)
+  if(collapse == "signed") {
+    df %>%
+      group_by(tax1, sign) %>%
+      mutate(mean_score = mean(score)) %>%
+      select(tax1, sign, mean_score) %>%
+      distinct()
+  } else {
+    df %>%
+      group_by(tax1) %>%
+      mutate(mean_score = mean(score)) %>%
+      select(tax1, mean_score) %>%
+      distinct()
+  }
+}
+
 #' Calculate a consensus CLR correlation sign for a given association pair
 #'
 #' @param x vector of correlations between a pair of CLR microbes across hosts
@@ -296,4 +330,70 @@ get_mean_clr_abundance <- function(tax_level = "ASV") {
 #' @export
 percent_to_k <- function(percent, n_features) {
   round(n_features*(percent/100))
+}
+
+#' Predict mean trajectories (Lambda) for all CLR taxa in a given host
+#'
+#' @param output_dir model fit directory
+#' @param host host short name
+#' @return named list with inferred trajectories and time span
+#' @details The runtime on this function is around 10s per host at the ASV-level
+#' @export
+predict_GP_mean <- function(output_dir, host) {
+  fit_filename <- file.path("output", "model_fits", output_dir,
+                            "full_posterior", paste0(host, ".rds"))
+  if(!file.exists(fit_filename)) {
+    stop(paste0("No such file exists: ", fit_filename, "\n"))
+  }
+  fit <- readRDS(fit_filename)
+
+  # Observed data
+  X_o <- fit$X
+
+  # Build unobserved data set
+  first_day <- min(X_o[1,])
+  last_day <- max(X_o[1,])
+  n_days <- last_day
+  span <- seq(from = first_day, to = last_day)
+  X_u <- matrix(NA, nrow(X_o), length(span))
+  X_u[1,] <- span
+  # Linearly interpolate the diet PCs for lack of a better option
+  x <- fit$X[1,]
+  for(cov_idx in 2:4) {
+    y <- fit$X[cov_idx,]
+    X_u[cov_idx,] <- approx(x = x, y = y, xout = span, ties = "ordered")$y
+  }
+
+  Gamma <- fit$Gamma(cbind(X_o, X_u))
+  obs <- c(rep(TRUE, ncol(fit$X)), rep(FALSE, ncol(X_u)))
+
+  # Predict Lambda
+  Gamma_oo <- Gamma[obs, obs, drop=F]
+  Gamma_ou <- Gamma[obs, !obs, drop=F]
+
+  Theta_o <- fit$Theta(X_o)
+  Theta_u <- fit$Theta(X_u)
+  Lambda_o <- apply(fit$Lambda, c(1,2), mean)
+  mean_Lambda_pred <- Theta_u + (Lambda_o-Theta_o)%*%solve(Gamma_oo, Gamma_ou)
+
+  # convert to CLR
+  mean_Lambda.clr <- clr_array(alrInv_array(mean_Lambda_pred, fit$alr_base, 1), 1)
+
+  return(list(predictions = mean_Lambda.clr, span = span))
+}
+
+#' Pull the predicted host x taxon series from a data.frame of predictions
+#'
+#' @param prediction_obj a long tibble containing aligned centered trajectories
+#' @param sname host short name
+#' @param idx taxon index
+#' @return filtered tibble
+#' @import dplyr
+#' @export
+pull_series <- function(prediction_obj, sname, idx) {
+  prediction_obj %>%
+    filter(host == sname) %>%
+    arrange(day) %>%
+    filter(coord == idx) %>%
+    pull(centered_clr)
 }

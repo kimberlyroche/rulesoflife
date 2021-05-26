@@ -27,7 +27,7 @@ generate_palette <- function(hex_min, hex_mid, hex_max, S) {
 #'
 #' @param K symmetric matrix object
 #' @param save_name if not NULL, a filename under which to save the plot
-#' @return NULL
+#' @return a ggplot object
 #' @import ggplot2
 #' @import tidyr
 #' @export
@@ -41,12 +41,13 @@ plot_kernel_or_cov_matrix <- function(K, save_name = NULL) {
     scale_fill_gradient2(low = "navy", mid = "white", high = "red",
                          midpoint = 0)
   if(is.null(save_name)) {
-    show(p)
+    return(p)
   } else {
     output_dir <- check_dir(c("output", "figures"))
     ggsave(file.path(output_dir, paste0(save_name, ".png")),
-           p,
+           plot = p,
            units = "in",
+           dpi = 100,
            height = 3,
            width = 4.25)
   }

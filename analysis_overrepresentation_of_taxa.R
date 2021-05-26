@@ -61,15 +61,118 @@ for(percent in percents) {
 #     pairs?
 # ------------------------------------------------------------------------------
 
+library(ape)
+
 # Statistic resource:
 # https://rfunctions.blogspot.com/2014/02/measuring-phylogenetic-signal-in-r.html#:~:text=Moran's%20I%20is%20known%20as,instead%20of%20'spatial%20proximity'.&text=When%20I%20equals%200%2C%20species,under%20a%20brownian%20motion%20model.
 
-## weights w[i,j] = 1/d[i,j]:
+d_mat <- rug_phylogenetic_distances(rug_obj, data$taxonomy, as_matrix = TRUE)
+plot_kernel_or_cov_matrix(d_mat) +
+  labs(x = "ASV 1",
+       y = "ASV 2",
+       fill = "phylogenetic\ndistance")
 
-w <- 1/cophenetic(tr)
-## set the diagonal w[i,i] = 0 (instead of Inf...):
-diag(w) <- 0
-Moran.I(x, w)
-Moran.I(x, w, alt = "l")
-Moran.I(x, w, alt = "g")
-Moran.I(x, w, scaled = TRUE) # usualy the same
+d_vec <- c(d_mat)
+weight_vec <- sapply(d_vec, function(d) 1/d)
+weight_mat <- matrix(weight_vec, nrow(d_mat), ncol(d_mat), byrow = FALSE)
+diag(weight_mat) <- 0
+
+# Scale the weight matrix
+weight_mat <- weight_mat / max(weight_mat)
+
+plot_kernel_or_cov_matrix(weight_mat) +
+  labs(x = "ASV 1",
+       y = "ASV 2",
+       fill = "1 / phylogenetic\ndistance")
+
+# From the 'ape' package example
+## weights w[i,j] = 1/d[i,j]:
+# w <- 1/cophenetic(tr)
+# diag(w) <- 0
+
+# We need to consolidate associations within an ASV, since x must have the same
+# dimesion as the weight matrix. This is why Johannes' analysis didn't yield
+# much: universality averaged over lots of pairs (for a given ASV) is pretty
+# weak usually.
+
+# ------------------------------------------------------------------------------
+#   Unsigned Moran's I
+# ------------------------------------------------------------------------------
+
+scores_tax <- calc_universality_score_taxon(rug_obj, collapse = "unsigned")
+combined_scores <- as.data.frame(scores_tax %>% arrange(tax1))
+
+# Not all taxa are present after filtering for sign. Chop down the weight matrix
+# accordingly.
+include_tax <- intersect(1:nrow(weight_mat), combined_scores$tax1)
+
+# Exclude the "other" category
+Moran.I(combined_scores$mean_score,
+        weight_mat[include_tax, include_tax],
+        scaled = TRUE)
+
+# ------------------------------------------------------------------------------
+#   Signed Moran's I
+# ------------------------------------------------------------------------------
+
+scores_tax <- calc_universality_score_taxon(rug_obj, collapse = "signed")
+pos_scores <- as.data.frame(scores_tax %>% filter(sign > 0) %>% arrange(tax1))
+neg_scores <- as.data.frame(scores_tax %>% filter(sign < 0) %>% arrange(tax1))
+
+# Not all taxa are present after filtering for sign. Chop down the weight matrix
+# accordingly.
+include_tax <- intersect(1:nrow(weight_mat), pos_scores$tax1)
+
+# Exclude the "other" category
+Moran.I(pos_scores$mean_score,
+        weight_mat[include_tax, include_tax],
+        scaled = TRUE)
+
+include_tax <- intersect(1:nrow(weight_mat), neg_scores$tax1)
+
+# Exclude the "other" category
+Moran.I(neg_scores$mean_score,
+        weight_mat[include_tax, include_tax],
+        scaled = TRUE)
+
+# ------------------------------------------------------------------------------
+#   Omitting extremely closely related species
+# ------------------------------------------------------------------------------
+
+closely_related <- which(d_mat < quantile(d_mat, probs = c(0.008)),
+                         arr.ind = TRUE)
+closely_related <- closely_related[apply(closely_related,
+                                         1,
+                                         function(x) x[1] != x[2]),]
+
+omit_taxa <- unname(apply(closely_related, 1, min))
+
+pos_scores <- as.data.frame(scores_tax %>%
+                              filter(sign > 0) %>%
+                              arrange(tax1) %>%
+                              filter(!(tax1 %in% omit_taxa)))
+# Not all taxa are present after filtering for sign. Chop down the weight matrix
+# accordingly.
+include_tax <- intersect(1:nrow(weight_mat), pos_scores$tax1)
+
+# Exclude the "other" category
+Moran.I(pos_scores$mean_score,
+        weight_mat[include_tax, include_tax],
+        scaled = TRUE)
+
+# ------------------------------------------------------------------------------
+#   Box plots
+# ------------------------------------------------------------------------------
+
+pos_scores_tax <- pos_scores
+pos_scores_tax$family <- data$taxonomy[pos_scores_tax$tax1,6]
+pos_scores_tax <- pos_scores_tax %>%
+  group_by(family) %>%
+  mutate(n = n()) %>%
+  filter(n >= 5) %>%
+  filter(!is.na(family))
+
+ggplot(pos_scores_tax, aes(x = family, y = mean_score)) +
+  geom_boxplot() +
+  geom_jitter(width = 0.1) +
+  labs(y = "average ASV universality score")

@@ -11,6 +11,9 @@ plot_kernel_or_cov_matrix(K, save_name = NULL)
 
 \item{save_name}{if not NULL, a filename under which to save the plot}
 }
+\value{
+a ggplot object
+}
 \description{
 Renders a kernel or covariance matrix as a square heatmap.
 }
