@@ -23,7 +23,13 @@ if(is.null(opt$start) | is.null(opt$end)) {
 
 plot_dir <- check_dir(c("output", "figures"))
 output_dir <- "asv_days90_diet25_scale1"
-rug_obj <- summarize_Sigmas(output_dir)
+rug_filename <- file.path("output", "rug_asv.rds")
+if(file.exists(rug_filename)) {
+  rug_obj <- readRDS(rug_filename)
+} else {
+  rug_obj <- summarize_Sigmas(output_dir)
+  saveRDS(rug_obj, file = rug_filename)
+}
 data <- load_data(tax_level = "ASV")
 
 if(opt$start < 1 | opt$start > opt$end) {
@@ -59,6 +65,7 @@ universalities <- apply(rug_subset, 2, calc_universality_score)
 # consensus_sign <- apply(rug_subset, 2, calc_consensus_sign)
 
 subset_hosts <- TRUE
+distro_df <- NULL
 for(pair in start:end) {
   cat(paste0("Evaluating pair #", pair, "...\n"))
   coord1 <- rug_obj$tax_idx1[pair]
@@ -75,8 +82,8 @@ for(pair in start:end) {
   cat("Building within-host distribution...\n")
   within_distro <- c()
   for(host in selected_hosts) {
-    series1 <- pull_series(predictions, host, coord1)
-    series2 <- pull_series(predictions, host, coord2)
+    series1 <- pull_series(subset_predictions, host, coord1)
+    series2 <- pull_series(subset_predictions, host, coord2)
     within_distro <- c(within_distro, cor(series1, series2))
   }
 
@@ -86,24 +93,34 @@ for(pair in start:end) {
     host_combos <- host_combos[,sample(1:ncol(host_combos), size = 100)]
   }
   between_distros <- sapply(1:ncol(host_combos), function(i) {
-    c(cor(pull_series(predictions, host_combos[1,i], coord1),
-          pull_series(predictions, host_combos[2,i], coord1)),
-      cor(pull_series(predictions, host_combos[1,i], coord2),
-          pull_series(predictions, host_combos[2,i], coord2)))
+    c(cor(pull_series(subset_predictions, host_combos[1,i], coord1),
+          pull_series(subset_predictions, host_combos[2,i], coord1)),
+      cor(pull_series(subset_predictions, host_combos[1,i], coord2),
+          pull_series(subset_predictions, host_combos[2,i], coord2)))
   })
 
-  save_df <- data.frame(correlation = within_distro,
+  temp_df <- data.frame(correlation = within_distro,
                         type = "within hosts")
-  save_df <- rbind(save_df,
-                   data.frame(correlation = between_distros[1,],
-                              type = "between hosts (1)"))
-  save_df <- rbind(save_df,
-                   data.frame(correlation = between_distros[2,],
-                              type = "between hosts (2)"))
-  save_df$pair <- pair
-  save_df$tax1 <- coord1
-  save_df$tax2 <- coord2
-  saveRDS(save_df,
-          file = file.path("output",
-                           paste0("within_between_distros_", pair, ".rds")))
+  temp_df <- bind_rows(temp_df,
+                       data.frame(correlation = between_distros[1,],
+                                  type = "between hosts (1)"))
+  temp_df <- bind_rows(temp_df,
+                       data.frame(correlation = between_distros[2,],
+                                  type = "between hosts (2)"))
+  temp_df$pair <- pair
+  temp_df$tax1 <- coord1
+  temp_df$tax2 <- coord2
+  if(is.null(distro_df)) {
+    distro_df <- temp_df
+  } else {
+    distro_df <- bind_rows(distro_df, temp_df)
+  }
 }
+
+saveRDS(distro_df,
+        file = file.path("output",
+                         paste0("within_between_distros_",
+                                start,
+                                "-",
+                                end,
+                                ".rds")))
