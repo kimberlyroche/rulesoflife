@@ -336,10 +336,14 @@ percent_to_k <- function(percent, n_features) {
 #'
 #' @param output_dir model fit directory
 #' @param host host short name
+#' @param interpolation allowed values are "mean" or "linear"
 #' @return named list with inferred trajectories and time span
 #' @details The runtime on this function is around 10s per host at the ASV-level
 #' @export
-predict_GP_mean <- function(output_dir, host) {
+predict_GP_mean <- function(output_dir, host, interpolation = "linear") {
+  if(!(interpolation %in% c("mean", "linear"))) {
+    stop(paste0("Disallowed interpolation method: ", interpolation, "\n"))
+  }
   fit_filename <- file.path("output", "model_fits", output_dir,
                             "full_posterior", paste0(host, ".rds"))
   if(!file.exists(fit_filename)) {
@@ -361,7 +365,12 @@ predict_GP_mean <- function(output_dir, host) {
   x <- fit$X[1,]
   for(cov_idx in 2:4) {
     y <- fit$X[cov_idx,]
-    X_u[cov_idx,] <- approx(x = x, y = y, xout = span, ties = "ordered")$y
+    if(interpolation == "linear") {
+      X_u[cov_idx,] <- approx(x = x, y = y, xout = span, ties = "ordered")$y
+    } else {
+      X_u[cov_idx,] <- mean(y)
+      X_u[cov_idx,x] <- y
+    }
   }
 
   Gamma <- fit$Gamma(cbind(X_o, X_u))
@@ -396,4 +405,61 @@ pull_series <- function(prediction_obj, sname, idx) {
     arrange(day) %>%
     filter(coord == idx) %>%
     pull(centered_clr)
+}
+
+#' Sample to construct between- and within-host distributions of correlation
+#' for a given pair of taxa. The "within" distribution characterizes correlation
+#' of a pair of taxa within selected hosts; the "between" distribution
+#' characterizes the correlation of a given taxon with its own series across
+#' a samples of hosts.
+#'
+#' @param pair index of taxon pair
+#' @param coord1 index of taxon 1
+#' @param coord2 index of taxon 2
+#' @param predictions predictions data.frame subsetted to the taxa of interest
+#' @param selected_hosts subset of full host short name list to use
+#' @param verbose if TRUE, prints status comments
+#' @return data.frame of between- and within- correlation distribution samples
+#' @export
+build_between_within_distributions <- function(pair, coord1, coord2,
+                                               predictions, selected_hosts,
+                                               verbose = TRUE) {
+  if(verbose) {
+    cat(paste0("Evaluating pair #", pair, "...\n"))
+    cat("Subsetting predictions to coordinates of interest...\n")
+    cat("Building within-host distribution...\n")
+  }
+  within_distro <- c()
+  for(host in selected_hosts) {
+    series1 <- pull_series(predictions, host, coord1)
+    series2 <- pull_series(predictions, host, coord2)
+    within_distro <- c(within_distro, cor(series1, series2))
+  }
+
+  if(verbose) {
+    cat("Building between-host distribution...\n")
+  }
+  host_combos <- combn(selected_hosts, m = 2)
+  if(subset_hosts) {
+    host_combos <- host_combos[,sample(1:ncol(host_combos), size = 100)]
+  }
+  between_distros <- sapply(1:ncol(host_combos), function(i) {
+    c(cor(pull_series(predictions, host_combos[1,i], coord1),
+          pull_series(predictions, host_combos[2,i], coord1)),
+      cor(pull_series(predictions, host_combos[1,i], coord2),
+          pull_series(predictions, host_combos[2,i], coord2)))
+  })
+
+  temp_df <- data.frame(correlation = within_distro,
+                        type = "within hosts")
+  temp_df <- bind_rows(temp_df,
+                       data.frame(correlation = between_distros[1,],
+                                  type = "between hosts (1)"))
+  temp_df <- bind_rows(temp_df,
+                       data.frame(correlation = between_distros[2,],
+                                  type = "between hosts (2)"))
+  temp_df$pair <- pair
+  temp_df$tax1 <- coord1
+  temp_df$tax2 <- coord2
+  temp_df
 }
