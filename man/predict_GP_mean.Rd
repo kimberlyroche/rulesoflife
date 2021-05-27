@@ -4,12 +4,14 @@
 \alias{predict_GP_mean}
 \title{Predict mean trajectories (Lambda) for all CLR taxa in a given host}
 \usage{
-predict_GP_mean(output_dir, host)
+predict_GP_mean(output_dir, host, interpolation = "linear")
 }
 \arguments{
 \item{output_dir}{model fit directory}
 
 \item{host}{host short name}
+
+\item{interpolation}{allowed values are "mean" or "linear"}
 }
 \value{
 named list with inferred trajectories and time span

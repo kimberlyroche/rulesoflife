@@ -9,72 +9,28 @@ source("ggplot_fix.R")
 plot_dir <- check_dir(c("output", "figures"))
 output_dir <- "asv_days90_diet25_scale1"
 
-# ------------------------------------------------------------------------------
-#   Visualize overlap in hosts; select a subset with good overlap in time
-# ------------------------------------------------------------------------------
-
 data <- load_data(tax_level = "ASV")
 metadata <- data$metadata
 
-# Get max and min day per host, relative to a common baseline
-common_baseline <- min(metadata$collection_date)
-all_hosts <- unique(metadata$sname)
-host_days <- data.frame(min_day = c(),
-                        max_day = c(),
-                        median_day = c(),
-                        host = c())
-for(host in all_hosts) {
-  days <- sapply(metadata[metadata$sname == host,]$collection_date, function(x) {
-    round(difftime(x, common_baseline, units = "days"))
-  })
-  host_days <- rbind(host_days,
-                     data.frame(min_day = min(days),
-                                max_day = max(days),
-                                median_day = min(days) + (max(days) - min(days))/2,
-                                host = host))
+host_filename <- file.path("output", "overlapped_hosts.rds")
+if(!file.exists(host_filename)) {
+  stop(paste0("File not found: ", host_filename, "\n"))
 }
+selected_hosts <- readRDS(host_filename)
 
-host_days <- host_days %>%
-  arrange(median_day)
-host_days$index <- 1:nrow(host_days)
+pred_filename <- file.path("output", "host_mean_predictions_adjusted.rds")
+if(!file.exists(pred_filename)) {
+  stop(paste0("File not found: ", pred_filename, "\n"))
+}
+predictions <- readRDS(pred_filename)
 
-host_days$type <- factor(sapply(1:nrow(host_days), function(i) {
-  host_days$min_day[i] <= 750 && host_days$max_day[i] >= 4000
-}))
-levels(host_days$type) <- c("excluded", "included")
-
-p <- ggplot(host_days, aes(x = min_day,
-                      xend = max_day,
-                      y = index,
-                      yend = index,
-                      color = type)) +
-  geom_segment(size = 1) +
-  scale_color_manual(values = c("#aaaaaa", "#000000")) +
-  scale_y_continuous(breaks = host_days$index,
-                     labels = host_days$host) +
-  theme(axis.text.y = element_text(size = 6)) +
-  labs(x = "sampled days",
-       y = "host",
-       color = "Host status")
-ggsave(file.path(plot_dir, "host_day_overlap.png"),
-       plot = p,
-       units = "in",
-       dpi = 100,
-       height = 5,
-       width = 8)
-show(p)
-
-selected_hosts <- host_days[host_days$type == "included",]$host
-cat("No. selected hosts:", length(selected_hosts), "\n")
-
-saveRDS(selected_hosts, file.path("output", "overlapped_hosts.rds"))
-
-# ------------------------------------------------------------------------------
-#   Pull interesting pairs (strong and weak universality)
-# ------------------------------------------------------------------------------
-
-# At the ASV level this takes 2-3 min.
-rug_obj <- summarize_Sigmas(output_dir)
+rug_filename <- file.path("output", "rug_asv.rds")
+if(file.exists(rug_filename)) {
+  rug_obj <- readRDS(rug_filename)
+} else {
+  rug_obj <- summarize_Sigmas(output_dir)
+  saveRDS(rug_obj, file = rug_filename)
+}
 
 # Subset to selected hosts
 subset_idx <- rug_obj$hosts %in% selected_hosts
@@ -83,6 +39,10 @@ rug_host_subset <- rug_obj$hosts[subset_idx]
 
 universalities <- apply(rug_subset, 2, calc_universality_score)
 consensus_sign <- apply(rug_subset, 2, calc_consensus_sign)
+
+# ------------------------------------------------------------------------------
+#   Pull interesting pairs (strong and weak universality)
+# ------------------------------------------------------------------------------
 
 positive_idx <- which(consensus_sign > 0)
 negative_idx <- which(consensus_sign < 0)
@@ -98,81 +58,8 @@ bottom_k <- order(universalities)[1]
 # Indexed as: universalities[bottom_k]
 
 # ------------------------------------------------------------------------------
-#   Render all host predictions once
-#
-#   Code pulled from basset prediction: predict mean of Lambda
+#   PLot distributions for selected pairs
 # ------------------------------------------------------------------------------
-
-pred_filename <- file.path("output", "host_mean_predictions.rds")
-if(file.exists(pred_filename)) {
-  predictions <- readRDS(pred_filename)
-} else {
-  # Runtime: ~7 min.
-  predictions <- data.frame(host = c(),
-                            coord = c(),
-                            day = c(),
-                            clr_abundance = c())
-  for(host in selected_hosts) {
-    host_pred_obj <- predict_GP_mean(output_dir, host)
-    pred_obj <- host_pred_obj$predictions
-    host_dates <- data$metadata[data$metadata$sname == host,]$collection_date
-    host_days <- round(unname(sapply(host_dates, function(x) {
-      difftime(x, common_baseline, units = "days")
-    }))) + 1
-    # Recalculate the "days" index for this host given the new baseline
-    offset <- host_days[1] - 1
-    days_obj <- host_pred_obj$span + offset
-    # Roll this into a data.frame
-
-    pred_obj <- cbind(1:nrow(pred_obj), pred_obj)
-    colnames(pred_obj) <- c("coord", days_obj)
-    pred_long <- pivot_longer(as.data.frame(pred_obj),
-                              !coord,
-                              names_to = "day",
-                              values_to = "clr_abundance")
-    pred_long <- cbind(host = host, pred_long)
-    predictions <- rbind(predictions, pred_long)
-  }
-  saveRDS(predictions, file = pred_filename)
-}
-
-pred2_filename <- file.path("output", "host_mean_predictions_adjusted.rds")
-if(file.exists(pred2_filename)) {
-  predictions <- readRDS(pred2_filename)
-} else {
-  cat("Filtering to days in common across retained hosts...\n")
-  shared_days <- predictions[predictions$host == selected_hosts[1],]$day
-  for(host in selected_hosts[2:length(selected_hosts)]) {
-    shared_days <- intersect(shared_days,
-                             predictions[predictions$host == host,]$day)
-  }
-
-  filtered_predictions <- predictions %>%
-    filter(day %in% shared_days) %>%
-    arrange(day)
-
-  cat("Centering the series...\n")
-  centered_predictions <- filtered_predictions %>%
-    group_by(host, coord) %>%
-    mutate(offset = mean(clr_abundance)) %>%
-    mutate(centered_clr = clr_abundance - offset) %>%
-    # mutate(centered_clr = scale(clr_abundance)) %>%
-    select(host, coord, day, centered_clr)
-
-  saveRDS(centered_predictions, file = pred2_filename)
-}
-
-# ------------------------------------------------------------------------------
-#   Align and fully interpolate host series
-# ------------------------------------------------------------------------------
-
-pull_series <- function(df, sname, idx) {
-  df %>%
-    filter(host == sname) %>%
-    arrange(day) %>%
-    filter(coord == idx) %>%
-    pull(centered_clr)
-}
 
 named_pairs <- list(positive1 = positive_idx[positive_ranks[1]],
                     negative1 = negative_idx[negative_ranks[1]],
@@ -180,49 +67,20 @@ named_pairs <- list(positive1 = positive_idx[positive_ranks[1]],
 
 # Each iteration of this loop takes about 40 sec. if we look at all pairs of
 # hosts. If we subset to 100 hosts, it's about 9 sec.
-subset_hosts <- FALSE
+subset_hosts <- TRUE
 for(pair_name in names(named_pairs)) {
   cat("Evaluating pair", pair_name, "...\n")
   pair <- named_pairs[[pair_name]]
-  coord1 <- rug_obj$tax_idx1[pair]
-  coord2 <- rug_obj$tax_idx2[pair]
 
-  cat("Subsetting predictions to coordinates of interest...\n")
-  subset_predictions <- centered_predictions %>%
-    filter(coord %in% c(coord1, coord2))
+  coord1 = rug_obj$tax_idx1[pair]
+  coord2 = rug_obj$tax_idx2[pair]
 
-  # ----------------------------------------------------------------------------
-  #   Estimate within- and between-host correlation distributions
-  # ----------------------------------------------------------------------------
-
-  cat("Building within-host distribution...\n")
-  within_distro <- c()
-  for(host in selected_hosts) {
-    series1 <- pull_series(subset_predictions, host, coord1)
-    series2 <- pull_series(subset_predictions, host, coord2)
-    within_distro <- c(within_distro, cor(series1, series2))
-  }
-
-  cat("Building between-host distribution...\n")
-  host_combos <- combn(selected_hosts, m = 2)
-  if(subset_hosts) {
-    host_combos <- host_combos[,sample(1:ncol(host_combos), size = 100)]
-  }
-  between_distros <- sapply(1:ncol(host_combos), function(i) {
-    c(cor(pull_series(subset_predictions, host_combos[1,i], coord1),
-          pull_series(subset_predictions, host_combos[2,i], coord1)),
-      cor(pull_series(subset_predictions, host_combos[1,i], coord2),
-          pull_series(subset_predictions, host_combos[2,i], coord2)))
-  })
-
-  plot_df <- data.frame(correlation = within_distro,
-                        type = "within hosts")
-  plot_df <- rbind(plot_df,
-                   data.frame(correlation = between_distros[1,],
-                              type = "between hosts (1)"))
-  plot_df <- rbind(plot_df,
-                   data.frame(correlation = between_distros[2,],
-                              type = "between hosts (2)"))
+  plot_df <- build_between_within_distributions(pair,
+                                                coord1 = coord1,
+                                                coord2 = coord2,
+                                                predictions = predictions %>%
+                                                  filter(coord %in% c(coord1, coord2)),
+                                                selected_hosts = selected_hosts)
 
   label1 <- get_tax_label(data$taxonomy, coord1, "clr")
   label2 <- get_tax_label(data$taxonomy, coord2, "clr")
