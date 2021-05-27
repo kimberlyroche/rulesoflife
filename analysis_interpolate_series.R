@@ -32,7 +32,7 @@ if(!file.exists(pred_adj_filename)) {
                               clr_abundance = c())
     for(host in selected_hosts) {
       cat(paste0("Processing host ", host, "...\n"))
-      host_pred_obj <- predict_GP_mean(output_dir, host, interpolation = "mean")
+      host_pred_obj <- predict_GP_mean(output_dir, host, interpolation = "none")
       pred_obj <- host_pred_obj$predictions
       host_dates <- data$metadata[data$metadata$sname == host,]$collection_date
       host_days <- round(unname(sapply(host_dates, function(x) {

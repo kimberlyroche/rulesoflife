@@ -11,7 +11,7 @@ predict_GP_mean(output_dir, host, interpolation = "linear")
 
 \item{host}{host short name}
 
-\item{interpolation}{allowed values are "mean" or "linear"}
+\item{interpolation}{allowed values are "mean", "linear", or "none"}
 }
 \value{
 named list with inferred trajectories and time span

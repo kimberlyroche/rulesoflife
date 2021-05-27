@@ -336,12 +336,12 @@ percent_to_k <- function(percent, n_features) {
 #'
 #' @param output_dir model fit directory
 #' @param host host short name
-#' @param interpolation allowed values are "mean" or "linear"
+#' @param interpolation allowed values are "mean", "linear", or "none"
 #' @return named list with inferred trajectories and time span
 #' @details The runtime on this function is around 10s per host at the ASV-level
 #' @export
 predict_GP_mean <- function(output_dir, host, interpolation = "linear") {
-  if(!(interpolation %in% c("mean", "linear"))) {
+  if(!(interpolation %in% c("mean", "linear", "none"))) {
     stop(paste0("Disallowed interpolation method: ", interpolation, "\n"))
   }
   fit_filename <- file.path("output", "model_fits", output_dir,
@@ -367,9 +367,11 @@ predict_GP_mean <- function(output_dir, host, interpolation = "linear") {
     y <- fit$X[cov_idx,]
     if(interpolation == "linear") {
       X_u[cov_idx,] <- approx(x = x, y = y, xout = span, ties = "ordered")$y
-    } else {
+    } else if(interpolation == "mean") {
       X_u[cov_idx,] <- mean(y)
       X_u[cov_idx,x] <- y
+    } else {
+      X_u[cov_idx,] <- 0
     }
   }
 
