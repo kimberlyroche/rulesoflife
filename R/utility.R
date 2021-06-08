@@ -334,22 +334,34 @@ percent_to_k <- function(percent, n_features) {
 
 #' Predict mean trajectories (Lambda) for all CLR taxa in a given host
 #'
-#' @param output_dir model fit directory
-#' @param host host short name
+#' @param fit an optional fitted model object
+#' @param host an optional host short name
+#' @param output_dir an optional model fit directory
 #' @param interpolation allowed values are "mean", "linear", or "none"
 #' @return named list with inferred trajectories and time span
-#' @details The runtime on this function is around 10s per host at the ASV-level
+#' @details Either `fit` or `host` and `output_dir` must be provided. If all are
+#' provided, `fit` overrides all. Note also: the runtime on this function is
+#' around 10s per host at the ASV-level.
 #' @export
-predict_GP_mean <- function(output_dir, host, interpolation = "linear") {
+predict_GP_mean <- function(fit = NULL, host = NULL, output_dir = NULL,
+                            interpolation = "linear") {
   if(!(interpolation %in% c("mean", "linear", "none"))) {
     stop(paste0("Disallowed interpolation method: ", interpolation, "\n"))
   }
-  fit_filename <- file.path("output", "model_fits", output_dir,
-                            "full_posterior", paste0(host, ".rds"))
-  if(!file.exists(fit_filename)) {
-    stop(paste0("No such file exists: ", fit_filename, "\n"))
+  if(is.null(fit)) {
+    if(is.null(host)) {
+      stop("Missing host short name!")
+    }
+    if(is.null(output_dir)) {
+      stop("Missing model output directory!")
+    }
+    fit_filename <- file.path("output", "model_fits", output_dir,
+                              "full_posterior", paste0(host, ".rds"))
+    if(!file.exists(fit_filename)) {
+      stop(paste0("No such file exists: ", fit_filename, "\n"))
+    }
+    fit <- readRDS(fit_filename)
   }
-  fit <- readRDS(fit_filename)
 
   # Observed data
   X_o <- fit$X
@@ -464,4 +476,17 @@ build_between_within_distributions <- function(pair, coord1, coord2,
   temp_df$tax1 <- coord1
   temp_df$tax2 <- coord2
   temp_df
+}
+
+#' Convert an ALR covariance matrix to a CLR correlation matrix
+#'
+#' @param Sigma covariance matrix
+#' @return named list of CLR covariance and CLR correlation matrices
+#' @export
+convert_alr_Sigma_clr <- function(Sigma) {
+  # Convert to CLR
+  D <- nrow(Sigma) + 1
+  Sigma.clr <- alrvar2clrvar(Sigma, d1 = D)
+  Sigma.clr.cor <- cov2cor(Sigma.clr)
+  return(list(Sigma.clr = Sigma.clr, Sigma.clr.cor = Sigma.clr.cor))
 }

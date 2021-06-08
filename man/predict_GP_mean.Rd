@@ -4,12 +4,19 @@
 \alias{predict_GP_mean}
 \title{Predict mean trajectories (Lambda) for all CLR taxa in a given host}
 \usage{
-predict_GP_mean(output_dir, host, interpolation = "linear")
+predict_GP_mean(
+  fit = NULL,
+  host = NULL,
+  output_dir = NULL,
+  interpolation = "linear"
+)
 }
 \arguments{
-\item{output_dir}{model fit directory}
+\item{fit}{an optional fitted model object}
 
-\item{host}{host short name}
+\item{host}{an optional host short name}
+
+\item{output_dir}{an optional model fit directory}
 
 \item{interpolation}{allowed values are "mean", "linear", or "none"}
 }
@@ -20,5 +27,7 @@ named list with inferred trajectories and time span
 Predict mean trajectories (Lambda) for all CLR taxa in a given host
 }
 \details{
-The runtime on this function is around 10s per host at the ASV-level
+Either `fit` or `host` and `output_dir` must be provided. If all are
+provided, `fit` overrides all. Note also: the runtime on this function is
+around 10s per host at the ASV-level.
 }

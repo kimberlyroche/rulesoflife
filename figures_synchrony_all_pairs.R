@@ -5,7 +5,7 @@ library(RColorBrewer)
 
 source("ggplot_fix.R")
 
-distro_filename <- file.path("output", "within_between_distros.rds")
+distro_filename <- file.path("output", "within_between_distros_diet-none.rds")
 if(!file.exists(distro_filename)) {
   stop(paste0("File not found: ", distro_filename, "\n"))
 }
@@ -45,12 +45,12 @@ p <- ggplot(plot_df, aes(x = between, y = within, fill = score)) +
   labs(fill = "Universality\nscore",
        x = "mean ASV series correlation between hosts",
        y = "mean ASV series correlation within hosts")
-ggsave(file.path(plot_dir, paste0("within-between_all.png")),
-       plot = p,
-       units = "in",
-       dpi = 100,
-       height = 6,
-       width = 8)
+# ggsave(file.path(plot_dir, paste0("within-between_all.png")),
+#        plot = p,
+#        units = "in",
+#        dpi = 100,
+#        height = 6,
+#        width = 8)
 show(p)
 
 p <- ggplot(plot_df, aes(x = between, y = score, fill = score)) +
@@ -59,12 +59,12 @@ p <- ggplot(plot_df, aes(x = between, y = score, fill = score)) +
   labs(fill = "score",
        x = "mean ASV series correlation between hosts (synchrony)",
        y = "universality score")
-# ggsave(file.path(plot_dir, paste0("universality-between_all.png")),
-#        plot = p,
-#        units = "in",
-#        dpi = 100,
-#        height = 6,
-#        width = 8)
+ggsave(file.path(plot_dir, paste0("universality-between_all.png")),
+       plot = p,
+       units = "in",
+       dpi = 100,
+       height = 6,
+       width = 8)
 show(p)
 
 # How does the within-host correlation compare to the estimates of Sigma from

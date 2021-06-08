@@ -18,6 +18,8 @@
 #' covariance over samples
 #' @param use_adam optimize with Adam (occasionally this converges more reliably
 #' that default L-BFGS)
+#' @param scramble_time optional flag to scramble a host's observeations in
+#' time; we'll use this to generate a "null" version of synchrony across hosts
 #' @return fidofit object
 #' @import fido
 #' @import driver
@@ -25,7 +27,8 @@
 #' @export
 fit_GP <- function(sname, counts, metadata, output_dir, MAP = TRUE,
                    days_to_min_autocorrelation = 90, diet_weight = 0,
-                   var_scale_taxa = 1, var_scale_samples = 1, use_adam = FALSE) {
+                   var_scale_taxa = 1, var_scale_samples = 1, use_adam = FALSE,
+                   scramble_time = FALSE) {
   if(diet_weight > 1 | diet_weight < 0) {
     stop("Invalid weight assigned to diet components of kernel!")
   }
@@ -37,6 +40,10 @@ fit_GP <- function(sname, counts, metadata, output_dir, MAP = TRUE,
   Y <- sub_counts
   N <- ncol(Y)
   D <- nrow(Y)
+
+  if(scramble_time) {
+    Y <- Y[,sample(1:ncol(Y))]
+  }
 
   # Design matrix
   baseline_date <- sub_md$collection_date[1]

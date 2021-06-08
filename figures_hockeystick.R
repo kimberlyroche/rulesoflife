@@ -19,6 +19,9 @@ consensus_signs <- apply(rug_obj$rug, 2, calc_consensus_sign)
 
 p1_factor <- cut(scores_pieces[1,], breaks = c(0, 0.6, 0.7, 0.8, 0.9, Inf))
 levels(p1_factor) <- c("<60%", "60-70%", "70-80%", "80-90%", ">90%")
+
+table(p1_factor)
+
 plot_df <- data.frame(p1 = scores_pieces[1,],
                       p1_factor = p1_factor,
                       p2 = scores_pieces[2,],
@@ -32,7 +35,19 @@ p <- ggplot(plot_df %>% filter(sign != "omit"), aes(x = p1_factor, y = p2)) +
   facet_wrap(. ~ sign) +
   labs(x = "proportion agreement in sign across hosts",
        y = "average absolute correlation")
-ggsave(file.path(plot_dir, "piecewise_universality_scores.png"),
+ggsave(file.path(plot_dir, "piecewise_universality_scores_violin.png"),
+       p,
+       units = "in",
+       dpi = 100,
+       height = 4,
+       width = 7)
+
+p <- ggplot(plot_df %>% filter(sign != "omit"), aes(x = p1_factor, y = p2)) +
+  geom_jitter(size = 1, shape = 21, alpha = 0.5, fill = "#bbbbbb") +
+  facet_wrap(. ~ sign) +
+  labs(x = "proportion agreement in sign across hosts",
+       y = "average absolute correlation")
+ggsave(file.path(plot_dir, "piecewise_universality_scores_point.png"),
        p,
        units = "in",
        dpi = 100,
