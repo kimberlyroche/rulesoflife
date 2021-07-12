@@ -1,8 +1,7 @@
-# NEED TO TEST THIS!
-
 source("path_fix.R")
 
 library(rulesoflife)
+library(tidyverse)
 
 source("ggplot_fix.R")
 
@@ -15,16 +14,16 @@ for(level in map$level) {
   output_dir <- paste0(map[map$level == level,]$short_name,
                        "_days90_diet25_scale1")
   cat("Evaluating", level, "\n")
+
   rug_obj <- summarize_Sigmas(output_dir = output_dir)
   rug <- rug_obj$rug
+
+  rug_obj_p <- summarize_Sigmas(output_dir = paste0(output_dir, "_fullyscrambled"))
+  rug_p <- rug_obj_p$rug
 
   # ----------------------------------------------------------------------------
   #   Visualize observed vs. null distributions
   # ----------------------------------------------------------------------------
-
-  # Permuted data
-  rug_obj_p <- summarize_Sigmas(output_dir = paste0(output_dir, "_scrambled"))
-  rug_p <- rug_obj_p$rug
 
   vector_observed <- c(rug)
   vector_null <- c(rug_p)
@@ -51,7 +50,6 @@ for(level in map$level) {
          dpi = 100,
          height = 4,
          width = 5)
-  show(p)
 
   # ----------------------------------------------------------------------------
   #   Define a 95% cutoff
@@ -71,6 +69,9 @@ for(level in map$level) {
 
   lower <- mean(vector_null) - 2*sd(vector_null)
   upper <- mean(vector_null) + 2*sd(vector_null)
+
+  cat("Mean observed correlation:", round(mean(vector_observed), 3), "\n")
+  cat("Median observed correlation:", round(median(vector_observed), 3), "\n")
 
   cat("Lower, upper spurious correlation bounds:",
       round(lower, 3),

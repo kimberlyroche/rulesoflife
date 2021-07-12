@@ -1,23 +1,26 @@
 source("path_fix.R")
 
+library(rulesoflife)
 library(tidyverse)
 library(RColorBrewer)
 
 source("ggplot_fix.R")
 
-distro_filename <- file.path("output", "within_between_distros_diet-none.rds")
+output_dir <- "asv_days90_diet25_scale1_scrambled"
+
+distro_filename <- file.path("output", "scrambled_within_between_distros_diet-none.rds")
 if(!file.exists(distro_filename)) {
   stop(paste0("File not found: ", distro_filename, "\n"))
 }
 distros <- readRDS(distro_filename)
 
-rug_filename <- file.path("output", "rug_asv.rds")
-if(file.exists(rug_filename)) {
-  rug_obj <- readRDS(rug_filename)
-} else {
+rug_filename <- file.path("output", "rug_asv_scrambled.rds")
+# if(file.exists(rug_filename)) {
+#   rug_obj <- readRDS(rug_filename)
+# } else {
   rug_obj <- summarize_Sigmas(output_dir)
   saveRDS(rug_obj, file = rug_filename)
-}
+# }
 universalities <- apply(rug_obj$rug, 2, calc_universality_score)
 consensus_signs <- apply(rug_obj$rug, 2, calc_consensus_sign)
 

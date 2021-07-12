@@ -2,17 +2,19 @@
 % Please edit documentation in R/parse_data.R
 \name{get_reference_hosts}
 \alias{get_reference_hosts}
-\title{Find host with largest number of samples in each social group}
+\title{Find host with largest numbers of samples in each social group}
 \usage{
-get_reference_hosts(host_sample_min = 75)
+get_reference_hosts(host_sample_min = 75, n_per_group = 1)
 }
 \arguments{
 \item{host_sample_min}{minimum sample number for host inclusion in the
 filtered data set}
+
+\item{n_per_group}{number of hosts to return per group}
 }
 \value{
 vector of host short names
 }
 \description{
-Find host with largest number of samples in each social group
+Find host with largest numbers of samples in each social group
 }

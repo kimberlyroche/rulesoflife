@@ -113,7 +113,7 @@ filter_data <- function(tax_level = "ASV", host_sample_min = 75,
 #' set
 #' @param sample_threshold minimum proportion of samples within each host at
 #' which a taxon must be observed at or above count_threshold
-#' @param alr_median if TRUE, uses the taxon with the median coefficient of 
+#' @param alr_median if TRUE, uses the taxon with the median coefficient of
 #' variation in relative abundance as the ALR reference taxon, otherwise uses
 #' the taxon in the last index in the count table
 #' @details Together count_threshold and sample_threshold specify a minimum
@@ -388,22 +388,23 @@ get_host_social_groups <- function(host_list) {
   return(results)
 }
 
-#' Find host with largest number of samples in each social group
+#' Find host with largest numbers of samples in each social group
 #'
 #' @param host_sample_min minimum sample number for host inclusion in the
 #' filtered data set
+#' @param n_per_group number of hosts to return per group
 #' @return vector of host short names
 #' @import dplyr
 #' @export
-get_reference_hosts <- function(host_sample_min = 75) {
-  metadata <- load_data()$metadata
+get_reference_hosts <- function(host_sample_min = 75, n_per_group = 1) {
+  metadata <- load_data(host_sample_min = host_sample_min)$metadata
   # For each group, select the host with the largest number of  samples in that
   # group ()
   grp_assignments <- as.data.frame(metadata %>%
                                      select(grp, sname) %>%
                                      group_by(grp) %>%
                                      count(sname) %>%
-                                     slice_max(order_by = n, n = 1) %>%
+                                     slice_max(order_by = n, n = n_per_group) %>%
                                      filter(n > host_sample_min) %>%
                                      arrange(grp) %>%
                                      select(grp, sname))
