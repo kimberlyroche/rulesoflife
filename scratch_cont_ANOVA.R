@@ -1,3 +1,5 @@
+source("path_fix.R")
+
 library(rulesoflife)
 library(fido)
 library(driver)
