@@ -14,7 +14,7 @@ if(!file.exists(distro_filename)) {
 }
 distros <- readRDS(distro_filename)
 
-rug_filename <- file.path("output", "rug_asv_scrambled.rds")
+# rug_filename <- file.path("output", "rug_asv.rds")
 # if(file.exists(rug_filename)) {
 #   rug_obj <- readRDS(rug_filename)
 # } else {

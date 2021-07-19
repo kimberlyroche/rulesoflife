@@ -360,9 +360,3 @@ ggplot(plot_df, aes(x = x, fill = type)) +
 # plot_df <- data.frame(PC1 = Frechet_mean$pco[,1], PC2 = Frechet_mean$pco[,2])
 # ggplot(plot_df, aes(x = PC1, y = PC2)) +
 #   geom_point(size = 3, shape = 21, fill = "red")
-
-
-
-
-
-

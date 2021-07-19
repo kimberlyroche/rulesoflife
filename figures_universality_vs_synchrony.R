@@ -7,7 +7,7 @@ library(driver)
 source("ggplot_fix.R")
 
 plot_dir <- check_dir(c("output", "figures"))
-output_dir <- "asv_days90_diet25_scale1"
+output_dir <- "asv_days90_diet25_scale1_scrambled"
 
 data <- load_data(tax_level = "ASV")
 metadata <- data$metadata

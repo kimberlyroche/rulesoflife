@@ -12,9 +12,9 @@ option_list = list(
               help = "MAP estimation flag", metavar = "logical"),
   make_option(c("--output_dir"), type = "character", default = NULL,
               help = "output subdirectory of model fit directory", metavar = "character"),
-  make_option(c("--days_min_cor"), type = "numeric", default = 0,
+  make_option(c("--days_min_cor"), type = "numeric", default = 90,
               help = "days to minimum autocorrelation", metavar = "numeric"),
-  make_option(c("--diet_weight"), type = "numeric", default = 0,
+  make_option(c("--diet_weight"), type = "numeric", default = 0.25,
               help = "proportion of variance contributed to sample kernel by diet PCs", metavar = "numeric"),
   make_option(c("--var_scale_taxa"), type = "numeric", default = 1,
               help = "scale associated with taxonomic covariance matrix", metavar = "numeric"),
@@ -46,13 +46,11 @@ if(!(opt$tax_level %in% c("phylum", "family", "ASV"))) {
   data <- load_data(tax_level = opt$tax_level)
 # }
 
-MAP <- opt$MAP
 fit <- fit_GP(sname = opt$sname,
               counts = data$counts,
               metadata = data$metadata,
               output_dir = opt$output_dir,
-              MAP = MAP,
-              diet_weight = opt$diet_weight,
+              MAP = opt$MAP,
               days_to_min_autocorrelation = opt$days_min_cor,
               scramble_spacing = opt$scramble_spacing,
               scramble_order = opt$scramble_order,
