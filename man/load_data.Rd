@@ -24,7 +24,7 @@ set}
 \item{sample_threshold}{minimum proportion of samples within each host at
 which a taxon must be observed at or above count_threshold}
 
-\item{alr_median}{if TRUE, uses the taxon with the median coefficient of 
+\item{alr_median}{if TRUE, uses the taxon with the median coefficient of
 variation in relative abundance as the ALR reference taxon, otherwise uses
 the taxon in the last index in the count table}
 }

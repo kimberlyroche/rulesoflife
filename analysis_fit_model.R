@@ -20,8 +20,10 @@ option_list = list(
               help = "scale associated with taxonomic covariance matrix", metavar = "numeric"),
   make_option(c("--var_scale_samples"), type = "numeric", default = 1,
               help = "scale associated with sample covariance matrix", metavar = "numeric"),
-  make_option(c("--scrambletime"), type = "logical", default = FALSE,
-              help = "permuted data in time across hosts", metavar = "logical"),
+  make_option(c("--scramble_spacing"), type = "logical", default = FALSE,
+              help = "scrambled sampling frequency", metavar = "logical"),
+  make_option(c("--scramble_order"), type = "logical", default = FALSE,
+              help = "scrambled sampling order", metavar = "logical"),
   make_option(c("--use_adam"), type = "logical", default = FALSE,
               help = "use Adam for optimization", metavar = "logical")
 );
@@ -37,7 +39,12 @@ if(!(opt$tax_level %in% c("phylum", "family", "ASV"))) {
   stop("Invalid taxonomic level!")
 }
 
-data <- load_data(tax_level = opt$tax_level)
+# Load
+# if(opt$scramble) {
+#   data <- load_scrambled_data(tax_level = opt$tax_level)
+# } else {
+  data <- load_data(tax_level = opt$tax_level)
+# }
 
 fit <- fit_GP(sname = opt$sname,
               counts = data$counts,
@@ -45,8 +52,6 @@ fit <- fit_GP(sname = opt$sname,
               output_dir = opt$output_dir,
               MAP = opt$MAP,
               days_to_min_autocorrelation = opt$days_min_cor,
-              diet_weight = opt$diet_weight,
-              var_scale_taxa = opt$var_scale_taxa,
-              var_scale_samples = opt$var_scale_samples,
-              use_adam = opt$use_adam,
-              scramble_time = opt$scramble)
+              scramble_spacing = opt$scramble_spacing,
+              scramble_order = opt$scramble_order,
+              use_adam = opt$use_adam)

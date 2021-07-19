@@ -18,8 +18,8 @@
 #' covariance over samples
 #' @param use_adam optimize with Adam (occasionally this converges more reliably
 #' that default L-BFGS)
-#' @param scramble_time optional flag to scramble a host's observeations in
-#' time; we'll use this to generate a "null" version of synchrony across hosts
+#' @param scramble_spacing optional flag to scramble a host's sampling frequency
+#' @param scramble_order optional flag to scramble a host's sample order
 #' @return fidofit object
 #' @import fido
 #' @import driver
@@ -28,7 +28,7 @@
 fit_GP <- function(sname, counts, metadata, output_dir, MAP = TRUE,
                    days_to_min_autocorrelation = 90, diet_weight = 0,
                    var_scale_taxa = 1, var_scale_samples = 1, use_adam = FALSE,
-                   scramble_time = FALSE) {
+                   scramble_spacing = FALSE, scramble_order = FALSE) {
   if(diet_weight > 1 | diet_weight < 0) {
     stop("Invalid weight assigned to diet components of kernel!")
   }
@@ -40,10 +40,6 @@ fit_GP <- function(sname, counts, metadata, output_dir, MAP = TRUE,
   Y <- sub_counts
   N <- ncol(Y)
   D <- nrow(Y)
-
-  if(scramble_time) {
-    Y <- Y[,sample(1:ncol(Y))]
-  }
 
   # Design matrix
   baseline_date <- sub_md$collection_date[1]
@@ -63,6 +59,25 @@ fit_GP <- function(sname, counts, metadata, output_dir, MAP = TRUE,
   X <- rbind(X, sub_md$diet_PC1)
   X <- rbind(X, sub_md$diet_PC2)
   X <- rbind(X, sub_md$diet_PC3)
+
+  # The code below preserved the order of samples (covariates and observations)
+  # but breaks up the "clustering" of samples in time.
+  if(scramble_spacing) {
+    first_day <- X[1,1]
+    last_day <- X[1,ncol(X)]
+    n_days <- ncol(X)
+    resampled_days <- c(first_day,
+                        sort(sample((first_day+1):(last_day-1), size = n_days - 2)),
+                        last_day)
+    X[1,] <- resampled_days
+  }
+
+  # The code below independently shuffles the order of diet covariates and
+  # abundance observations.
+  if(scramble_order) {
+    X[2:nrow(X),] <- X[2:nrow(X),sample(1:ncol(X))]
+    Y <- Y[,sample(1:ncol(Y))]
+  }
 
   # Prior/hyperparameters for taxonomic covariance and sample covariance
   min_correlation <- 0.1

@@ -15,7 +15,8 @@ fit_GP(
   var_scale_taxa = 1,
   var_scale_samples = 1,
   use_adam = FALSE,
-  scramble_time = FALSE
+  scramble_spacing = FALSE,
+  scramble_order = FALSE
 )
 }
 \arguments{
@@ -47,8 +48,9 @@ covariance over samples}
 \item{use_adam}{optimize with Adam (occasionally this converges more reliably
 that default L-BFGS)}
 
-\item{scramble_time}{optional flag to scramble a host's observeations in
-time; we'll use this to generate a "null" version of synchrony across hosts}
+\item{scramble_spacing}{optional flag to scramble a host's sampling frequency}
+
+\item{scramble_order}{optional flag to scramble a host's sample order}
 }
 \value{
 fidofit object

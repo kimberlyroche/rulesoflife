@@ -5,9 +5,10 @@ library(fido)
 library(shapes)
 library(matrixsampling)
 library(tidyverse)
+library(lme4)
 
 testing <- FALSE
-use_corr <- TRUE
+use_corr <- FALSE
 
 # ------------------------------------------------------------------------------
 #   Get mean covariance for all hosts
@@ -24,7 +25,11 @@ iter <- fit$iter
 limit <- length(file_list)
 
 mean_matrices <- list()
-save_path <- file.path("output", "mean_matrices.rds")
+if(use_corr) {
+  save_path <- file.path("output", "mean_matrices_corr.rds")
+} else {
+  save_path <- file.path("output", "mean_matrices.rds")
+}
 if(!file.exists(save_path)) {
   # Full posteriors
   for(f in 1:limit) {
@@ -37,6 +42,7 @@ if(!file.exists(save_path)) {
     cat(paste0("Saving covariance for ", fit$sname, "...\n"))
     mean_matrices[[fit$sname]] <- apply(fit$Sigma, c(1,2), mean)
   }
+  saveRDS(mean_matrices, file = save_path)
 } else {
   mean_matrices <- readRDS(save_path)
 }
@@ -89,10 +95,83 @@ if(testing) {
   }
 }
 
-# plot_kernel_or_cov_matrix(Frechet_mean$mean)
-# plot_kernel_or_cov_matrix(apply(S, c(1,2), mean))
+plot_kernel_or_cov_matrix(Frechet_mean$mean)
+ggsave(file.path("output", "figures",
+                 paste0("Frechet_", ifelse(use_corr, "cor", "cov"),
+                        ".png")),
+       dpi = 100,
+       units = "in",
+       height = 4,
+       width = 5)
 
-quit()
+plot_kernel_or_cov_matrix(S[,,sample(1:limit, size = 1)])
+ggsave(file.path("output", "figures",
+                 paste0("Frechet_", ifelse(use_corr, "cor", "cov"),
+                        "_sample.png")),
+       dpi = 100,
+       units = "in",
+       height = 4,
+       width = 5)
+
+# ------------------------------------------------------------------------------
+#   Calculate distribution of distances to mean
+# ------------------------------------------------------------------------------
+
+mean_dist <- c()
+for(i in 1:limit) {
+  mean_dist <- c(mean_dist, distcov(Frechet_mean$mean, S[,,i], method = "Riemannian")^2)
+}
+
+plot_df <- data.frame(x = mean_dist)
+ggplot(plot_df, aes(x = x)) +
+  geom_histogram(color = "#ffffff") +
+  labs(x = paste0("Riemannian distance to Frechet mean (",
+                  ifelse(use_corr, "correlation", "covariance"),
+                  ")"))
+ggsave(file.path("output", "figures", paste0("distances_", ifelse(use_corr, "cor", "cov"), ".png")),
+       dpi = 100,
+       units = "in",
+       height = 4,
+       width = 5)
+
+# ------------------------------------------------------------------------------
+#   Distances across individuals + random effects model
+# ------------------------------------------------------------------------------
+
+pedigree <- readRDS(file.path("input", "pedigree_56hosts.RDS"))
+
+# Make into data.frame
+pedigree <- cbind(host1 = rownames(pedigree), as.data.frame(pedigree))
+pedigree <- pedigree %>%
+  pivot_longer(!host1, names_to = "host2", values_to = "relatedness") %>%
+  distinct() %>%
+  filter(host1 != host2)
+
+# Apply distcov to all combos to generate new column
+# This takes ~1-2 min.
+host_list <- names(mean_matrices)
+pedigree$dist <- sapply(1:nrow(pedigree), function(i) {
+  distcov(S[,,which(host_list == pedigree$host1[i])],
+          S[,,which(host_list == pedigree$host2[i])],
+          method = "Riemannian")
+})
+
+# Plot Riemannian distance vs. pedigree (R^2)
+ggplot(pedigree, aes(x = relatedness, y = dist)) +
+  geom_point(size = 2, shape = 21, fill = "#bbbbbb") +
+  labs(x = "host-pair relatedness",
+       y = "distance between host-pair covariance matrices")
+
+cat(paste0("R^2: ", round(cor(pedigree$relatedness, pedigree$dist), 3), "\n"))
+
+# Apply lmer
+res <- lm(dist ~ 1 + relatedness, data = pedigree)
+pred <- predict(res, newdata = pedigree)
+
+var(pedigree$dist)
+var(res$residuals)
+
+summary(res)
 
 # ------------------------------------------------------------------------------
 #   Get mean covariance for each social group
@@ -151,7 +230,6 @@ for(i in 1:K) {
   idx_i <- which(social_groups$grp == grp)
   for(j in idx_i) {
     d <- distcov(S[,,j], group_Frechet_means[[grp]]$mean, method = "Riemannian")^2
-    print(d)
     within_sum <- within_sum + d
   }
 }
@@ -160,8 +238,8 @@ denominator <- within_sum / (N-K)
 ratio <- numerator / denominator
 ratio
 
-plot(density(rf(1000, K-1, N-K)))
-pf(ratio, K-1, N-K)
+# plot(density(rf(1000, K-1, N-K)))
+1 - pf(ratio, K-1, N-K)
 
 length(group_Frechet_means)
 
@@ -173,64 +251,87 @@ plot_kernel_or_cov_matrix(group_Frechet_means[[unique_social_groups[3]]]$mean)
 plot_kernel_or_cov_matrix(group_Frechet_means[[unique_social_groups[4]]]$mean)
 plot_kernel_or_cov_matrix(group_Frechet_means[[unique_social_groups[5]]]$mean)
 
+# ------------------------------------------------------------------------------
+#   Repeat for sex
+# ------------------------------------------------------------------------------
 
+sexes <- as.data.frame(load_data()$metadata %>%
+                         select(sname, sex) %>%
+                         distinct())$sex
+unique_sexes <- unique(sexes)
 
+group_Frechet_means <- list()
+for(grp in unique_sexes) {
+  if(testing) {
+    # Just sub element-wise mean
+    Frechet_mean <- list(mean = apply(S[,,sexes == grp], c(1,2), mean))
+    group_Frechet_means[[grp]] <- Frechet_mean
+  } else {
+    stop("Only implemented for approx. case!")
+  }
+}
 
+K <- 2
+N <- length(sexes)
+between_sum <- 0
+for(i in 1:K) {
+  grp <- unique_sexes[i]
+  n_i <- sum(sexes == grp)
+  d <- distcov(group_Frechet_means[[grp]]$mean, Frechet_mean$mean, method = "Riemannian")^2
+  between_sum <- between_sum + (n_i * d)
+}
+numerator <- between_sum / (K-1)
 
+within_sum <- 0
+for(i in 1:K) {
+  grp <- unique_sexes[i]
+  idx_i <- which(sexes == grp)
+  for(j in idx_i) {
+    d <- distcov(S[,,j], group_Frechet_means[[grp]]$mean, method = "Riemannian")^2
+    within_sum <- within_sum + d
+  }
+}
+denominator <- within_sum / (N-K)
 
+ratio <- numerator / denominator
+ratio
 
+# plot(density(rf(1000, K-1, N-K)))
+1 - pf(ratio, K-1, N-K)
 
+# ------------------------------------------------------------------------------
+#   Permute each individual's covariance matrix and compute distance to the
+#   mean (here I'm using element-wise mean for time but it should be close)
+# ------------------------------------------------------------------------------
 
+perm_S <- S
+for(i in 1:dim(perm_S)[3]) {
+  scramble_idx <- sample(1:dim(perm_S)[1])
+  perm_S[,,i] <- perm_S[scramble_idx,scramble_idx,i]
+}
 
+# Element-wise mean
+mean_perm_S <- apply(perm_S, c(1,2), mean)
 
+mean_perm_dist <- c()
+for(i in 1:limit) {
+  mean_perm_dist <- c(mean_perm_dist, distcov(mean_perm_S, perm_S[,,i], method = "Riemannian")^2)
+}
 
-# # ------------------------------------------------------------------------------
-# #   Calculate distribution of distances to mean
-# # ------------------------------------------------------------------------------
-#
-# mean_dist <- c()
-# for(i in 1:limit) {
-#   mean_dist <- c(mean_dist, distcov(Frechet_mean$mean, S[,,i], method = "Riemannian")^2)
-# }
-#
-# plot_df <- data.frame(x = mean_dist)
-# ggplot(plot_df, aes(x = x)) +
-#   geom_histogram(color = "#ffffff") +
-#   labs(x = "Riemannian distance to Frechet mean")
-#
-# # ------------------------------------------------------------------------------
-# #   Permute each individual's covariance matrix and compute distance to the
-# #   mean (here I'm using element-wise mean for time but it should be close)
-# # ------------------------------------------------------------------------------
-#
-# perm_S <- S
-# for(i in 1:dim(perm_S)[3]) {
-#   scramble_idx <- sample(1:dim(perm_S)[1])
-#   perm_S[,,i] <- perm_S[scramble_idx,scramble_idx,i]
-# }
-#
-# # Element-wise mean
-# mean_perm_S <- apply(perm_S, c(1,2), mean)
-#
-# mean_perm_dist <- c()
-# for(i in 1:limit) {
-#   mean_perm_dist <- c(mean_perm_dist, distcov(mean_perm_S, perm_S[,,i], method = "Riemannian")^2)
-# }
-#
-# plot_df <- data.frame(x = mean_dist, type = "true")
-# plot_df <- rbind(plot_df,
-#                  data.frame(x = mean_perm_dist, type = "permuted"))
-# plot_df$type <- factor(plot_df$type, levels = c("true", "permuted"))
-# levels(plot_df$type) <- c("orig. estimates", "permuted")
-# ggplot(plot_df, aes(x = x, fill = type)) +
-#   geom_histogram(color = "#ffffff") +
-#   # scale_fill_manual(values = c("#865EC4", "#7BBF37")) +
-#   scale_fill_manual(values = c("#BC8999", "#9BB49D")) +
-#   xlim(c(0, max(plot_df$x))) +
-#   labs(fill = "Data type",
-#        x = "distance to mean")
-#
-# 1 - mean(mean_dist)/mean(mean_perm_dist)
+plot_df <- data.frame(x = mean_dist, type = "true")
+plot_df <- rbind(plot_df,
+                 data.frame(x = mean_perm_dist, type = "permuted"))
+plot_df$type <- factor(plot_df$type, levels = c("true", "permuted"))
+levels(plot_df$type) <- c("orig. estimates", "permuted")
+ggplot(plot_df, aes(x = x, fill = type)) +
+  geom_histogram(color = "#ffffff") +
+  # scale_fill_manual(values = c("#865EC4", "#7BBF37")) +
+  scale_fill_manual(values = c("#BC8999", "#9BB49D")) +
+  xlim(c(0, max(plot_df$x))) +
+  labs(fill = "Data type",
+       x = "distance to mean")
+
+1 - mean(mean_dist)/mean(mean_perm_dist)
 
 
 
@@ -259,9 +360,3 @@ plot_kernel_or_cov_matrix(group_Frechet_means[[unique_social_groups[5]]]$mean)
 # plot_df <- data.frame(PC1 = Frechet_mean$pco[,1], PC2 = Frechet_mean$pco[,2])
 # ggplot(plot_df, aes(x = PC1, y = PC2)) +
 #   geom_point(size = 3, shape = 21, fill = "red")
-
-
-
-
-
-
