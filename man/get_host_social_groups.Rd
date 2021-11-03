@@ -5,10 +5,10 @@
 \title{Assign host social group as social group in which a given host has the
 majority of its samples}
 \usage{
-get_host_social_groups(host_list)
+get_host_social_groups(host_list = NULL)
 }
 \arguments{
-\item{host_list}{list of host short names}
+\item{host_list}{optional list of host short names}
 }
 \value{
 list of host short name to social group mappings

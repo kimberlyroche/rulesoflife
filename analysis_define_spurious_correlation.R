@@ -5,17 +5,22 @@ library(tidyverse)
 
 source("ggplot_fix.R")
 
-plot_dir <- check_dir(c("output", "figures"))
-
 map <- data.frame(level = c("phylum", "family", "ASV"),
                   short_name = c("phy", "fam", "asv"))
 
 for(level in map$level) {
-  output_dir <- paste0(map[map$level == level,]$short_name,
-                       "_days90_diet25_scale1")
   cat("Evaluating", level, "\n")
 
-  rug_obj <- summarize_Sigmas(output_dir = output_dir)
+  short_name <- map[map$level == level,]$short_name
+  output_dir <- paste0(short_name, "_days90_diet25_scale1")
+
+  rug_fn <- file.path("output", paste0("rug_", short_name, ".rds"))
+  if(file.exists(rug_fn)) {
+    rug_obj <- readRDS(rug_fn)
+  } else {
+    rug_obj <- summarize_Sigmas(output_dir = output_dir)
+    saveRDS(rug_obj, rug_fn)
+  }
   rug <- rug_obj$rug
 
   rug_obj_p <- summarize_Sigmas(output_dir = paste0(output_dir, "_fullyscrambled"))

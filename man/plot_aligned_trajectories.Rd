@@ -14,6 +14,7 @@ plot_aligned_trajectories(
   tax_label2,
   metadata,
   bind_taxa = FALSE,
+  return_plot = FALSE,
   file_tag = NULL
 )
 }
@@ -32,6 +33,8 @@ which to save the predictions}
 \item{metadata}{metadata data.frame (with sname and collection_date column)}
 
 \item{bind_taxa}{plot all trajectories for taxon 1 together; ditto taxon 2}
+
+\item{return_plot}{if TRUE, returns the ggplot2 object instead of saving it}
 
 \item{file_tag}{if not NULL, a tag to append to the saved filename}
 }
