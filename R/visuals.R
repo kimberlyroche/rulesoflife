@@ -326,7 +326,6 @@ plot_rug <- function(rug,
           axis.ticks.y = element_blank()) +
     labs(fill = "correlation\nmetric")
 
-  output_dir <- check_dir(c("output", "figures", "rug_plots"))
   if(!is.null(cluster_obj)) {
     p <- p +
       theme(axis.text = element_text(size = 10),
@@ -340,7 +339,7 @@ plot_rug <- function(rug,
       scale_y_reverse() +
       theme_nothing()
     if(!is.null(save_name)) {
-      png(file.path(output_dir, paste0(save_name, ".png")), height = 600, width = 1200)
+      png(save_name, height = 600, width = 1200)
     }
     grid.newpage()
     print(pd, vp = viewport(x = 0.10, y = 0.515, width = 0.15, height = 0.995))
@@ -356,7 +355,7 @@ plot_rug <- function(rug,
     if(is.null(save_name)) {
       show(p)
     } else {
-      ggsave(file.path(output_dir, paste0(save_name, ".png")),
+      ggsave(file.path(output_dir, save_name),
              plot = p,
              dpi = 100,
              units = "in",
@@ -529,13 +528,15 @@ get_predictions_host_list <- function(host_list, output_dir, metadata) {
 #' @param tax_label2 readable label for second taxon
 #' @param metadata metadata data.frame (with sname and collection_date column)
 #' @param bind_taxa plot all trajectories for taxon 1 together; ditto taxon 2
+#' @param return_plot if TRUE, returns the ggplot2 object instead of saving it
 #' @param file_tag if not NULL, a tag to append to the saved filename
 #' @return NULL
 #' @import dplyr
 #' @export
 plot_aligned_trajectories <- function(output_dir, tax_idx1, tax_idx2,
                                       tax_label1, tax_label2, metadata,
-                                      bind_taxa = FALSE, file_tag = NULL) {
+                                      bind_taxa = FALSE, return_plot = FALSE,
+                                      file_tag = NULL) {
   # Pull "reference" hosts
   host_list <- get_reference_hosts()$sname
   # Pull models/predictions
@@ -583,45 +584,56 @@ plot_aligned_trajectories <- function(output_dir, tax_idx1, tax_idx2,
     p <- p + scale_y_continuous(breaks = c(0, -10),
                                 labels = c("taxon 1", "taxon 2")) +
       labs(title = paste0("Correlation: ", tax_label1, " x ", tax_label2))
-    filename <- paste0("aligned_series_coords_", tax_idx1, "-", tax_idx2, "_",
-                       paste0(host_list, collapse = "-"), "_boundtaxa")
-    if(!is.null(file_tag)) {
-      filename <- paste0(filename, "_", file_tag)
+    if(return_plot) {
+      return(p)
+    } else {
+      filename <- paste0("aligned_series_coords_", tax_idx1, "-", tax_idx2, "_",
+                         paste0(host_list, collapse = "-"), "_boundtaxa")
+      if(!is.null(file_tag)) {
+        filename <- paste0(filename, "_", file_tag)
+      }
+      filename <- paste0(filename, ".png")
+      save_dir <- check_dir(c("output", "figures"))
+      ggsave(file.path(save_dir, filename),
+             p,
+             units = "in",
+             height = 3,
+             width = 10)
     }
-    filename <- paste0(filename, ".png")
-    save_dir <- check_dir(c("output", "figures"))
-    ggsave(file.path(save_dir, filename),
-           p,
-           units = "in",
-           height = 3,
-           width = 10)
   } else {
+    p <- ggplot()
     for(ref_host in host_list) {
       p <- p +
         geom_ribbon(data = pair_df[pair_df$host == ref_host & pair_df$coord == tax_idx1, ],
                     aes(x = day, ymin = p25, ymax = p75),
-                    fill = "red",
-                    alpha = 0.33) +
+                    fill = "#2a9d8f",
+                    alpha = 0.8) +
         geom_ribbon(data = pair_df[pair_df$host == ref_host & pair_df$coord == tax_idx2, ],
                     aes(x = day, ymin = p25, ymax = p75),
-                    fill = "blue",
-                    alpha = 0.33)
+                    fill = "#fb8500",
+                    alpha = 0.8)
     }
     p <- p + scale_y_continuous(breaks = -unname(host_centers),
                                 labels = sort(host_list, decreasing = TRUE)) +
-      labs(title = paste0("Correlation: ", tax_label1, " x ", tax_label2))
-    filename <- paste0("aligned_series_coords_", tax_idx1, "-", tax_idx2, "_",
-                       paste0(host_list, collapse = "-"))
-    if(!is.null(file_tag)) {
-      filename <- paste0(filename, "_", file_tag)
+      labs(title = paste0("Correlation: ", tax_label1, " x ", tax_label2),
+           x = "day from common baseline")
+
+    if(return_plot) {
+      return(p)
+    } else {
+      filename <- paste0("aligned_series_coords_", tax_idx1, "-", tax_idx2, "_",
+                         paste0(host_list, collapse = "-"))
+      if(!is.null(file_tag)) {
+        filename <- paste0(filename, "_", file_tag)
+      }
+      filename <- paste0(filename, ".png")
+      save_dir <- check_dir(c("output", "figures"))
+      ggsave(file.path(save_dir, filename),
+             p,
+             units = "in",
+             height = length(host_list),
+             width = 10)
     }
-    filename <- paste0(filename, ".png")
-    save_dir <- check_dir(c("output", "figures"))
-    ggsave(file.path(save_dir, filename),
-           p,
-           units = "in",
-           height = length(host_list),
-           width = 10)
   }
 }
 

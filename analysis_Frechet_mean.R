@@ -109,4 +109,3 @@ saveRDS(Frechet_mean,
                                           ifelse(use_group > 0, paste0("_group-", use_group), ""),
                                           ifelse(!is.null(use_sex), paste0("_sex-", use_sex), ""),
                                           ".rds")))
-

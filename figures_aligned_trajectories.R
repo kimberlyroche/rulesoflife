@@ -31,12 +31,13 @@ plot_trajectories_from_idx <- function(idx, rug_obj, data, file_tag) {
   tax_label2 <- get_tax_label(data$taxonomy, tax_idx2, "clr")
 
   # Note: this takes ~10 min. at the ASV level!
-  plot_aligned_trajectories(output_dir,
+  p <- plot_aligned_trajectories(output_dir,
                             tax_idx1 = tax_idx1,
                             tax_idx2 = tax_idx2,
                             tax_label1 = tax_label1,
                             tax_label2 = tax_label2,
                             metadata = data$metadata,
+                            return_plot = FALSE,
                             file_tag = file_tag)
 }
 

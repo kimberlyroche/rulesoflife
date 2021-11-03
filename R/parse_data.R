@@ -370,11 +370,11 @@ load_predictions <- function(sname, output_dir, generate = FALSE) {
 #' Assign host social group as social group in which a given host has the
 #' majority of its samples
 #'
-#' @param host_list list of host short names
+#' @param host_list optional list of host short names
 #' @return list of host short name to social group mappings
 #' @import dplyr
 #' @export
-get_host_social_groups <- function(host_list) {
+get_host_social_groups <- function(host_list = NULL) {
   metadata <- load_data()$metadata
   results <- as.data.frame(metadata %>%
                              select(sname, grp) %>%
@@ -383,6 +383,10 @@ get_host_social_groups <- function(host_list) {
                              slice_max(order_by = n, n = 1) %>%
                              arrange(sname) %>%
                              select(sname, grp))
+  if(!is.null(host_list)) {
+    results <- results %>%
+      filter(sname %in% host_list)
+  }
   # grp_assignments <- results$grp
   # names(grp_assignments) <- results$sname
   return(results)
