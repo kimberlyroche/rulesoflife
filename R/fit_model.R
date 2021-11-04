@@ -17,6 +17,8 @@
 #' @param var_scale_samples scale of the hyperparameter associated with the
 #' covariance over samples
 #' @param use_adam optimize with Adam (occasionally this converges more reliably
+#' @param scramble_sample optional flag to scramble taxonomic identity within a
+#' sample
 #' that default L-BFGS)
 #' @param scramble_spacing optional flag to scramble a host's sampling frequency
 #' @param scramble_order optional flag to scramble a host's sample order
@@ -28,7 +30,7 @@
 fit_GP <- function(sname, counts, metadata, output_dir, MAP = TRUE,
                    days_to_min_autocorrelation = 90, diet_weight = 0,
                    var_scale_taxa = 1, var_scale_samples = 1, use_adam = FALSE,
-                   scramble_spacing = FALSE, scramble_order = FALSE) {
+                   scramble_sample = FALSE, scramble_spacing = FALSE, scramble_order = FALSE) {
   if(diet_weight > 1 | diet_weight < 0) {
     stop("Invalid weight assigned to diet components of kernel!")
   }
@@ -59,6 +61,17 @@ fit_GP <- function(sname, counts, metadata, output_dir, MAP = TRUE,
   X <- rbind(X, sub_md$diet_PC1)
   X <- rbind(X, sub_md$diet_PC2)
   X <- rbind(X, sub_md$diet_PC3)
+
+  # Scramble taxa within a sample (preserving relative abundance patterns) so we can
+  # assess the magnitude of random correlation between logratio taxa
+  if(scramble_sample) {
+    # Here I'm keeping the same ALR reference because this seems like a more "fair"
+    # comparison, but once converted to CLR correlations, this appears not to make
+    # much difference to the distribution of correlations
+    Y_bottom <- apply(Y[1:(D-1),], 2, function(x) sample(x))
+    Y[1:(D-1),] <- Y_bottom
+    #Y <- apply(Y, 2, function(x) sample(x))
+  }
 
   # The code below preserved the order of samples (covariates and observations)
   # but breaks up the "clustering" of samples in time.
