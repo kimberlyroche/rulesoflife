@@ -138,11 +138,9 @@ ggsave(file.path(plot_dir, "F1d.svg"),
 #   F2a - three rugs
 # ------------------------------------------------------------------------------
 
-# Used pre-computed rugs; but later we want to check that we'll get the same
-# results from scratch!
-rugs <- list(a = readRDS(file.path("output", "rug_phylum.rds")),
-             b = readRDS(file.path("output", "rug_family.rds")),
-             c = readRDS(file.path("output", "rug_asv.rds")))
+rugs <- list(a = summarize_Sigmas(output_dir = "phy_days90_diet25_scale1"),
+             b = summarize_Sigmas(output_dir = "fam_days90_diet25_scale1"),
+             c = summarize_Sigmas(output_dir = "asv_days90_diet25_scale1"))
 
 plots <- list()
 legend <- NULL
@@ -331,49 +329,75 @@ ggsave("output/figures/F1c.svg",
 #
 # ------------------------------------------------------------------------------
 
+# These are hard-coded. See `figures_supplemental.R` for the calculation of
+# "important" universality scores from permuted data.
+thresholds <- data.frame(type = factor(c("Phylum", "Family", "ASV")),
+                         x0 = c(0.162, 0.140, 0.136))
+
 # ------------------------------------------------------------------------------
 #   F3a - "hockeystick" plot
 # ------------------------------------------------------------------------------
 
-asv_scores_pieces <- apply(rugs$b$rug, 2, function(x) calc_universality_score(x, return_pieces = TRUE))
+asv_scores_pieces <- apply(rugs$c$rug, 2, function(x) calc_universality_score(x, return_pieces = TRUE))
 score_df <- data.frame(x = asv_scores_pieces[1,], y = asv_scores_pieces[2,])
 
-theoretical_scores <- NULL
-for(x in seq(from = 0.5, to = 1, length.out = 30)) {
-  for(y in seq(from = 0, to = 1, length.out = 30)) {
-    theoretical_scores <- rbind(theoretical_scores,
-                                data.frame(x = x, y = y, z = x*y))
+# Original version, with a background indicating strength of potential scores
+if(FALSE) {
+  theoretical_scores <- NULL
+  for(x in seq(from = 0.5, to = 1, length.out = 30)) {
+    for(y in seq(from = 0, to = 1, length.out = 30)) {
+      theoretical_scores <- rbind(theoretical_scores,
+                                  data.frame(x = x, y = y, z = x*y))
+    }
   }
+
+  p1 <- ggplot() +
+    geom_tile(data = theoretical_scores,
+              mapping = aes(x = x, y = y, fill = z)) +
+    scale_fill_distiller(palette = "Blues",
+                         trans = "reverse",
+                         breaks = seq(from = 0.1, to = 0.9, length.out = 5),
+                         guide = guide_colorbar(frame.colour = "black")) +
+    geom_point(data = score_df,
+               mapping = aes(x = x, y = y),
+               size = 2,
+               shape = 21,
+               stroke = 0.5,
+               color = "#222222",
+               fill = "#aaaaaa") +
+    theme_bw() +
+    theme(legend.title = element_text(margin = margin(b = 5))) +
+    labs(x = "proportion shared sign",
+         y = "median association strength",
+         fill = "Universality score") +
+    scale_x_continuous(expand = c(0,0)) +
+    scale_y_continuous(expand = c(0,0))
 }
 
-p1 <- ggplot() +
-  geom_tile(data = theoretical_scores,
-            mapping = aes(x = x, y = y, fill = z)) +
-  scale_fill_distiller(palette = "Blues",
-                       trans = "reverse",
-                       breaks = seq(from = 0.1, to = 0.9, length.out = 5),
-                       guide = guide_colorbar(frame.colour = "black")) +
-  geom_point(data = score_df,
-             mapping = aes(x = x, y = y),
+# Additional labelings
+# 1) Consensus sign
+score_df$sign <- apply(rugs$c$rug, 2, calc_consensus_sign)
+score_df$sign <- factor(score_df$sign, levels = c(1, -1))
+levels(score_df$sign) <- c("positive", "negative")
+# 2) Percent significant observations for this taxon pair
+score_df$signif <- apply(rugs$c$rug, 2, function(x) {
+  sum(x > thresholds %>% filter(type == "ASV") %>% pull(x0))/length(x)
+})
+
+p1 <- ggplot(score_df %>% filter(sign != 0)) +
+  geom_point(mapping = aes(x = x, y = y, fill = signif, color = sign),
              size = 2,
              shape = 21,
-             stroke = 0.5,
-             color = "#222222",
-             fill = "#aaaaaa") +
+             stroke = 1) +
+  scale_fill_distiller(palette = "PuRd", direction = 1) +
+  scale_color_manual(values = c("#000000", "#888888")) +
   theme_bw() +
+  ylim(c(0,1)) +
   theme(legend.title = element_text(margin = margin(b = 5))) +
   labs(x = "proportion shared sign",
-       y = "mean association strength",
-       fill = "Universality score") +
-  scale_x_continuous(expand = c(0,0)) +
-  scale_y_continuous(expand = c(0,0))
-p1
-# ggsave("output/figures/F3a.svg",
-#        p,
-#        dpi = 100,
-#        units = "in",
-#        height = 5,
-#        width = 7)
+       y = "median association strength",
+       fill = "Proportion\nsignificant\nobservations",
+       color = "Consensus\ncorrelation sign")
 
 # ------------------------------------------------------------------------------
 #   F3b - ggridges plot of universality scores by taxonomic level
@@ -388,8 +412,13 @@ plot_df <- rbind(plot_df,
                  data.frame(score = apply(rugs$c$rug, 2, calc_universality_score),
                             type = "ASV"))
 
-p2 <- ggplot(plot_df, aes(x = score, y = type, height = stat(density), fill = type)) +
+p2 <- ggplot(plot_df, aes(x = score, y = type, fill = type)) +
   geom_density_ridges(stat = "binline", bins = 20, scale = 0.9, draw_baseline = TRUE) +
+  geom_segment(data = thresholds, aes(x = x0, xend = x0, y = as.numeric(type),
+                                      yend = as.numeric(type) + .9),
+               color = "black",
+               size = 1,
+               linetype = "dashed") +
   theme_bw() +
   labs(x = "universality score",
        y = "") +
@@ -400,17 +429,19 @@ p2 <- ggplot(plot_df, aes(x = score, y = type, height = stat(density), fill = ty
   theme(legend.position = "none") +
   xlim(c(-0.05, 0.65)) +
   scale_fill_brewer(palette = "Blues")
-p2
-ggsave("output/figures/F3b.svg",
+
+# Ultimately want to combine these, a laoo
+p <- plot_grid(p1, p2, ncol = 2,
+               rel_widths = c(1.75, 1),
+               labels = c("a", "b"),
+               label_size = 18,
+               # label_x = -0.02,
+               scale = 0.95)
+
+ggsave("output/figures/F3.svg",
        p,
        dpi = 100,
        units = "in",
-       height = 6,
-       width = 6)
-
-# Ultimately want to combine these, a laoo
-p <- plot_grid(p2, p1, ncol = 2)
-p
-
-
+       height = 4,
+       width = 9)
 

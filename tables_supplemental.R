@@ -6,6 +6,34 @@ library(tidyverse)
 source("ggplot_fix.R")
 
 # ------------------------------------------------------------------------------
+#   Print table of all phyla / families / ASVs
+# ------------------------------------------------------------------------------
+
+tax_phy <- load_data(tax_level = "phylum")$taxonomy
+tax_phy <- cbind(id = 1:nrow(tax_phy), tax_phy[,c(2:3,1)])
+write.table(tax_phy,
+            file.path("output", "phy_table.tsv"),
+            sep = "\t",
+            quote = F,
+            row.names = F)
+
+tax_fam <- load_data(tax_level = "family")$taxonomy
+tax_fam <- cbind(id = 1:nrow(tax_fam), tax_fam[,c(2:6,1)])
+write.table(tax_fam,
+            file.path("output", "fam_table.tsv"),
+            sep = "\t",
+            quote = F,
+            row.names = F)
+
+tax_asv <- load_data(tax_level = "ASV")$taxonomy
+tax_asv <- cbind(id = 1:nrow(tax_asv), tax_asv[,c(2:7,1)])
+write.table(tax_asv,
+            file.path("output", "asv_table.tsv"),
+            sep = "\t",
+            quote = F,
+            row.names = F)
+
+# ------------------------------------------------------------------------------
 #   Print table of top 250 universal pairs
 # ------------------------------------------------------------------------------
 
@@ -17,11 +45,7 @@ consensus_signs <- apply(rug_obj$rug, 2, calc_consensus_sign)
 
 scores_df <- data.frame(index = 1:length(scores),
                         score = scores,
-                        sign = consensus_signs) %>%
-  mutate(above_cutoff = ifelse(score > cutoff,
-                               TRUE,
-                               FALSE)) %>%
-  filter(above_cutoff == TRUE)
+                        sign = consensus_signs)
 
 percents <- c(5, 2.5, 1)
 for(percent in percents) {
