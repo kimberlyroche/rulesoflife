@@ -15,6 +15,7 @@ fit_GP(
   var_scale_taxa = 1,
   var_scale_samples = 1,
   use_adam = FALSE,
+  scramble_sample = FALSE,
   scramble_spacing = FALSE,
   scramble_order = FALSE
 )
@@ -45,7 +46,10 @@ taxa}
 \item{var_scale_samples}{scale of the hyperparameter associated with the
 covariance over samples}
 
-\item{use_adam}{optimize with Adam (occasionally this converges more reliably
+\item{use_adam}{optimize with Adam (occasionally this converges more reliably}
+
+\item{scramble_sample}{optional flag to scramble taxonomic identity within a
+sample
 that default L-BFGS)}
 
 \item{scramble_spacing}{optional flag to scramble a host's sampling frequency}
