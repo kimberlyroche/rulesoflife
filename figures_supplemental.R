@@ -5,6 +5,7 @@ library(rulesoflife)
 library(driver)
 library(cowplot)
 library(fido)
+library(scales)
 
 data <- load_data(tax_level = "ASV")
 clr_counts <- clr_array(data$counts + 0.5, parts = 1)
@@ -61,7 +62,6 @@ p <- ggplot(plot_df) +
        x = paste0("PC1 (", round(PoV[1], 3)*100 ,"% variance expl.)"),
        y = paste0("PC2 (", round(PoV[2], 3)*100 ,"% variance expl.)")) +
   theme_bw()
-p
 ggsave("output/figures/SF1.svg",
        plot = p,
        units = "in",
@@ -437,6 +437,69 @@ cat(paste0("Observed values exceeding these thresholds for ASV: ",
 #
 # ------------------------------------------------------------------------------
 
+# These are hard-coded. See `figures_supplemental.R` for the calculation of
+# "important"/significant correlations from permuted data.
+thresholds <- data.frame(type = factor(c("Phylum", "Family", "ASV")),
+                         lower = c(-0.303, -0.256, -0.263),
+                         upper = c(0.149, 0.207, 0.254))
+
+fam_scores_pieces <- apply(rug_fam$rug, 2, function(x) calc_universality_score(x, return_pieces = TRUE))
+fam_score_df <- data.frame(x = fam_scores_pieces[1,], y = fam_scores_pieces[2,])
+
+# Code below copied from `figures_main.R`
+fam_score_df$sign <- apply(rug_fam$rug, 2, calc_consensus_sign)
+fam_score_df$sign <- factor(fam_score_df$sign, levels = c(1, -1))
+levels(fam_score_df$sign) <- c("positive", "negative")
+# 2) Percent significant observations for this taxon pair
+fam_score_df$signif <- apply(rug_fam$rug, 2, function(x) {
+  sum(x < thresholds %>% filter(type == "ASV") %>% pull(lower) | x > thresholds %>% filter(type == "ASV") %>% pull(upper))/length(x)
+})
+
+phy_scores_pieces <- apply(rug_phy$rug, 2, function(x) calc_universality_score(x, return_pieces = TRUE))
+phy_score_df <- data.frame(x = phy_scores_pieces[1,], y = phy_scores_pieces[2,])
+
+# Code below copied from `figures_main.R`
+phy_score_df$sign <- apply(rug_phy$rug, 2, calc_consensus_sign)
+phy_score_df$sign <- factor(phy_score_df$sign, levels = c(1, -1))
+levels(phy_score_df$sign) <- c("positive", "negative")
+# 2) Percent significant observations for this taxon pair
+phy_score_df$signif <- apply(rug_phy$rug, 2, function(x) {
+  sum(x < thresholds %>% filter(type == "ASV") %>% pull(lower) | x > thresholds %>% filter(type == "ASV") %>% pull(upper))/length(x)
+})
+
+score_df <- rbind(cbind(fam_score_df, type = "Family"),
+                  cbind(phy_score_df, type = "Phylum"))
+
+p <- ggplot(score_df %>% filter(sign != 0)) +
+  geom_point(mapping = aes(x = x, y = y, fill = signif, color = sign),
+             size = 2,
+             shape = 21,
+             stroke = 1) +
+  scale_fill_distiller(palette = "PuRd", direction = 1,
+                       guide = guide_colorbar(frame.colour = "black",
+                                              ticks.colour = "black")) +
+  scale_color_manual(values = c("#000000", "#888888")) +
+  facet_wrap(. ~ type) +
+  theme_bw() +
+  ylim(c(0,1)) +
+  theme(legend.title = element_text(margin = margin(b = 5))) +
+  labs(x = "proportion shared sign",
+       y = "median association strength",
+       fill = "Proportion\nsignificant\nobservations",
+       color = "Consensus\ncorrelation sign")
+ggsave("output/figures/SF3.svg",
+       p,
+       dpi = 100,
+       units = "in",
+       height = 4,
+       width = 8)
+
+# ------------------------------------------------------------------------------
+#
+#   Supplemental Figure S4
+#
+# ------------------------------------------------------------------------------
+
 clr_mean_abundance <- rowMeans(clr_counts)
 
 pairs <- read.table(file.path("output", "top_5_universal.tsv"), sep = "\t", header = TRUE)
@@ -502,6 +565,101 @@ ggsave("output/figures/SF3.svg",
        units = "in",
        height = 8,
        width = 10)
+
+# ------------------------------------------------------------------------------
+#
+#   Supplemental Figure S5 (defunct)
+#
+#   Note: This requires the list of top pairs to already have been generated
+#         and saved to `output`.
+#
+# ------------------------------------------------------------------------------
+
+# TBD pull in network figures from saved .svg (etc.)
+
+top_pairs <- read.delim(file.path("output", "top_2.5_universal.tsv"),
+                        header = TRUE,
+                        sep = "\t")
+
+same_fam_distro <- c()
+diff_fam_distro <- c()
+for(i in unique(top_pairs$tax_index1)) {
+  same_fam <- which(data$taxonomy$family == data$taxonomy$family[i])
+  diff_fam <- which(data$taxonomy$family != data$taxonomy$family[i])
+  same_fam_distro <- c(same_fam_distro,
+                       sum(top_pairs$tax_index1 == i & top_pairs$tax_index2 %in% same_fam))
+  diff_fam_distro <- c(diff_fam_distro,
+                       sum(top_pairs$tax_index1 == i & top_pairs$tax_index2 %in% diff_fam))
+}
+
+# Note: These results are just for taxa which have been resolved to at least the
+# family level (112 / 223)!
+
+fam1 <- sapply(rug_asv$tax_idx1, function(x) {
+  data$taxonomy$family[x]
+})
+fam2 <- sapply(rug_asv$tax_idx2, function(x) {
+  data$taxonomy$family[x]
+})
+
+x1 <- sum(fam1 == fam2, na.rm = TRUE)
+x2 <- sum(fam1 != fam2, na.rm = TRUE)
+
+cat(paste0("Overall proportion of family-family pairs: ",
+           round(x1 / (x1 + x2), 3),
+           "\n"))
+cat(paste0("OBSERVED proportion of family-family pairs: ",
+           round(sum(same_fam_distro) / (sum(same_fam_distro) + sum(diff_fam_distro)), 3),
+           "\n"))
+
+# ------------------------------------------------------------------------------
+#
+#   Supplemental Figure S5
+#
+# ------------------------------------------------------------------------------
+
+# TBD
+
+# ------------------------------------------------------------------------------
+#
+#   Supplemental Figure S6
+#
+# ------------------------------------------------------------------------------
+
+phy_dist <- rug_phylogenetic_distances(rug_asv, data$taxonomy, as_matrix = FALSE)
+scores <- apply(rug_asv$rug, 2, calc_universality_score)
+signs <- apply(rug_asv$rug, 2, calc_consensus_sign)
+
+plot_df <- data.frame(d = phy_dist, score = scores, sign = signs)
+plot_df$sign <- factor(plot_df$sign, levels = c(1, 0, -1))
+levels(plot_df$sign) <- c("positive", NA, "negative")
+
+p <- ggplot(plot_df %>% filter(!is.na(sign)), aes(x = d, y = score, fill = factor(sign))) +
+  geom_point(size = 2, shape = 21) +
+  scale_fill_manual(values = c("#F25250", "#34CCDE")) +
+  theme_bw() +
+  labs(x = "phylogenetic distance",
+       y = "universality score",
+       fill = "Consensus\ncorrelation sign")
+# p
+ggsave("output/figures/SF6.svg",
+       p,
+       dpi = 100,
+       units = "in",
+       height = 5,
+       width = 6.5)
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

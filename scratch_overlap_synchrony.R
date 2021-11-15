@@ -21,7 +21,7 @@ for(host in hosts) {
 pairs <- combn(1:length(hosts), 2)
 
 overlap <- "daily"
-save_fn <- paste0(overlap, "_host-host_overlap.rds")
+save_fn <- file.path("output", paste0(overlap, "_host-host_overlap.rds"))
 
 # ------------------------------------------------------------------------------
 #   Calculate (or load) all overlaps of a given frequency

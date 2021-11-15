@@ -13,6 +13,7 @@ source("ggplot_fix.R")
 
 data <- load_data(tax_level = "ASV")
 plot_dir <- check_dir(c("output", "figures"))
+
 rug_obj <- summarize_Sigmas(output_dir = "asv_days90_diet25_scale1")
 scores <- apply(rug_obj$rug, 2, calc_universality_score)
 consensus_signs <- apply(rug_obj$rug, 2, calc_consensus_sign)
