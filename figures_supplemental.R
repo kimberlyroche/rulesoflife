@@ -568,7 +568,7 @@ ggsave("output/figures/SF3.svg",
 
 # ------------------------------------------------------------------------------
 #
-#   Supplemental Figure S5 (defunct)
+#   Supplemental Figure S5 (defunct barplot)
 #
 #   Note: This requires the list of top pairs to already have been generated
 #         and saved to `output`.
@@ -618,14 +618,6 @@ cat(paste0("OBSERVED proportion of family-family pairs: ",
 #
 # ------------------------------------------------------------------------------
 
-# TBD
-
-# ------------------------------------------------------------------------------
-#
-#   Supplemental Figure S6
-#
-# ------------------------------------------------------------------------------
-
 phy_dist <- rug_phylogenetic_distances(rug_asv, data$taxonomy, as_matrix = FALSE)
 scores <- apply(rug_asv$rug, 2, calc_universality_score)
 signs <- apply(rug_asv$rug, 2, calc_consensus_sign)
@@ -641,7 +633,7 @@ p <- ggplot(plot_df %>% filter(!is.na(sign)), aes(x = d, y = score, fill = facto
   labs(x = "phylogenetic distance",
        y = "universality score",
        fill = "Consensus\ncorrelation sign")
-# p
+p
 ggsave("output/figures/SF6.svg",
        p,
        dpi = 100,
@@ -649,26 +641,24 @@ ggsave("output/figures/SF6.svg",
        height = 5,
        width = 6.5)
 
+# Pairs in the top left-hand corner of this plot (low phylogenetic distance
+# coupled with high universality scores) tend to be Lachnospiraceae-Lachnospiraceae
+# pairs missing genus assignments
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+# topleft_pairs <- which(phy_dist < 0.2 & scores > 0.5)
+# temp <- data.frame(idx1 = rug_asv$tax_idx1[topleft_pairs],
+#                    idx2 = rug_asv$tax_idx2[topleft_pairs])
+# temp$tax1 <- sapply(1:nrow(temp), function(x) {
+#   paste0(data$taxonomy[temp$idx1[x],6], collapse = "/")
+# })
+# temp$tax2 <- sapply(1:nrow(temp), function(x) {
+#   paste0(data$taxonomy[temp$idx2[x],6], collapse = "/")
+# })
+# head(temp)
+# temp %>%
+#   filter(tax1 == "Lachnospiraceae" & tax2 == "Lachnospiraceae") %>%
+#   count() %>%
+#   pull(n)
+# nrow(temp)
 
 

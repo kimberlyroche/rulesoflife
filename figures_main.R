@@ -510,11 +510,7 @@ ggsave("output/figures/F3.svg",
 
 # ------------------------------------------------------------------------------
 #
-#   Figure 4 (in progress)
-#
-#   Note: I think the labeling of families is wrong here. Many are being pulled
-#         as "unknown" at the family level, which isn't right.
-#         Also it would be useful to have a single overall family-level palette!
+#   Figure 4 and Supplemental Figure 4 (related)
 #
 # ------------------------------------------------------------------------------
 
@@ -525,56 +521,58 @@ data <- load_data(tax_level = "ASV")
 scores <- apply(rugs$c$rug, 2, calc_universality_score)
 consensus_signs <- apply(rugs$c$rug, 2, calc_consensus_sign)
 
-# palette_fn <- file.path("output", "family_palette.rds")
-# if(file.exists(palette_fn)) {
-#   family_palette <- readRDS(palette_fn)
-# } else {
+palette_fn <- file.path("output", "family_palette.rds")
+if(file.exists(palette_fn)) {
+  family_palette <- readRDS(palette_fn)
+} else {
   unique_families <- unique(data$taxonomy[,6])
   family_palette <- generate_highcontrast_palette(length(unique_families))
   names(family_palette) <- unique_families
   names(family_palette)[is.na(names(family_palette))] <- "Unknown"
   family_palette[names(family_palette) == "Unknown"] <- "#999999"
-  # saveRDS(family_palette, file = file.path("output", "family_palette.rds"))
-# }
+  saveRDS(family_palette, file = file.path("output", "family_palette.rds"))
+}
 
+# Pull top k percent most universal associations
 percent <- 2.5
-
 k <- round(length(scores)*(percent/100))
 top_pairs <- order(scores, decreasing = TRUE)[1:k]
 
+# Get the taxon indices of each partner in these top pairs
 pair_idx1 <- rugs$c$tax_idx1[top_pairs]
 pair_idx2 <- rugs$c$tax_idx2[top_pairs]
 
-map_df <- data.frame(old_idx = unique(c(pair_idx1, pair_idx2)))
+# Build a mapping of taxon indices to new labels 1..n
+map_df <- data.frame(taxon_idx = unique(c(pair_idx1, pair_idx2)))
 map_df$name <- 1:nrow(map_df)
 
-# ------------------------------------------------------------------------------
-#   Build node and edge data.frames
-# ------------------------------------------------------------------------------
-
+# Build a node data.frame with columns name (index 1..n) and family
 node_df <- map_df
-node_df$Family <- sapply(node_df$old_idx, function(x) {
-  data$taxonomy[x,6]
+node_df$Family <- sapply(node_df$taxon_idx, function(x) {
+  highest_tax_level <- max(which(!is.na(data$taxonomy[x,])))
+  if(highest_tax_level >= 6) {
+    data$taxonomy[x,6]
+  } else {
+    "Unknown"
+  }
 })
-node_df <- node_df[,2:3]
+node_df <- node_df[,c(2:3,1)]
 
-edge1 <- data.frame(old_idx = pair_idx1)
-edge1 <- left_join(edge1, map_df, by = "old_idx")$name
-edge2 <- data.frame(old_idx = pair_idx2)
-edge2 <- left_join(edge2, map_df, by = "old_idx")$name
+# Build an edge data.frame with columns from, to, sign, and score
+edge1 <- data.frame(taxon_idx = pair_idx1)
+edge1 <- left_join(edge1, map_df, by = "taxon_idx")$name
+edge2 <- data.frame(taxon_idx = pair_idx2)
+edge2 <- left_join(edge2, map_df, by = "taxon_idx")$name
 
 edge_df <- data.frame(from = edge1,
                       to = edge2,
-                      Sign = factor(consensus_signs[top_pairs]),
+                      Sign = factor(consensus_signs[top_pairs], levels = c("1", "-1")),
                       score = scores[top_pairs])
-levels(edge_df$Sign) <- c("negative", "positive")
+levels(edge_df$Sign) <- c("positive", "negative")
 
 # ------------------------------------------------------------------------------
 #   Build and plot graph object
 # ------------------------------------------------------------------------------
-
-na_idx <- which(is.na(node_df$Family))
-node_df$Family[na_idx] <- "Unknown"
 
 graph <- graph_from_data_frame(edge_df, node_df, directed = FALSE)
 
@@ -583,18 +581,93 @@ graph <- graph_from_data_frame(edge_df, node_df, directed = FALSE)
 p <- ggraph(graph, layout = "fr") +
   geom_edge_link(aes(color = Sign), width = 2, alpha = 1) +
   geom_node_point(aes(color = Family), size = 5) +
-  geom_node_label(aes(label = name), size = 3, repel = TRUE) +
-  # scale_colour_manual(values = family_palette) +
+  geom_node_label(aes(label = taxon_idx), size = 3, repel = TRUE) +
+  scale_colour_manual(values = family_palette[order(names(family_palette))]) +
   scale_edge_colour_manual(values = c(negative = "gray", positive = "black")) +
   labs(x = "dimension 1",
        y = "dimension 2") +
-  theme_bw()
+  theme_bw() +
+  guides(edge_color = guide_legend(title = "Consensus\ncorrelation sign"))
+p
 ggsave(file.path(plot_dir, "F4.svg"),
        p,
        units = "in",
        dpi = 100,
-       height = 6,
-       width = 10)
+       height = 7,
+       width = 9)
+
+# ------------------------------------------------------------------------------
+#   Calculate enrichment of families
+# ------------------------------------------------------------------------------
+
+fam_df <- edge_df %>%
+  left_join(node_df, by = c("from" = "name")) %>%
+  select(to, Family1 = Family)
+fam_df <- fam_df %>%
+  left_join(node_df, by = c("to" = "name")) %>%
+  select(Family1, Family2 = Family)
+
+proportional_representation <- NULL
+for(fam in families) {
+  if(fam != "Unknown") {
+    # Number of family-family connection for this group overall
+    n_fam <- sum(data$taxonomy[,6] == fam, na.rm = TRUE)
+    baseline <- (n_fam^2 - n_fam) / 2
+
+    # Number of family-family connection for this group in the top k percent
+    observed <- fam_df %>%
+      filter(Family1 == fam & Family2 == fam) %>%
+      count() %>%
+      pull(n)
+
+    if(baseline > 10) {
+      proportional_representation <- rbind(proportional_representation,
+                                           data.frame(family = fam,
+                                                      value = baseline*0.025,
+                                                      type = "expected"))
+      proportional_representation <- rbind(proportional_representation,
+                                           data.frame(family = fam,
+                                                      value = observed,
+                                                      type = "observed in top 2.5%"))
+      proportional_representation <- rbind(proportional_representation,
+                                           data.frame(family = fam,
+                                                      value = baseline - observed,
+                                                      type = "not observed in top 2.5%"))
+    }
+  }
+}
+
+proportional_representation$type <- factor(proportional_representation$type,
+                                           levels = c("not observed in top 2.5%",
+                                                      "observed in top 2.5%",
+                                                      "expected"))
+p <- ggplot(proportional_representation,
+       aes(x = reorder(family, value), y = value, fill = type)) +
+  geom_bar(position = "stack", stat = "identity") +
+  guides(fill = guide_legend(reverse = TRUE)) +
+  scale_fill_manual(values = c("#aaaaaa", "#FF7F00", "#E41A1C")) +
+  # coord_flip() +
+  theme_bw() +
+  labs(fill = "Pair value",
+       x = "\nfamily",
+       y = "number family-family pairs\n")
+p
+ggsave(file.path(plot_dir, "S4.svg"),
+       p,
+       units = "in",
+       dpi = 100,
+       height = 4,
+       width = 6)
+
+for(fam in c("Lachnospiraceae", "Ruminococcaceae", "Prevotellaceae")) {
+  ratio <- proportional_representation %>%
+    filter(family == fam & type == "observed in top 2.5%") %>%
+    pull(value) /
+    proportional_representation %>%
+    filter(family == fam & type == "expected") %>%
+    pull(value)
+  cat(paste0(fam, " is enriched (relative to expected ", round(ratio, 3), " x\n"))
+}
 
 # ------------------------------------------------------------------------------
 #
@@ -814,9 +887,11 @@ p <- ggplot(plot_df %>% filter(!is.na(sign)), aes(x = synchrony, y = universalit
   xlim(c(min(correlations), 0.46)) +
   # xlim(c(min(correlations), 0.1)) + # for scrambled version
   theme_bw() +
-  labs(fill = "Consensus\ncorrelation sign")
+  labs(fill = "Consensus\ncorrelation sign",
+       x = "synchrony score",
+       y = "universality score")
 show(p)
-ggsave(file.path(plot_dir, "F5_permuted.svg"),
+ggsave(file.path(plot_dir, "F5.svg"),
        p,
        units = "in",
        dpi = 100,
@@ -825,7 +900,30 @@ ggsave(file.path(plot_dir, "F5_permuted.svg"),
 
 cat(paste0("R^2: ", round(cor(plot_df$synchrony, plot_df$universality)^2, 3), "\n"))
 
+# Pairs in the top center of this plot (low average synchrony and high universality)
+# tend to be pairs which include Atopobiaceae and/or Eggerthellaceae (both
+# phylum Actinobacteria). None of these are Lachnospiraceae-Lachnospiraceae
+# pairs.
 
-
-
+# topleft_pairs <- which(plot_df$synchrony < 0.3 & plot_df$universality > 0.5)
+# temp <- data.frame(idx1 = rugs$c$tax_idx1[topleft_pairs],
+#                    idx2 = rugs$c$tax_idx2[topleft_pairs])
+# temp$tax1 <- sapply(1:nrow(temp), function(x) {
+#   paste0(data$taxonomy[temp$idx1[x],6], collapse = "/")
+# })
+# temp$tax2 <- sapply(1:nrow(temp), function(x) {
+#   paste0(data$taxonomy[temp$idx2[x],6], collapse = "/")
+# })
+# head(temp)
+# temp %>%
+#   filter(tax1 == "Lachnospiraceae" & tax2 == "Lachnospiraceae") %>%
+#   count() %>%
+#   pull(n)
+# nrow(temp)
+#
+# temp %>%
+#   filter(tax1 %in% c("Atopobiaceae", "Eggerthellaceae") | tax2 %in% c("Atopobiaceae", "Eggerthellaceae")) %>%
+#   count() %>%
+#   pull(n)
+# nrow(temp)
 
