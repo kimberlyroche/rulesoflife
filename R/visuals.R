@@ -729,3 +729,99 @@ plot_clr_vs_diet <- function(sname, tax_idx, counts, metadata) {
          height = 3,
          width = 6)
 }
+
+#' Plot relative representation of ASV pairs (using family labels)
+#'
+#' @param frequencies_subset table of ASV pairs (labeled as "Family - Family")
+#' and their frequency in some subset of case of interest
+#' @param frequencies table of ASV pairs (labeled as "Family - Family")
+#' and their pverall frequency
+#' @param plot_height plot height in inches
+#' @param plot_width plot width in inches
+#' @param legend_topmargin top margin of legend in points
+#' @param legend_leftmargin left margin of legend in inches
+#' @param save_name
+#' @return NULL
+#' @import ggplot2
+#' @import cowplot
+#' @export
+plot_enrichment <- function(frequencies_subset, frequencies, plot_height, plot_width,
+                            legend_topmargin, legend_leftmargin, save_name) {
+  # Define a huge color palette over all observed family-family pairs
+  palette_fn <- file.path("output", "family-family_palette.rds")
+  if(file.exists(palette_fn)) {
+    fam_pair_palette <- readRDS(palette_fn)
+  } else {
+    fam_pair_palette <- generate_highcontrast_palette(length(frequencies))
+    names(fam_pair_palette) <- names(frequencies)
+    saveRDS(fam_pair_palette, palette_fn)
+  }
+
+  observed_relative <- data.frame(pair = names(frequencies_subset),
+                                  count = unname(c(frequencies_subset)))
+  observed_relative$prop <- observed_relative$count / sum(observed_relative$count)
+
+  observed_relative$pair <- factor(observed_relative$pair,
+                                   levels = c(sort(observed_relative$pair[observed_relative$pair != "Other"]), "Other"))
+
+  fam_pair_palette_sub <- fam_pair_palette[names(fam_pair_palette) %in% observed_relative$pair]
+
+  p2 <- ggplot(observed_relative, aes(x = 1, y = prop, fill = pair)) +
+    geom_bar(stat = "identity") +
+    scale_fill_manual(values = fam_pair_palette_sub) +
+    theme_bw() +
+    scale_x_continuous(expand = c(0,0)) +
+    scale_y_continuous(expand = c(0,0)) +
+    theme(axis.text.x = element_blank(),
+          axis.ticks.x = element_blank(),
+          legend.justification = c("top"),
+          legend.margin = margin(t = legend_topmargin, r = 0, b = 0, l = 0, unit = "pt")) +
+    labs(x = "\nlow phylogenetic distance,\nhigh median assoc. strength",
+         y = "proportion shared family ASV pair",
+         fill = "Shared family ASV pair")
+
+  # Stacked bar: render these pairs in the baseline representation of all
+  # family-family pairs; all other family-family pairs will be colored gray
+
+  baseline_relative <- observed_relative %>%
+    full_join(data.frame(pair = names(frequencies),
+                         count = unname(c(frequencies))), by = "pair") %>%
+    select(pair, count.y) %>%
+    arrange(pair)
+  colnames(baseline_relative) <- c("pair", "count")
+  baseline_relative$prop <- baseline_relative$count / sum(baseline_relative$count)
+
+  new_idx <- which(!(baseline_relative$pair %in% observed_relative$pair))
+  grays <- sample(c("#dddddd", "#d5d5d5", "#cccccc", "#c5c5c5"), replace = TRUE, size = length(new_idx))
+  fam_pair_palette_gray <- fam_pair_palette
+  fam_pair_palette_gray[new_idx] <- grays
+
+  p1 <- ggplot(baseline_relative, aes(x = 1, y = prop, pair, fill = pair)) +
+    geom_bar(stat = "identity") +
+    scale_fill_manual(values = fam_pair_palette_gray) +
+    theme_bw() +
+    scale_x_continuous(expand = c(0,0)) +
+    scale_y_continuous(expand = c(0,0)) +
+    theme(axis.text.x = element_blank(),
+          axis.ticks.x = element_blank(),
+          legend.position = "none") +
+    labs(x = "\noverall\n",
+         y = "proportion shared family ASV pair")
+
+  legend <- get_legend(p2)
+  p2 <- p2 +
+    theme(legend.position = "none")
+
+  p <- plot_grid(p1, NULL, p2, NULL, legend, ncol = 5, rel_widths = c(1, 0.35, 1, legend_leftmargin, 4.5), scale = 1)
+
+  ggsave(paste0("output/figures/", save_name),
+         p,
+         dpi = 100,
+         units = "in",
+         height = plot_height,
+         width = plot_width)
+}
+
+
+
+
