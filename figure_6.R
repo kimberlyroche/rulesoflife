@@ -1,5 +1,6 @@
 source("path_fix.R")
 
+library(driver)
 library(tidyverse)
 library(rulesoflife)
 library(cowplot)
@@ -12,7 +13,8 @@ registerDoParallel(6)
 
 # ------------------------------------------------------------------------------
 #
-#   Figure 5
+#   Figure 6 - paired synchrony vs. universality plots, plus enrichment barplots
+#              for relative abundances of family-family pairs in subregions
 #
 # ------------------------------------------------------------------------------
 
@@ -216,6 +218,25 @@ for(i in 1:(n_tax-1)) {
   correlations <- c(correlations, cor(x,y))
 }
 
+# Print out the most synchronous pairs
+cat(paste0("Most synchronous pairs:\n"))
+# top5 <- order(correlations, decreasing = TRUE)[1:5]
+top_synchronous <- which(correlations > 0.4)
+for(synchronous_idx in top_synchronous) {
+  x <- data$taxonomy[synchronous_idx,2:7]
+  max_level <- max(which(!is.na(x)))
+  cat(paste0("\tASV ", synchronous_idx, ", in ", colnames(data$taxonomy)[max_level], " ", unname(x[max_level]), "\n"))
+}
+# Print out the least synchronous pairs
+cat(paste0("Least synchronous pairs:\n"))
+# top5 <- order(correlations, decreasing = FALSE)[1:5]
+bottom_synchronous <- which(correlations < 0.05)
+for(synchronous_idx in bottom_synchronous) {
+  x <- data$taxonomy[synchronous_idx,2:7]
+  max_level <- max(which(!is.na(x)))
+  cat(paste0("\tASV ", synchronous_idx, ", in ", colnames(data$taxonomy)[max_level], " ", unname(x[max_level]), "\n"))
+}
+
 plot_df <- data.frame(synchrony = c(),
                       universality = c())
 for(i in 1:length(rug_asv$tax_idx1)) {
@@ -240,7 +261,7 @@ p <- ggplot(plot_df %>% filter(!is.na(sign)), aes(x = synchrony, y = universalit
        x = "synchrony score",
        y = "universality score")
 show(p)
-ggsave(file.path(plot_dir, "F5.svg"),
+ggsave(file.path(plot_dir, "F6.svg"),
        p,
        units = "in",
        dpi = 100,
@@ -299,7 +320,7 @@ plot_enrichment(frequencies_subset,
                 plot_width = 8,
                 legend_topmargin = 20,
                 legend_leftmargin = -0.5,
-                save_name = "SFX_slide7-1.svg")
+                save_name = "F6-enrichment1.svg")
 
 # ------------------------------------------------------------------------------
 #   Visualize differences in relative abundance of family pairs for top center
@@ -315,4 +336,109 @@ plot_enrichment(frequencies_subset,
                             plot_width = 9,
                             legend_topmargin = 60,
                             legend_leftmargin = 0.5,
-                            save_name = "SFX_slide7-2.svg")
+                            save_name = "F6-enrichment2.svg")
+
+# ------------------------------------------------------------------------------
+#
+#   Supplemental Figure S7 - synchrony of most synchronous taxon across a sample
+#                            of hosts
+#
+# ------------------------------------------------------------------------------
+
+tax_idx <- 23
+hosts <- c("DUI", "DUX", "LIW", "PEB", "VET")
+host_y_offset <- 10
+
+data <- load_data(tax_level = "ASV")
+
+# Find common baseline
+pred_objs <- NULL
+min_date <- NULL
+max_date <- NULL
+for(host in hosts) {
+  pred_obj <- get_predictions_host_list(host_list = host,
+                                        output_dir = "asv_days90_diet25_scale1",
+                                        metadata = data$metadata)
+  if(is.null(min_date)) {
+    min_date <- min(pred_obj$dates[[host]])
+    max_date <- max(pred_obj$dates[[host]])
+  } else {
+    min_date <- min(min_date, min(pred_obj$dates[[host]]))
+    max_date <- max(max_date, max(pred_obj$dates[[host]]))
+  }
+  pred_objs[[host]] <- pred_obj
+}
+
+plot_df <- NULL
+y_offset_counter <- 0
+for(host in hosts[c(2,4,3,5,1)]) {
+  pred_obj <- pred_objs[[host]]
+  pred_df <- gather_array(pred_obj$predictions[[host]]$Eta,
+                          val,
+                          coord,
+                          sample,
+                          iteration) %>%
+    filter(coord == tax_idx) %>%
+    group_by(coord, sample) %>%
+    summarize(p25 = quantile(val, probs = c(0.25)),
+              mean = mean(val),
+              p75 = quantile(val, probs = c(0.75)))
+  pred_df$host <- host
+
+  # Calculate day from (shared) baseline
+  addend <- as.numeric(difftime(min(pred_obj$dates[[host]]), min_date, units = "day"))
+
+  day_span <- pred_obj$predictions[[host]]$span
+  pred_df <- pred_df %>%
+    left_join(data.frame(sample = 1:length(day_span), day = day_span), by = "sample")
+
+  pred_df$day <- pred_df$day + addend
+
+  if(y_offset_counter > 0) {
+    pred_df$p25 <- pred_df$p25 + host_y_offset*y_offset_counter
+    pred_df$mean <- pred_df$mean + host_y_offset*y_offset_counter
+    pred_df$p75 <- pred_df$p75 + host_y_offset*y_offset_counter
+  }
+  y_offset_counter <- y_offset_counter + 1
+
+  plot_df <- rbind(plot_df, pred_df)
+}
+
+plot(plot_df$day)
+
+alpha <- 0.6
+
+p <- ggplot()
+for(this_host in hosts) {
+  p <- p +
+    geom_ribbon(data = plot_df %>% filter(host == this_host),
+                mapping = aes(x = day, ymin = p25, ymax = p75),
+                fill = "#fdbf6f",
+                alpha = alpha) +
+    geom_line(data = plot_df %>% filter(host == this_host),
+              mapping = aes(x = day, y = mean),
+              color = "#ff7f00",
+              size = 1,
+              alpha = alpha)
+}
+p <- p +
+  theme_bw() +
+  labs(x = paste0("days from first sample (", min_date, ")"),
+       y = "CLR abundance") +
+  scale_x_continuous(expand = c(0.01, 0.01)) +
+  scale_y_continuous(expand = c(0.01, 0.01)) +
+  theme(axis.title.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())
+
+ggsave(file.path("output", "figures", "F6_most-synchronous.svg"),
+       p,
+       dpi = 100,
+       units = "in",
+       height = 5,
+       width = 7)
+
+cat("Order of host series (from bottom to top):\n")
+hosts[c(2,4,3,5,1)]

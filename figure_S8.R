@@ -4,6 +4,8 @@ library(rulesoflife)
 library(shapes)
 library(matrixsampling)
 
+# These are calculated by `analysis_compute_Frechets.R`
+# We ultimately need to roll that script's content into this one
 F1 <- readRDS(file.path("output", "Frechet_1.rds"))
 F2 <- readRDS(file.path("output", "Frechet_2.rds"))
 F3 <- readRDS(file.path("output", "Frechet_3.rds"))
@@ -34,19 +36,24 @@ plot_df <- data.frame(x = c(D1,
                                 rep("permuted", N),
                                 rep("random", N)))
 plot_df$label <- factor(plot_df$label, levels = c("true", "permuted", "random"))
-levels(plot_df$label) <- c("MAP estimates", "Permutated MAP", "Random dynamics")
-ggplot(plot_df,
-       aes(x = x, fill = label)) +
+levels(plot_df$label) <- c("Observed", "Permutated MAP", "Random dynamics")
+p <- ggplot(plot_df,
+            aes(x = x, fill = label)) +
   geom_density(alpha = 0.5) +
   theme_bw() +
-  labs(x = "squared Riemannian distance from mean",
-       fill = "Dynamics data")
-ggsave(file.path("output", "figures", "scatter.svg"),
+  labs(x = "distance from mean dynamics",
+       fill = "Data source") +
+  xlim(c(0, 1000))
+
+ggsave(file.path("output", "figures", "S8.svg"),
        dpi = 100,
        units = "in",
        height = 4.5,
        width = 7)
 
-1 - round(median(D1) / median(D2), 2)
+v1 <- sum(D1) / (N-1)
+v2 <- sum(D2) / (N-1)
+v3 <- sum(D3) / (N-1)
 
-1 - round(median(D1) / median(D3), 2)
+cat(paste0("Ratio of variance observed to permuted: ", round(v1 / v2, 3), ":1\n"))
+cat(paste0("Ratio of variance observed to random: ", round(v1 / v3, 3), ":1\n"))
