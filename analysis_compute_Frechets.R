@@ -10,6 +10,7 @@ library(matrixsampling)
 # 2: Permute true (MAP) dynamics estimates; compute Frechet mean
 # 3: Draw random "dynamics"; compute Frechet mean
 opt <- 3
+use_corr <- FALSE
 
 output_dir <- "asv_days90_diet25_scale1"
 output_dir_full <- check_dir(c("output", "model_fits", output_dir, "MAP"))
@@ -27,7 +28,9 @@ D <- fit$D
 if(opt == 3) {
   Sigmas <- rinvwishart(N, D+2, diag(D))
   for(i in 1:N) {
-    Sigmas[,,i] <- cov2cor(Sigmas[,,i])
+    if(use_corr) {
+      Sigmas[,,i] <- cov2cor(Sigmas[,,i])
+    }
   }
 } else {
   Sigmas <- array(NA, dim = c(D, D, N))
@@ -37,7 +40,9 @@ if(opt == 3) {
     fit <- readRDS(file.path(output_dir_full, paste0(host, ".rds")))
     fit <- to_clr(fit)
     Sigma <- fit$Sigma[,,1] + diag(nrow(fit$Sigma[,,1]))*1e-06
-    Sigma <- cov2cor(Sigma)
+    if(use_corr) {
+      Sigma <- cov2cor(Sigma)
+    }
     if(opt == 2) {
       # Introduce permutations
       idx <- sample(1:D)
