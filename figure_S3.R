@@ -8,7 +8,8 @@ library(fido)
 
 # ------------------------------------------------------------------------------
 #
-#   Supplemental Figure S3a
+#   Supplemental Figure S3 - null vs. observed a) CLR correlations and b)
+#                            universality scores
 #
 # ------------------------------------------------------------------------------
 
@@ -161,7 +162,7 @@ p1 <- ggplot(corr_distros, aes(x = x, fill = scheme)) +
 
 # ------------------------------------------------------------------------------
 #
-#   Supplemental Figure S3b
+#   Null vs. observed universality scores
 #
 # ------------------------------------------------------------------------------
 
