@@ -38,8 +38,9 @@ if(permuted) {
   global_dynamics <- global_dynamics[shuffle_idx,shuffle_idx]
 } else {
   global_dynamics <- matrixsampling::rinvwishart(1, D + 2, diag(D))[,,1]
-  global_baseline <- LaplacesDemon::rdirichlet(1, rep(100/D, D))
 }
+
+global_baseline <- LaplacesDemon::rdirichlet(1, rep(100/D, D))
 
 simulations <- NULL
 for(h in 1:H) {
@@ -52,6 +53,7 @@ for(h in 1:H) {
     host_dynamics <- matrixsampling::rinvwishart(1, D + 2, diag(D))[,,1]
   }
   combined_dynamics <- mixing_prop*global_dynamics + (1 - mixing_prop)*host_dynamics
+  combined_dynamics <- (combined_dynamics + t(combined_dynamics))/2
 
   # Convert to ALR; this is a fido function
   combined_alr <- clrvar2alrvar(combined_dynamics, D)
