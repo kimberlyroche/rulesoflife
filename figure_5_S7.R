@@ -353,7 +353,7 @@ p <- ggplot(plot_df %>% filter(!is.na(sign)), aes(x = synchrony, y = universalit
   labs(fill = "Consensus\ncorrelation sign",
        x = "synchrony score",
        y = "universality score")
-show(p)
+
 ggsave(file.path(plot_dir, "F6.svg"),
        p,
        units = "in",
@@ -367,8 +367,11 @@ cat(paste0("R^2: ", round(cor(plot_df$synchrony, plot_df$universality)^2, 3), "\
 #   Enrichment of top center and top right-hand parts
 # ------------------------------------------------------------------------------
 
+# Score enrichment of family pairs or families themselves?
+use_pairs <- FALSE
+
 topcenter_pairs <- which(plot_df$synchrony < 0.3 & plot_df$universality > 0.5)
-topright_pairs <- which(plot_df$synchrony > 0.3 & plot_df$universality > 0.4)
+topright_pairs <- which(plot_df$synchrony > 0.3 & plot_df$universality > 0.5)
 
 all_pairs <- data.frame(idx1 = rug_asv$tax_idx1,
                         idx2 = rug_asv$tax_idx2,
@@ -397,39 +400,103 @@ all_pairs_noNA <- all_pairs %>%
 all_pairs_noNA <- all_pairs_noNA %>%
   mutate(taxpair = paste0(tax1, " - ", tax2))
 
-frequencies <- table(all_pairs_noNA$taxpair)
+if(use_pairs) {
+  frequencies <- table(all_pairs_noNA$taxpair)
 
-# ------------------------------------------------------------------------------
-#   Visualize differences in relative abundance of family pairs for top center
-#   clump of pairs
-# ------------------------------------------------------------------------------
+  # ------------------------------------------------------------------------------
+  #   Visualize differences in relative abundance of family pairs for top center
+  #   clump of pairs
+  # ------------------------------------------------------------------------------
 
-# Stacked bar: plot observed relative representation of family-family pairs
-frequencies_subset <- table(all_pairs_noNA$taxpair[all_pairs_noNA$topcenter == TRUE])
+  # Stacked bar: plot observed relative representation of family-family pairs
+  frequencies_subset <- table(all_pairs_noNA$taxpair[all_pairs_noNA$topcenter == TRUE])
 
-plot_enrichment(frequencies_subset,
-                frequencies,
-                plot_height = 6,
-                plot_width = 8,
-                legend_topmargin = 20,
-                legend_leftmargin = -0.5,
-                save_name = "F6-enrichment1.svg")
+  plot_enrichment(frequencies_subset,
+                  frequencies,
+                  plot_height = 6,
+                  plot_width = 8,
+                  legend_topmargin = 20,
+                  legend_leftmargin = -0.5,
+                  save_name = "F6-enrichment1.png")
 
-# ------------------------------------------------------------------------------
-#   Visualize differences in relative abundance of family pairs for top center
-#   clump of pairs
-# ------------------------------------------------------------------------------
+  # ------------------------------------------------------------------------------
+  #   Visualize differences in relative abundance of family pairs for top center
+  #   clump of pairs
+  # ------------------------------------------------------------------------------
 
-# Stacked bar: plot observed relative representation of family-family pairs
-frequencies_subset <- table(all_pairs_noNA$taxpair[all_pairs_noNA$topright == TRUE])
+  # Stacked bar: plot observed relative representation of family-family pairs
+  frequencies_subset <- table(all_pairs_noNA$taxpair[all_pairs_noNA$topright == TRUE])
 
-plot_enrichment(frequencies_subset,
-                            frequencies,
-                            plot_height = 6,
-                            plot_width = 9,
-                            legend_topmargin = 60,
-                            legend_leftmargin = 0.5,
-                            save_name = "F6-enrichment2.svg")
+  plot_enrichment(frequencies_subset,
+                              frequencies,
+                              plot_height = 6,
+                              plot_width = 9,
+                              legend_topmargin = 60,
+                              legend_leftmargin = 0.5,
+                              save_name = "F6-enrichment2.png")
+} else {
+  # Calculate a baseline frequency for all family-family pairs
+  frequencies <- table(c(all_pairs_noNA$tax1, all_pairs_noNA$tax2))
+
+  # Observed frequency in this subregion
+  all_pairs_noNA_tc <- all_pairs_noNA %>%
+    filter(topcenter == TRUE)
+  frequencies_subset <- table(c(all_pairs_noNA_tc$tax1, all_pairs_noNA_tc$tax2))
+
+  # Fisher's exact test for enrichment
+  # Arguments are always confusing; here's a good reference:
+  # http://mengnote.blogspot.com/2012/12/calculate-correct-hypergeometric-p.html
+  for(fam in names(frequencies_subset)) {
+    fam_in_sample <- unname(unlist(frequencies_subset[fam]))
+    sample_size <- unname(unlist(sum(frequencies_subset)))
+    fam_in_bg <- unname(unlist(frequencies[fam]))
+    bg_size <- unname(unlist(sum(frequencies)))
+    ctab <- matrix(c(fam_in_sample,
+                     sample_size - fam_in_sample,
+                     fam_in_bg,
+                     bg_size - fam_in_bg),
+                   2, 2, byrow = TRUE)
+    prob <- fisher.test(ctab, alternative = "greater")$p.value
+    cat(paste0("ASV family: ", fam, ", p-value: ", round(prob, 3), "\n"))
+  }
+
+  plot_enrichment(frequencies_subset,
+                  frequencies,
+                  plot_height = 6,
+                  plot_width = 8,
+                  legend_topmargin = 100,
+                  legend_leftmargin = -1,
+                  use_pairs = FALSE,
+                  save_name = "F6-enrichment1.png")
+
+  # Observed frequency in this region
+  all_pairs_noNA_tr <- all_pairs_noNA %>%
+    filter(topright == TRUE)
+  frequencies_subset <- table(c(all_pairs_noNA_tr$tax1, all_pairs_noNA_tr$tax2))
+
+  for(fam in names(frequencies_subset)) {
+    fam_in_sample <- unname(unlist(frequencies_subset[fam]))
+    sample_size <- unname(unlist(sum(frequencies_subset)))
+    fam_in_bg <- unname(unlist(frequencies[fam]))
+    bg_size <- unname(unlist(sum(frequencies)))
+    ctab <- matrix(c(fam_in_sample,
+                     sample_size - fam_in_sample,
+                     fam_in_bg,
+                     bg_size - fam_in_bg),
+                   2, 2, byrow = TRUE)
+    prob <- fisher.test(ctab, alternative = "greater")$p.value
+    cat(paste0("ASV family: ", fam, ", p-value: ", round(prob, 3), "\n"))
+  }
+
+  plot_enrichment(frequencies_subset,
+                  frequencies,
+                  plot_height = 6,
+                  plot_width = 8,
+                  legend_topmargin = 100,
+                  legend_leftmargin = -1,
+                  use_pairs = FALSE,
+                  save_name = "F6-enrichment2.png")
+}
 
 # ------------------------------------------------------------------------------
 #

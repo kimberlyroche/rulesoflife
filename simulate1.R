@@ -47,7 +47,7 @@ for(h in 1:H) {
   host_X <- round(matrix(runif(T, min = 1, max = T*10), 1, T))
   if(permuted) {
     shuffle_idx <- sample(1:D)
-    host_dynamics <- samples$Sigmas[shuffle_idx,shuffled_idx,h]
+    host_dynamics <- samples$Sigmas[shuffle_idx,shuffle_idx,h]
   } else {
     host_dynamics <- matrixsampling::rinvwishart(1, D + 2, diag(D))[,,1]
   }

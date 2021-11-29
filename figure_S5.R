@@ -27,9 +27,9 @@ F3 <- readRDS(file.path("output", "Frechet_3_corr.rds"))
 # This function from the frechet package runs faster and gives a different (and
 # frankly more intuitive) answer than the shapes package estimates, where means
 # had a very very different scale than the samples they were computed from.
-F1$mean <- CovFMean(F1$Sigmas)$Mout[[1]]
-F2$mean <- CovFMean(F2$Sigmas)$Mout[[1]]
-F3$mean <- CovFMean(F3$Sigmas)$Mout[[1]]
+# F1$mean <- CovFMean(F1$Sigmas)$Mout[[1]]
+# F2$mean <- CovFMean(F2$Sigmas)$Mout[[1]]
+# F3$mean <- CovFMean(F3$Sigmas)$Mout[[1]]
 
 D <- dim(F1$Sigmas)[1]
 N <- dim(F1$Sigmas)[3]
@@ -131,7 +131,7 @@ ggsave(file.path("output", "figures", "sample_matrices.png"),
        width = 8)
 
 # Compute squared distances in each case as our variance analog
-use_Frobenius <- TRUE
+use_Frobenius <- FALSE
 D1 <- numeric(N)
 D2 <- numeric(N)
 D3 <- numeric(N)
@@ -203,7 +203,7 @@ D <- 135
 all_scores <- NULL
 for(mixing_prop in mixing_props) {
   sim_fn <- file.path("output",
-                      "simulations",
+                      "simulations_permuted",
                       paste0("simulations_h-", H, "_m-", mixing_prop, ".rds"))
   simulations <- readRDS(sim_fn)
 
@@ -225,7 +225,7 @@ for(mixing_prop in mixing_props) {
 }
 
 obs_rug <- readRDS("output/rug_asv.rds")
-obs_scores <- apply(obs_rug$rug[1:10,], 2, calc_universality_score)
+obs_scores <- apply(obs_rug$rug, 2, calc_universality_score)
 
 all_scores <- rbind(all_scores,
                     data.frame(score = apply(obs_rug$rug, 2, calc_universality_score),
@@ -258,6 +258,7 @@ levels(all_scores$plot_type) <- c("simulated (90% global pattern)",
 
 p <- ggplot(all_scores, aes(x = score, y = plot_type, fill = plot_type)) +
   geom_density_ridges(scale = 1) +
+  # stat_binline(bins = 30, scale = 1, draw_baseline = FALSE) +
   theme_bw() +
   theme(legend.position = "none") +
   scale_fill_brewer(palette = "RdPu") +
@@ -265,6 +266,8 @@ p <- ggplot(all_scores, aes(x = score, y = plot_type, fill = plot_type)) +
        y = "") +
   coord_cartesian(clip = "off") +
   scale_y_discrete(expand = expansion(add = c(0.5, 0.8)))
+
+show(p)
 
 ggsave(file.path("output", "figures", "figure_S8-2.png"),
        p,
