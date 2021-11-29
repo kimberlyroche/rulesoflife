@@ -9,11 +9,11 @@ library(doParallel)
 library(foreach)
 library(fido)
 
-registerDoParallel(6)
+registerDoParallel(detectCores())
 
 # ------------------------------------------------------------------------------
 #
-#   Figure 6 - paired synchrony vs. universality plots, plus enrichment barplots
+#   Figure 5 - paired synchrony vs. universality plots, plus enrichment barplots
 #              for relative abundances of family-family pairs in subregions
 #
 # ------------------------------------------------------------------------------
@@ -124,6 +124,7 @@ n_tax <- nrow(Etas[[1]])
 # Build data.frame of overlaps
 # This takes < 30 sec.
 sampled_overlap <- NULL
+permuted_overlap <- NULL
 for(i in 1:ncol(pairs)) {
   h1 <- hosts[pairs[1,i]]
   h2 <- hosts[pairs[2,i]]
@@ -140,74 +141,82 @@ for(i in 1:ncol(pairs)) {
       sampled_overlap <- rbind(sampled_overlap, temp)
     }
   }
+
+  # For "null" distribution -- take a random (likely non-overlapping) pair of
+  # samples from these hosts
+  h1_samples <- md %>%
+    filter(sname == h1) %>%
+    select(sample_id, collection_date)
+  h1_sample <- h1_samples[sample(1:nrow(h1_samples), size = 1),]
+  h2_samples <- md %>%
+    filter(sname == h2) %>%
+    select(sample_id, collection_date)
+  h2_sample <- h2_samples[sample(1:nrow(h2_samples), size = 1),]
+  permuted_overlap <- rbind(permuted_overlap,
+                            data.frame(host1 = h1,
+                                       host2 = h2,
+                                       overlap_date1 = h1_sample$collection_date,
+                                       overlap_date2 = h2_sample$collection_date,
+                                       sample_id1 = h1_sample$sample_id,
+                                       sample_id2 = h2_sample$sample_id))
 }
 
-if(FALSE) {
-  # Scrambled/permuted version
-  # Haven't run this in a long time; need to check
-  for(i in 1:nrow(sampled_overlap)) {
-    h1 <- sampled_overlap[i,]$host1
-    h2 <- sampled_overlap[i,]$host2
-    s1 <- host_dates[[h1]]
-    s1 <- s1[sample(1:nrow(s1), size = 1),]
-    s2 <- host_dates[[h2]]
-    s2 <- s2[sample(1:nrow(s2), size = 1),]
-    sampled_overlap[i,]$overlap_date1 <- s1$collection_date
-    sampled_overlap[i,]$sample_id1 <- s1$sample_id
-    sampled_overlap[i,]$overlap_date2 <- s2$collection_date
-    sampled_overlap[i,]$sample_id2 <- s2$sample_id
-  }
-}
+pull_Etas <- function(sample_obj) {
+  # Parallelized over 6 cores this takes < 1 min.
+  starts <- seq(from = 1, to = nrow(sample_obj), by = 100)
+  sampled_list <- foreach(k = 1:length(starts), .combine = rbind) %dopar% {
+    start <- starts[k]
+    end <- min(c(nrow(sample_obj), start + 99))
+    subset_data <- sample_obj[start:end,]
+    row_combos <- nrow(subset_data)*(n_tax-1)*2
+    sampled_Etas <- data.frame(Eta = numeric(row_combos),
+                               tax_idx = numeric(row_combos),
+                               partner = numeric(row_combos))
+    row_counter <- 1
+    for(i in 1:nrow(subset_data)) {
+      # cat(paste0("Processing row ", i, " / ", nrow(subset_data), "\n"))
+      s_row <- subset_data[i,]
+      h1 <- s_row$host1
+      h2 <- s_row$host2
+      Eta1 <- Etas[[h1]]
+      Eta2 <- Etas[[h2]]
 
-# Parallelized over 6 cores this takes < 1 min.
-starts <- seq(from = 1, to = nrow(sampled_overlap), by = 100)
-sampled_list <- foreach(k = 1:length(starts), .combine = rbind) %dopar% {
-  start <- starts[k]
-  end <- min(c(nrow(sampled_overlap), start + 99))
-  subset_data <- sampled_overlap[start:end,]
-  row_combos <- nrow(subset_data)*(n_tax-1)*2
-  sampled_Etas <- data.frame(Eta = numeric(row_combos),
-                             tax_idx = numeric(row_combos),
-                             partner = numeric(row_combos))
-  row_counter <- 1
-  for(i in 1:nrow(subset_data)) {
-    # cat(paste0("Processing row ", i, " / ", nrow(subset_data), "\n"))
-    s_row <- subset_data[i,]
-    h1 <- s_row$host1
-    h2 <- s_row$host2
-    Eta1 <- Etas[[h1]]
-    Eta2 <- Etas[[h2]]
+      # s1_idx <- which(host_dates[[h1]]$collection_date %in% c(s_row$overlap_date1,
+      #                                                         s_row$overlap_date2))
+      # s2_idx <- which(host_dates[[h2]]$collection_date %in% c(s_row$overlap_date1,
+      #                                                         s_row$overlap_date2))
+      s1_idx <- which(host_dates[[h1]]$collection_date == s_row$overlap_date1)
+      s2_idx <- which(host_dates[[h2]]$collection_date == s_row$overlap_date2)
+      s1_idx <- s1_idx[1]
+      s2_idx <- s2_idx[1]
 
-    s1_idx <- which(host_dates[[h1]]$collection_date %in% c(s_row$overlap_date1,
-                                                            s_row$overlap_date2))
-    s2_idx <- which(host_dates[[h2]]$collection_date %in% c(s_row$overlap_date1,
-                                                            s_row$overlap_date2))
-    s1_idx <- s1_idx[1]
-    s2_idx <- s2_idx[1]
-
-    for(j in 1:(n_tax-1)) {
-      sampled_Etas[row_counter,] <- data.frame(Eta = Eta1[j,s1_idx],
-                                               tax_idx = j,
-                                               partner = 1)
-      row_counter <- row_counter + 1
-      sampled_Etas[row_counter,] <- data.frame(Eta = Eta2[j,s2_idx],
-                                               tax_idx = j,
-                                               partner = 2)
-      row_counter <- row_counter + 1
+      for(j in 1:(n_tax-1)) {
+        sampled_Etas[row_counter,] <- data.frame(Eta = Eta1[j,s1_idx],
+                                                 tax_idx = j,
+                                                 partner = 1)
+        row_counter <- row_counter + 1
+        sampled_Etas[row_counter,] <- data.frame(Eta = Eta2[j,s2_idx],
+                                                 tax_idx = j,
+                                                 partner = 2)
+        row_counter <- row_counter + 1
+      }
     }
+    sampled_Etas
   }
-  sampled_Etas
+  return(sampled_list)
 }
 
-# ------------------------------------------------------------------------------
-#   Plot: Mean correlations for each taxon pair x universality scores
-# ------------------------------------------------------------------------------
+sampled_list <- pull_Etas(sampled_overlap)
+sampled_list_permuted <- pull_Etas(permuted_overlap)
 
 rug_asv <- summarize_Sigmas(output_dir = "asv_days90_diet25_scale1")
 scores <- apply(rug_asv$rug, 2, calc_universality_score)
 consensus_signs <- apply(rug_asv$rug, 2, calc_consensus_sign)
 
+paired_samples_x <- c()
+paired_samples_y <- c()
 correlations <- c()
+correlations_permuted <- c()
 for(i in 1:(n_tax-1)) {
   x <- sampled_list %>%
     filter(partner == 1 & tax_idx == i) %>%
@@ -215,8 +224,87 @@ for(i in 1:(n_tax-1)) {
   y <- sampled_list %>%
     filter(partner == 2 & tax_idx == i) %>%
     pull(Eta)
+  if(i == 23) {
+    paired_samples_x <- c(paired_samples_x, x)
+    paired_samples_y <- c(paired_samples_y, y)
+  }
   correlations <- c(correlations, cor(x,y))
+  x <- sampled_list_permuted %>%
+    filter(partner == 1 & tax_idx == i) %>%
+    pull(Eta)
+  y <- sampled_list_permuted %>%
+    filter(partner == 2 & tax_idx == i) %>%
+    pull(Eta)
+  correlations_permuted <- c(correlations_permuted, cor(x,y))
 }
+
+# ------------------------------------------------------------------------------
+#   Plot: densities of observed and permuted correlations
+# ------------------------------------------------------------------------------
+
+temp <- data.frame(x = c(correlations, correlations_permuted),
+                   type = c(rep("observed", length(correlations)),
+                            rep("permuted", length(correlations_permuted))))
+p <- ggplot(data.frame(x = c(correlations, correlations_permuted),
+                  type = c(rep("observed", length(correlations)),
+                           rep("permuted", length(correlations_permuted)))),
+       aes(x = x, fill = type)) +
+  geom_density(alpha = 0.5) +
+  scale_fill_manual(values = c("#59AAD7", "#aaaaaa")) +
+  theme_bw() +
+  labs(fill = "Source",
+       x = "synchrony score")
+
+ggsave(file.path("output", "figures", "synchrony_histogram.png"),
+       p,
+       dpi = 100,
+       units = "in",
+       height = 4,
+       width = 5)
+
+# ------------------------------------------------------------------------------
+#   How many observed synchronies exceed the 95% interval of the "randomly"
+#   estimated synchrony distribution?
+# ------------------------------------------------------------------------------
+
+cutoff <- quantile(correlations_permuted, probs = c(0.025, 0.975))
+cat(paste0(sum(correlations > cutoff[2]), " / ", length(correlations), " taxa exceed the 95% interval\n"))
+
+# ------------------------------------------------------------------------------
+#   Plot: paired sample scatterplot
+# ------------------------------------------------------------------------------
+
+p <- ggplot(data.frame(x = paired_samples_x, y = paired_samples_y),
+            aes(x = x, y = y)) +
+  geom_point(size = 3, shape = 21, fill = "#999999") +
+  theme_bw() +
+  labs(x = "model-estimated logratio abundance (host 1)",
+       y = "model-estimated logratio abundance (host 2)")
+
+ggsave(file.path("output", "figures", "tax_23_synchrony_correlation.png"),
+       p,
+       dpi = 100,
+       units = "in",
+       height = 4.5,
+       width = 4.5)
+
+# ------------------------------------------------------------------------------
+#   Write out table of per-taxon synchrony estimates
+# ------------------------------------------------------------------------------
+
+write_df <- data.frame(synchrony = correlations,
+                       tax_idx = 1:length(correlations),
+                       taxonomy = sapply(1:(nrow(data$taxonomy)-1), function(x) {
+                         paste0(data$taxonomy[x,2:ncol(data$taxonomy)], collapse = " / ")
+                       }))
+write_df <- write_df %>%
+  arrange(desc(synchrony))
+write_df <- cbind(rank = 1:nrow(write_df), write_df)
+write.table(write_df,
+            file.path("output", "synchrony_table.tsv"),
+            sep = "\t",
+            quote = F,
+            row.names = F)
 
 # Print out the most synchronous pairs
 cat(paste0("Most synchronous pairs:\n"))
@@ -227,6 +315,7 @@ for(synchronous_idx in top_synchronous) {
   max_level <- max(which(!is.na(x)))
   cat(paste0("\tASV ", synchronous_idx, ", in ", colnames(data$taxonomy)[max_level], " ", unname(x[max_level]), "\n"))
 }
+
 # Print out the least synchronous pairs
 cat(paste0("Least synchronous pairs:\n"))
 # top5 <- order(correlations, decreasing = FALSE)[1:5]
@@ -236,6 +325,10 @@ for(synchronous_idx in bottom_synchronous) {
   max_level <- max(which(!is.na(x)))
   cat(paste0("\tASV ", synchronous_idx, ", in ", colnames(data$taxonomy)[max_level], " ", unname(x[max_level]), "\n"))
 }
+
+# ------------------------------------------------------------------------------
+#   Plot: Mean correlations for each taxon pair x universality scores
+# ------------------------------------------------------------------------------
 
 plot_df <- data.frame(synchrony = c(),
                       universality = c())

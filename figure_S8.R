@@ -2,70 +2,138 @@ source("path_fix.R")
 
 library(tidyverse)
 library(rulesoflife)
-# library(shapes)
-library(frechet)
-library(matrixsampling)
-library(ggridges)
+library(driver)
+library(cowplot)
+library(fido)
 
-# These are calculated by `analysis_compute_Frechets.R`
-# We ultimately need to roll that script's content into this one
-F1 <- readRDS(file.path("output", "Frechet_1_corr.rds"))
-F2 <- readRDS(file.path("output", "Frechet_2_corr.rds"))
-F3 <- readRDS(file.path("output", "Frechet_3_corr.rds"))
+# ------------------------------------------------------------------------------
+#
+#   Supplemental Figure S8 - scatterplots of phylogenetic distance vs. univer-
+#                            sality score or median association strength, plus
+#                            barplots of enrichment of closely related and
+#                            strongly universal pairs
+#
+# ------------------------------------------------------------------------------
 
-# This function from the frechet package runs faster and gives a different (and
-# frankly more intuitive) answer than the shapes package estimates, where means
-# had a very very different scale than the samples they were computed from.
-F1$mean <- CovFMean(F1$Sigmas)$Mout[[1]]
-F2$mean <- CovFMean(F2$Sigmas)$Mout[[1]]
-F3$mean <- CovFMean(F3$Sigmas)$Mout[[1]]
+data <- load_data(tax_level = "ASV")
+rug_asv <- summarize_Sigmas(output_dir = "asv_days90_diet25_scale1")
 
-# Compute squared distances in each case as our variance analog
-D <- dim(F1$Sigmas)[1]
-N <- dim(F1$Sigmas)[3]
-D1 <- numeric(N)
-D2 <- numeric(N)
-D3 <- numeric(N)
-for(i in 1:N) {
-  D1[i] <- distcov(F1$Sigmas[,,i] + diag(D)*1e-06,
-                   F1$mean + diag(D)*1e-06,
-                   method = "Riemannian")**2
-  D2[i] <- distcov(F2$Sigmas[,,i] + diag(D)*1e-06,
-                   F2$mean + diag(D)*1e-06,
-                   method = "Riemannian")**2
-  D3[i] <- distcov(F3$Sigmas[,,i] + diag(D)*1e-06,
-                   F3$mean + diag(D)*1e-06,
-                   method = "Riemannian")**2
-}
+phy_dist <- rug_phylogenetic_distances(rug_asv, data$taxonomy, as_matrix = FALSE)
+scores <- apply(rug_asv$rug, 2, calc_universality_score)
+signs <- apply(rug_asv$rug, 2, calc_consensus_sign)
+median_assoc_strength <- apply(rug_asv$rug, 2, function(x) {
+  median(abs(x))
+})
 
-# Plot
-plot_df <- data.frame(x = c(D1,
-                            D2,
-                            D3),
-                      label = c(rep("true", N),
-                                rep("permuted", N),
-                                rep("random", N)))
-plot_df$label <- factor(plot_df$label, levels = c("random", "permuted", "true"))
-levels(plot_df$label) <- c("Random", "Permutated", "Observed")
+plot_df <- data.frame(d = phy_dist,
+                      score = scores,
+                      sign = signs,
+                      mas = median_assoc_strength)
+plot_df$sign <- factor(plot_df$sign, levels = c(1, 0, -1))
+levels(plot_df$sign) <- c("positive", NA, "negative")
 
-p <- ggplot(plot_df,
-            aes(x = x, y = label, fill = label)) +
-  geom_density_ridges(alpha = 0.8)  +
+phylo_neg_mean <- mean(phy_dist[signs < 0])
+phylo_pos_mean <- mean(phy_dist[signs > 0])
+
+p <- ggplot(plot_df %>% filter(!is.na(sign)), aes(x = d, y = score, fill = factor(sign))) +
+  geom_segment(aes(x = phylo_neg_mean, xend = phylo_neg_mean, y = 0.26, yend = 0.8),
+               color = "#34CCDE",
+               size = 2,
+               linetype = "dashed") +
+  geom_segment(aes(x = phylo_pos_mean, xend = phylo_pos_mean, y = 0.26, yend = 0.8),
+               color = "#F25250",
+               size = 2,
+               linetype = "dashed") +
+  geom_point(size = 2, shape = 21) +
+  scale_fill_manual(values = c("#F25250", "#34CCDE")) +
   theme_bw() +
-  labs(x = "distance from mean dynamics",
-       y = "",
-       fill = "Data source") +
-  theme(legend.position = "none")
+  labs(x = "phylogenetic distance",
+       y = "universality score",
+       fill = "Consensus\ncorrelation sign")
 
-ggsave(file.path("output", "figures", "S8.svg"),
+ggsave("output/figures/SF6a.svg",
+       p,
        dpi = 100,
        units = "in",
-       height = 4,
-       width = 6)
+       height = 5,
+       width = 6.5)
 
-v1 <- sum(D1) / (N-1)
-v2 <- sum(D2) / (N-1)
-v3 <- sum(D3) / (N-1)
+p <- ggplot(plot_df %>% filter(!is.na(sign)), aes(x = d, y = mas, fill = factor(sign))) +
+  geom_segment(aes(x = phylo_neg_mean, xend = phylo_neg_mean, y = 0.29, yend = 0.8),
+               color = "#34CCDE",
+               size = 2,
+               linetype = "dashed") +
+  geom_segment(aes(x = phylo_pos_mean, xend = phylo_pos_mean, y = 0.29, yend = 0.8),
+               color = "#F25250",
+               size = 2,
+               linetype = "dashed") +
+  geom_point(size = 2, shape = 21) +
+  scale_fill_manual(values = c("#F25250", "#34CCDE")) +
+  theme_bw() +
+  labs(x = "phylogenetic distance",
+       y = "median association strength",
+       fill = "Consensus\ncorrelation sign")
 
-cat(paste0("Ratio of variance observed to permuted: ", round(v1 / v2, 3), ":1\n"))
-cat(paste0("Ratio of variance observed to random: ", round(v1 / v3, 3), ":1\n"))
+ggsave("output/figures/SF6b.svg",
+       p,
+       dpi = 100,
+       units = "in",
+       height = 5,
+       width = 6.5)
+
+# ------------------------------------------------------------------------------
+#   Enrichment of top left-hand pairs
+# ------------------------------------------------------------------------------
+
+topleft_pairs <- which(phy_dist < 0.2 & median_assoc_strength > 0.5)
+
+all_pairs <- data.frame(idx1 = rug_asv$tax_idx1,
+                        idx2 = rug_asv$tax_idx2,
+                        topleft = FALSE)
+all_pairs$tax1 <- sapply(1:nrow(all_pairs), function(x) {
+  paste0(data$taxonomy[all_pairs$idx1[x],6], collapse = "/")
+})
+all_pairs$tax2 <- sapply(1:nrow(all_pairs), function(x) {
+  paste0(data$taxonomy[all_pairs$idx2[x],6], collapse = "/")
+})
+
+for(i in 1:length(topleft_pairs)) {
+  all_pairs$topleft[all_pairs$idx1 == rug_asv$tax_idx1[topleft_pairs[i]] &
+                      all_pairs$idx2 == rug_asv$tax_idx2[topleft_pairs[i]]] <- TRUE
+}
+
+# 6105 of 8911 family-family pairs don't involve "NA" families
+all_pairs_noNA <- all_pairs %>%
+  filter(tax1 != "NA" & tax2 != "NA")
+
+all_pairs_noNA <- all_pairs_noNA %>%
+  mutate(taxpair = paste0(tax1, " - ", tax2))
+
+# Calculate a baseline frequency for all family-family pairs
+frequencies <- table(all_pairs_noNA$taxpair)
+
+# Define a huge color palette over all observed family-family pairs
+palette_fn <- "output/family-family_palette.rds"
+if(file.exists(palette_fn)) {
+  fam_pair_palette <- readRDS(palette_fn)
+} else {
+  fam_pair_palette <- generate_highcontrast_palette(length(frequencies))
+  names(fam_pair_palette) <- names(frequencies)
+  saveRDS(fam_pair_palette, palette_fn)
+}
+
+# ------------------------------------------------------------------------------
+#   Visualize differences in relative abundance of family pairs for top center
+#   clump of pairs
+# ------------------------------------------------------------------------------
+
+# Stacked bar: plot observed relative representation of family-family pairs
+frequencies_subset <- table(all_pairs_noNA$taxpair[all_pairs_noNA$topleft == TRUE])
+
+plot_enrichment(frequencies_subset,
+                frequencies,
+                plot_height = 6,
+                plot_width = 8,
+                legend_topmargin = 60,
+                legend_leftmargin = -0.5,
+                save_name = "SF6c.svg")

@@ -236,9 +236,7 @@ for(fam in c("Lachnospiraceae", "Ruminococcaceae", "Prevotellaceae")) {
 }
 
 # ------------------------------------------------------------------------------
-#
-#   Figure 5 - network plot
-#
+#   network plot
 # ------------------------------------------------------------------------------
 
 graph <- graph_from_data_frame(edge_df, node_df, directed = FALSE)

@@ -182,12 +182,16 @@ p <- ggplot() +
   theme_bw() +
   labs(x = "days from first sample",
        y = "CLR abundance")
+
 ggsave("output/figures/F3_positive_pair.svg",
        p,
        dpi = 100,
        units = "in",
        height = 2,
        width = 6)
+
+cat(paste0("Median correlation across hosts for this pair: ",
+           round(median(rugs$c$rug[,which(rugs$c$tax_idx1 == 2 & rugs$c$tax_idx2 == 3)]), 3)))
 
 p <- ggplot() +
   geom_ribbon(data = neg_pair %>% filter(coord == 31),
@@ -217,3 +221,7 @@ ggsave("output/figures/F3_negative_pair.svg",
        units = "in",
        height = 2,
        width = 6)
+
+cat(paste0("Median correlation across hosts for this pair: ",
+           round(median(rugs$c$rug[,which(rugs$c$tax_idx1 == 31 & rugs$c$tax_idx2 == 114)]), 3)))
+

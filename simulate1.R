@@ -2,11 +2,11 @@ source("path_fix.R")
 
 library(matrixsampling)
 library(Rcpp)
-# library(brms)
 library(driver)
 library(fido)
 library(rulesoflife)
 library(LaplacesDemon)
+library(frechet)
 library(optparse)
 
 option_list <- list(
@@ -15,7 +15,10 @@ option_list <- list(
               metavar = "number"),
   make_option(c("--mix"), type = "numeric", default = 0.5,
               help = "Mixing parameter (global proportion)",
-              metavar = "number")
+              metavar = "number"),
+  make_option(c("--permuted"), type = "logical", default = TRUE,
+              help = "Use permuted versions of observed matrices?",
+              metavar = "logical")
 )
 
 # get command line options, if help option encountered print help and exit,
@@ -23,19 +26,31 @@ option_list <- list(
 opt <- parse_args(OptionParser(option_list = option_list))
 
 H <- opt$hosts
+mixing_prop <- opt$mix
+permuted <- opt$permuted
 T <- 100
 D <- 135
 
-global_dynamics <- matrixsampling::rinvwishart(1, D + 2, diag(D))[,,1]
-global_baseline <- LaplacesDemon::rdirichlet(1, rep(100/D, D))
-
-mixing_prop <- opt$mix
+if(permuted) {
+  samples <- readRDS(file.path("output", "Frechet_1_corr.rds"))
+  global_dynamics <- CovFMean(samples$Sigmas)$Mout[[1]]
+  shuffle_idx <- sample(1:D)
+  global_dynamics <- global_dynamics[shuffle_idx,shuffle_idx]
+} else {
+  global_dynamics <- matrixsampling::rinvwishart(1, D + 2, diag(D))[,,1]
+  global_baseline <- LaplacesDemon::rdirichlet(1, rep(100/D, D))
+}
 
 simulations <- NULL
 for(h in 1:H) {
   cat(paste0("Simulating host ", h, " / ", H, "\n"))
   host_X <- round(matrix(runif(T, min = 1, max = T*10), 1, T))
-  host_dynamics <- matrixsampling::rinvwishart(1, D + 2, diag(D))[,,1]
+  if(permuted) {
+    shuffle_idx <- sample(1:D)
+    host_dynamics <- samples$Sigmas[shuffle_idx,shuffle_idx,h]
+  } else {
+    host_dynamics <- matrixsampling::rinvwishart(1, D + 2, diag(D))[,,1]
+  }
   combined_dynamics <- mixing_prop*global_dynamics + (1 - mixing_prop)*host_dynamics
 
   # Convert to ALR; this is a fido function
@@ -73,4 +88,3 @@ for(h in 1:H) {
                            Sigma_hat = fit.clr$Sigma[,,1])
 }
 saveRDS(simulations, paste0("simulations_h-", H, "_m-", mixing_prop, ".rds"))
-
