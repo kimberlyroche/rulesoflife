@@ -239,12 +239,14 @@ for(i in 1:iterations) {
   permuted_scores_asv[,i] <- scores
 }
 
+obs_scores <- apply(rug_asv$rug, 2, calc_universality_score)
+
 score_distros <- rbind(score_distros,
                        data.frame(x = c(permuted_scores_asv),
                                   type = "ASV",
                                   scheme = "permuted"))
 score_distros <- rbind(score_distros,
-                       data.frame(x = apply(rug_asv$rug, 2, calc_universality_score),
+                       data.frame(x = obs_scores,
                                   type = "ASV",
                                   scheme = "observed"))
 
@@ -268,6 +270,54 @@ ggsave("output/figures/SF2.svg",
        units = "in",
        height = 5,
        width = 8)
+
+# ------------------------------------------------------------------------------
+#   Report stats: How many ASV-level universality scores are lower than
+#                 expected by chance?
+# ------------------------------------------------------------------------------
+
+bounds <- quantile(score_distros %>% filter(scheme == "permuted") %>% pull(x),
+                   probs = c(0.0275, 0.975))
+
+n <- nrow(score_distros %>% filter(scheme == "observed"))
+below_n <- sum((score_distros %>% filter(scheme == "observed") %>% pull(x) < bounds[1]))
+
+cat(paste0("Percent of ASV pairs with universality scores lower than 95% random interval: ",
+           round(below_n / n, 3)*100, "\n"))
+
+# Optionally visualize the distribution of very-low-universality score pairs
+if(FALSE) {
+  low_idx <- which(obs_scores < bounds[1])
+  subset_rug <- rug_asv$rug[,low_idx]
+  scores_pieces <- apply(subset_rug, 2, function(x) {
+    calc_universality_score(x, return_pieces = TRUE)
+  })
+
+  # Percent agreement across hosts in these very-low scores
+  ggplot(data.frame(x = scores_pieces[1,]), aes(x = x)) +
+    geom_histogram(color = "white") +
+    theme_bw() +
+    xlim(c(0.5, 1)) +
+    labs(x = "percent agreement in sign across hosts")
+
+  # Percent agreement across hosts in these very-low scores
+  subset_rug <- as.data.frame(subset_rug)
+  rownames(subset_rug) <- paste0("host_", 1:nrow(subset_rug))
+  colnames(subset_rug) <- paste0(1:ncol(subset_rug))
+  long_subset <- pivot_longer(subset_rug,
+                              everything(),
+                              names_to = "pair",
+                              values_to = "correlation")
+  long_subset$pair <- factor(long_subset$pair)
+  # Pull some random pairs to plot
+  ggplot(long_subset %>% filter(pair %in% sample(levels(pair), size = 20)),
+         aes(x = pair, y = correlation)) +
+    geom_violin() +
+    theme_bw() +
+    ylim(c(-1, 1)) +
+    labs(x = "pair index",
+         y = "correlation distribution")
+}
 
 # ------------------------------------------------------------------------------
 #   Report stats: correlation

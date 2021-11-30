@@ -27,20 +27,24 @@ thresholds <- data.frame(type = factor(c("Phylum", "Family", "ASV")),
                          lower = c(-0.303, -0.256, -0.263),
                          upper = c(0.149, 0.207, 0.254))
 
+rug_phy <- summarize_Sigmas(output_dir = "phy_days90_diet25_scale1")
+rug_fam <- summarize_Sigmas(output_dir = "fam_days90_diet25_scale1")
+rug_asv <- summarize_Sigmas(output_dir = "asv_days90_diet25_scale1")
+
 # ------------------------------------------------------------------------------
 #   "Hockey stick" plot
 # ------------------------------------------------------------------------------
 
-asv_scores_pieces <- apply(rugs$c$rug, 2, function(x) calc_universality_score(x, return_pieces = TRUE))
+asv_scores_pieces <- apply(rug_asv$rug, 2, function(x) calc_universality_score(x, return_pieces = TRUE))
 score_df <- data.frame(x = asv_scores_pieces[1,], y = asv_scores_pieces[2,])
 
 # Additional labelings
 # 1) Consensus sign
-score_df$sign <- apply(rugs$c$rug, 2, calc_consensus_sign)
+score_df$sign <- apply(rug_asv$rug, 2, calc_consensus_sign)
 score_df$sign <- factor(score_df$sign, levels = c(1, -1))
 levels(score_df$sign) <- c("positive", "negative")
 # 2) Percent significant observations for this taxon pair
-score_df$signif <- apply(rugs$c$rug, 2, function(x) {
+score_df$signif <- apply(rug_asv$rug, 2, function(x) {
   sum(x < thresholds %>% filter(type == "ASV") %>% pull(lower) | x > thresholds %>% filter(type == "ASV") %>% pull(upper))/length(x)
 })
 
@@ -65,13 +69,13 @@ p1 <- ggplot(score_df %>% filter(sign != 0)) +
 #   ggridges stacked histograms of universality scores by taxonomic level
 # ------------------------------------------------------------------------------
 
-plot_df <- data.frame(score = apply(rugs$a$rug, 2, calc_universality_score),
+plot_df <- data.frame(score = apply(rug_phy$rug, 2, calc_universality_score),
                       type = "Phylum")
 plot_df <- rbind(plot_df,
-                 data.frame(score = apply(rugs$b$rug, 2, calc_universality_score),
+                 data.frame(score = apply(rug_fam$rug, 2, calc_universality_score),
                             type = "Family"))
 plot_df <- rbind(plot_df,
-                 data.frame(score = apply(rugs$c$rug, 2, calc_universality_score),
+                 data.frame(score = apply(rug_asv$rug, 2, calc_universality_score),
                             type = "ASV"))
 
 p2 <- ggplot(plot_df, aes(x = score, y = type, fill = type)) +
@@ -114,8 +118,8 @@ data <- load_data(tax_level = "ASV")
 
 # Note: I'm repeatedly calculating these. It would be much better to do this once
 # globally.
-scores <- apply(rugs$c$rug, 2, calc_universality_score)
-consensus_signs <- apply(rugs$c$rug, 2, calc_consensus_sign)
+scores <- apply(rug_asv$rug, 2, calc_universality_score)
+consensus_signs <- apply(rug_asv$rug, 2, calc_consensus_sign)
 
 palette_fn <- file.path("output", "family_palette.rds")
 if(file.exists(palette_fn)) {
@@ -135,8 +139,8 @@ k <- round(length(scores)*(percent/100))
 top_pairs <- order(scores, decreasing = TRUE)[1:k]
 
 # Get the taxon indices of each partner in these top pairs
-pair_idx1 <- rugs$c$tax_idx1[top_pairs]
-pair_idx2 <- rugs$c$tax_idx2[top_pairs]
+pair_idx1 <- rug_asv$tax_idx1[top_pairs]
+pair_idx2 <- rug_asv$tax_idx2[top_pairs]
 
 # Build a mapping of taxon indices to new labels 1..n
 map_df <- data.frame(taxon_idx = unique(c(pair_idx1, pair_idx2)))
@@ -173,10 +177,12 @@ fam_df <- fam_df %>%
   left_join(node_df, by = c("to" = "name")) %>%
   select(Family1, Family2 = Family)
 
+representation <- NULL
 proportional_representation <- NULL
+families <- unique(c(fam_df$Family1, fam_df$Family2))
+# Get baseline representation for all families
 for(fam in families) {
   if(fam != "Unknown") {
-    # Number of family-family connection for this group overall
     n_fam <- sum(data$taxonomy[,6] == fam, na.rm = TRUE)
     baseline <- (n_fam^2 - n_fam) / 2
 
@@ -186,7 +192,12 @@ for(fam in families) {
       count() %>%
       pull(n)
 
-    if(baseline > 10) {
+    representation <- rbind(representation,
+                            data.frame(family = fam,
+                                       baseline = baseline,
+                                       observed = observed))
+
+    # if(baseline > 10) {
       proportional_representation <- rbind(proportional_representation,
                                            data.frame(family = fam,
                                                       value = baseline*0.025,
@@ -199,7 +210,7 @@ for(fam in families) {
                                            data.frame(family = fam,
                                                       value = baseline - observed,
                                                       type = "not observed in top 2.5%"))
-    }
+    # }
   }
 }
 
@@ -207,7 +218,9 @@ proportional_representation$type <- factor(proportional_representation$type,
                                            levels = c("not observed in top 2.5%",
                                                       "observed in top 2.5%",
                                                       "expected"))
-p <- ggplot(proportional_representation,
+p <- ggplot(proportional_representation %>% filter(family %in% c("Atopobiaceae",
+                                                                 "Eggerthellaceae",
+                                                                 "Bifidobacteriaceae")),
        aes(x = reorder(family, value), y = value, fill = type)) +
   geom_bar(position = "stack", stat = "identity") +
   guides(fill = guide_legend(reverse = TRUE)) +
@@ -216,23 +229,40 @@ p <- ggplot(proportional_representation,
   theme_bw() +
   labs(fill = "Pair value",
        x = "\nfamily",
-       y = "number family-family pairs\n")
+       y = "number family-family pairs\n") +
+  theme(legend.position = c(0.33, 0.8),
+        legend.background = element_rect(fill='transparent'))
 
-ggsave(file.path(plot_dir, "F4c.svg"),
+ggsave(file.path("output", "figures", "F4c.png"),
        p,
        units = "in",
        dpi = 100,
        height = 4,
-       width = 6)
+       width = 4)
 
-for(fam in c("Lachnospiraceae", "Ruminococcaceae", "Prevotellaceae")) {
-  ratio <- proportional_representation %>%
-    filter(family == fam & type == "observed in top 2.5%") %>%
-    pull(value) /
-    proportional_representation %>%
-    filter(family == fam & type == "expected") %>%
-    pull(value)
-  cat(paste0(fam, " is enriched (relative to expected ", round(ratio, 3), " x\n"))
+# Test enrichment of families
+for(i in 1:nrow(representation)) {
+  if(representation$baseline[i] > 0) {
+    fam_in_sample <- representation$observed[i]
+    sample_size <- sum(representation$observed)
+    fam_in_bg <- representation$baseline[i]
+    bg_size <- sum(representation$baseline)
+    ctab <- matrix(c(fam_in_sample,
+                     sample_size - fam_in_sample,
+                     fam_in_bg,
+                     bg_size - fam_in_bg),
+                   2, 2, byrow = TRUE)
+    prob <- fisher.test(ctab, alternative = "greater")$p.value
+    cat(paste0("ASV family: ",
+               representation$family[i],
+               ", p-value: ",
+               round(prob, 3),
+               " (",
+               representation$observed[i],
+               " / ",
+               representation$baseline[i],
+               ")\n"))
+  }
 }
 
 # ------------------------------------------------------------------------------
@@ -254,7 +284,7 @@ p <- ggraph(graph, layout = "fr") +
   theme_bw() +
   guides(edge_color = guide_legend(title = "Consensus\ncorrelation sign"))
 
-ggsave(file.path(plot_dir, "F5.svg"),
+ggsave(file.path("output", "figures", "F5.svg"),
        p,
        units = "in",
        dpi = 100,

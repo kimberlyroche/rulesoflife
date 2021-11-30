@@ -368,7 +368,7 @@ cat(paste0("R^2: ", round(cor(plot_df$synchrony, plot_df$universality)^2, 3), "\
 # ------------------------------------------------------------------------------
 
 # Score enrichment of family pairs or families themselves?
-use_pairs <- FALSE
+use_pairs <- TRUE
 
 topcenter_pairs <- which(plot_df$synchrony < 0.3 & plot_df$universality > 0.5)
 topright_pairs <- which(plot_df$synchrony > 0.3 & plot_df$universality > 0.5)
