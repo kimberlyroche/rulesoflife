@@ -13,9 +13,59 @@ registerDoParallel(detectCores())
 
 # ------------------------------------------------------------------------------
 #
-#   Figure 5 - paired synchrony vs. universality plots, plus enrichment barplots
-#              for relative abundances of family-family pairs in subregions
+#   Figure 5 - synchrony "cartoon", paired synchrony vs. universality plots,
+#              plus enrichment barplots, for relative abundances of family-
+#              family pairs in subregions
 #
+# ------------------------------------------------------------------------------
+
+# ------------------------------------------------------------------------------
+#   "Cartoon"
+# ------------------------------------------------------------------------------
+
+df <- data.frame(x = c(3, 4, 5, 7, 10,
+                       1, 3, 6, 8, 9,
+                       5, 6, 9,
+                       1, 2, 7, 9, 10,
+                       2, 3, 4, 8),
+                 y = c(5, 5, 5, 5, 5,
+                       4, 4, 4, 4, 4,
+                       3, 3, 3,
+                       2, 2, 2, 2, 2,
+                       1, 1, 1, 1),
+                 shape = c(1, 0, 0, 0, 0,
+                           0, 2, 1, 0, 0,
+                           0, 2, 1,
+                           0, 1, 0, 2, 0,
+                           2, 0, 0, 0))
+
+df$shape <- factor(df$shape)
+levels(df$shape) <- c("Unused sample", "Series 1", "Series 2")
+
+p <- ggplot(df, aes(x = x, y = y, fill = shape)) +
+  geom_point(size = 6, shape = 21) +
+  theme_bw() +
+  scale_fill_manual(values = c("#dddddd", "#d99e57", "#9e87c9")) +
+  scale_x_discrete(name = "sample day",
+                   limits = 1:10) +
+  scale_y_discrete(name = "host",
+                   limits = c("E", "D", "C", "B", "A")) +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        axis.line = element_line(colour = "black"),
+        legend.position = "bottom") +
+  labs(fill = "")
+
+ggsave(file.path("output", "figures", "S7a.png"),
+       p,
+       dpi = 100,
+       units = "in",
+       height = 3,
+       width = 4)
+
+# ------------------------------------------------------------------------------
+#   Perform the actual synchrony estimates
 # ------------------------------------------------------------------------------
 
 data <- load_data(tax_level = "ASV")
@@ -368,10 +418,10 @@ cat(paste0("R^2: ", round(cor(plot_df$synchrony, plot_df$universality)^2, 3), "\
 # ------------------------------------------------------------------------------
 
 # Score enrichment of family pairs or families themselves?
-use_pairs <- TRUE
+use_pairs <- FALSE
 
-topcenter_pairs <- which(plot_df$synchrony < 0.3 & plot_df$universality > 0.5)
-topright_pairs <- which(plot_df$synchrony > 0.3 & plot_df$universality > 0.5)
+topcenter_pairs <- which(plot_df$synchrony < 0.3 & plot_df$universality > 0.4)
+topright_pairs <- which(plot_df$synchrony > 0.3 & plot_df$universality > 0.4)
 
 all_pairs <- data.frame(idx1 = rug_asv$tax_idx1,
                         idx2 = rug_asv$tax_idx2,
