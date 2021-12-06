@@ -2,205 +2,200 @@ source("path_fix.R")
 
 library(tidyverse)
 library(rulesoflife)
-library(driver)
+library(shapes)
+library(frechet)
+library(matrixsampling)
+library(cowplot)
 
 # ------------------------------------------------------------------------------
-#
-#   Figure S6 - "bigraph": show there are similar trends in abundance of pairs
-#               in the top 2.5% and bottom 97.5% of universality scores
-#
+#   Supplemental Figure S6 - distributions of distances from mean dynamics for
+#                            dynamics estimates
 # ------------------------------------------------------------------------------
 
-# Pull top 2.5% most universal pairs
-rug_asv <- summarize_Sigmas(output_dir = "asv_days90_diet25_scale1")
-scores <- apply(rug_asv$rug, 2, calc_universality_score)
+# ------------------------------------------------------------------------------
+#   Distributions of distances
+# ------------------------------------------------------------------------------
 
-# Get average CLR abundance for all taxa
-data <- load_data(tax_level = "ASV")
-clr.counts <- clr_array(data$counts + 0.5, parts = 1)
-clr.means <- rowMeans(clr.counts)
+# Pull the already-parsed MAP estimates of dynamics from this object, calculated
+# by `analysis_compute_Frechets.R`
+F1 <- readRDS(file.path("output", "Frechet_1_corr.rds"))
 
-plot_df <- data.frame(pair_idx = 1:ncol(rug_asv$rug),
-                      tax_idx1 = rug_asv$tax_idx1,
-                      tax_idx2 = rug_asv$tax_idx2,
-                      score = scores)
-plot_df$mean1 <- clr.means[plot_df$tax_idx1]
-plot_df$mean2 <- clr.means[plot_df$tax_idx2]
+# Calculate the mean using the `frechet` package
+F1$mean <- CovFMean(F1$Sigmas)$Mout[[1]]
 
-threshold <- quantile(scores, probs = c(0.975))
-plot_df$top <- sapply(scores, function(x) x > threshold)
+D <- dim(F1$Sigmas)[1]
+N <- dim(F1$Sigmas)[3]
 
-# Rearrange taxa 1/2 to be lower-higher
-for(i in 1:nrow(plot_df)) {
-  if(plot_df$mean2[i] < plot_df$mean1[i]) {
-    t1 <- plot_df$tax_idx1[i]
-    plot_df$tax_idx1[i] <- plot_df$tax_idx2[i]
-    plot_df$tax_idx2[i] <- t1
-    m1 <- plot_df$mean1[i]
-    plot_df$mean1[i] <- plot_df$mean2[i]
-    plot_df$mean2[i] <- m1
-  }
+# Compute distances
+D1 <- numeric(N)
+for(i in 1:N) {
+  D1[i] <- dist4cov(F1$Sigmas[,,i] + diag(D)*1e-06,
+                    F1$mean + diag(D)*1e-06)$dist
 }
 
+# Densities
+p1 <- ggplot(data.frame(x = D1), aes(x = x)) +
+  geom_histogram(color = "white", binwidth = 0.8) +
+  theme_bw() +
+  labs(x = "distance from mean dynamics") +
+  theme(legend.position = "none")
+
+# ggsave(file.path("output", "figures", "S6a.png"),
+#        dpi = 100,
+#        units = "in",
+#        height = 4,
+#        width = 4)
+
+# bounds <- quantile(D1, probs = c(0.025, 0.975))
+
 # ------------------------------------------------------------------------------
 #
-#   Version 1: plot a) distributions of differences in mean CLR and b)
-#              distributions of mean CLR for each partner in pair
+#   Simulation results (VERSION 1): mapping distances to proportions of global-
+#   and host-level signals
 #
 # ------------------------------------------------------------------------------
 
-plot_df <- plot_df %>%
-  mutate(delta = mean2 - mean1)
+D <- 135
+# A <- matrixsampling::rinvwishart(1, D + 2, diag(D))[,,1]
+A <- F1$mean
+addend <- diag(D)*1e-06
+mix <- seq(from = 0, to = 1, by = 0.05)
 
-plot_df$top_factor <- factor(plot_df$top)
-levels(plot_df$top_factor) <- c("Bottom 97.5%", "Top 2.5%")
+plot_df <- NULL
+for(j in 1:1000) {
+  cat(paste0("Iteration ", j, "\n"))
+  # Include a random host contribution
+  B <- cov2cor(matrixsampling::rinvwishart(1, D + 2, diag(D))[,,1])
+  # Alternatively, use a random host contribution with strictly the same scale
+  # as our observed data (i.e. from permuted estimates)
+  # B <- F2$Sigmas[,,sample(1:56, size = 1)]
 
-p1 <- ggplot(plot_df, aes(x = delta, y = top_factor, fill = top_factor)) +
-  geom_density_ridges() +
+  dists <- numeric(length(mix))
+  for(i in 1:length(mix)) {
+    dists[i] <- dist4cov(A + addend,
+                         ((1-mix[i])*A + mix[i]*B) + addend)$dist
+  }
+
+  plot_df <- rbind(plot_df,
+                   data.frame(x = mix, y = dists, iteration = j))
+}
+
+p2 <- ggplot(plot_df, aes(x = x, y = y, group = x)) +
+  geom_boxplot(outlier.shape = NA) +
   theme_bw() +
-  labs(x = "difference in mean CLR abundance") +
-  scale_fill_manual(values = brewer.pal(n = 4, name = "RdPu")[1:2]) +
-  coord_cartesian(clip = "off") +
-  scale_y_discrete(expand = expansion(add = c(0.2, 2))) +
-  theme(axis.title.y = element_blank(),
-        legend.position = "none",
-        legend.background = element_rect(fill='transparent')) +
-  guides(fill = guide_legend(reverse = TRUE))
+  labs(x = "proportion host signal",
+       y = "distance") +
+  theme(legend.position = "none")
 
-top_df <- plot_df %>%
-  filter(top)
-bottom_df <- plot_df %>%
-  filter(!top)
-
-plot_df2 <- rbind(data.frame(mean = top_df$mean1,
-                             partner = "Lesser",
-                             top = TRUE),
-                  data.frame(mean = top_df$mean2,
-                             partner = "Greater",
-                             top = TRUE))
-plot_df2 <- rbind(plot_df2,
-                  rbind(data.frame(mean = bottom_df$mean1,
-                                   partner = "Lesser",
-                                   top = FALSE),
-                        data.frame(mean = bottom_df$mean2,
-                                   partner = "Greater",
-                                   top = FALSE)))
-
-plot_df2$top <- factor(plot_df2$top)
-levels(plot_df2$top) <- c("Bottom 97.5%", "Top 2.5%")
-
-p2 <- ggplot(plot_df2, aes(x = mean, y = top, fill = partner)) +
-  geom_density_ridges(alpha = 0.5, scale = 1.2) +
+min_obs <- min(D1)
+max_obs <- max(D1)
+plot_df2 <- data.frame(x = plot_df %>%
+                         filter(y > min_obs & y < max_obs) %>%
+                         pull(x))
+p3 <- ggplot(plot_df2,
+       aes(x = x)) +
+  geom_histogram(color = "white", binwidth = 0.05) +
   theme_bw() +
-  labs(x = "mean CLR abundance",
-       fill = "Partner\nabundance") +
-  scale_fill_manual(values = brewer.pal(n = 4, name = "RdPu")[c(4,1)]) +
-  coord_cartesian(clip = "off") +
-  scale_y_discrete(expand = expansion(add = c(0.2, 2))) +
-  theme(axis.title.y = element_blank(),
-        legend.position = c(0.8, 0.8),
-        legend.background = element_rect(fill='transparent')) +
-  guides(fill = guide_legend(reverse = TRUE))
+  labs(x = "proportion host signal")
 
-p <- plot_grid(p2, p1, ncol = 2,
-               scale = 0.95,
-               rel_widths = c(1, 0.9),
-               labels = c("a", "b"),
-               label_size = 22,
-               label_x = 0.02,
-               label_y = 1.02) +
-  theme(plot.background = element_rect(fill = "white", color = "white"))
+p <- plot_grid(p1, p2, p3, ncol = 3,
+          scale = 0.95,
+          labels = c("a", "b", "c"),
+          label_size = 20,
+          label_x = -0.02,
+          label_y = 1.02)
 
 ggsave(file.path("output", "figures", "S6.png"),
        p,
        dpi = 100,
        units = "in",
        height = 4,
-       width = 8)
+       width = 12)
 
 # ------------------------------------------------------------------------------
 #
-#   Version 2: bigraph
+#   Simulation results (VERSION 2): add in some proportion of the residual until
+#   we get data that "looks like" the observed data
 #
 # ------------------------------------------------------------------------------
 
-# Subset huge number of pairs in the bottom 97.5%
-bottom_df_subset <- bottom_df %>%
-  mutate(key = sample(1:nrow(bottom_df))) %>%
-  arrange(key) %>%
-  slice(1:1000)
+global_mean <- F1$mean
+mix <- seq(from = 0, to = 1, by = 0.05)
+mins <- NULL
+p1 <- NULL
+legend <- NULL
+for(h in 1:N) {
+  host_obs <- F1$Sigmas[,,h]
+  host_residual <- host_obs - global_mean
+  diag(host_residual) <- 1
+  if(is.null(p1)) {
+    p1a <- plot_kernel_or_cov_matrix(host_obs) +
+      theme(legend.position = "bottom") +
+      labs(title = "observed host dynamics",
+           fill = "correlation ") +
+      guides(fill = guide_colourbar(title.vjust = 0.8))
+    legend <- get_legend(p1a)
+    p1a <- p1a +
+      theme(legend.position = "none",
+            axis.title.x = element_blank(),
+            axis.title.y = element_blank(),
+            axis.ticks = element_blank(),
+            axis.text = element_blank(),
+            plot.title = element_text(size = 10, hjust = 0.5)) +
+      scale_x_continuous(expand = c(0, 0)) +
+      scale_y_continuous(expand = c(0, 0))
+    p1b <- plot_kernel_or_cov_matrix(global_mean) +
+      labs(title = "population mean dynamics") +
+      theme(legend.position = "none",
+            axis.title.x = element_blank(),
+            axis.title.y = element_blank(),
+            axis.ticks = element_blank(),
+            axis.text = element_blank(),
+            plot.title = element_text(size = 10, hjust = 0.5)) +
+      scale_x_continuous(expand = c(0, 0)) +
+      scale_y_continuous(expand = c(0, 0))
+    p1c <- plot_kernel_or_cov_matrix(host_residual) +
+      labs(title = "host residual dynamics") +
+      theme(legend.position = "none",
+            axis.title.x = element_blank(),
+            axis.title.y = element_blank(),
+            axis.ticks = element_blank(),
+            axis.text = element_blank(),
+            plot.title = element_text(size = 10, hjust = 0.5)) +
+      scale_x_continuous(expand = c(0, 0)) +
+      scale_y_continuous(expand = c(0, 0))
+    p1 <- plot_grid(p1a, p1b, p1c, ncol = 3)
+  }
 
-point_df <- data.frame(x = "lower",
-                       y = top_df %>% pull(mean1),
-                       top = TRUE)
-point_df <- rbind(point_df,
-                  data.frame(x = "upper",
-                             y = top_df %>% pull(mean2),
-                             top = TRUE))
-point_df <- rbind(point_df,
-                  data.frame(x = "lower",
-                             y = bottom_df_subset %>% pull(mean1),
-                             top = FALSE))
-point_df <- rbind(point_df,
-                  data.frame(x = "upper",
-                             y = bottom_df_subset %>% pull(mean2),
-                             top = FALSE))
+  for(j in 1:length(mix)) {
+    combined_dynamics <- (1-mix[j])*global_mean + mix[j]*host_residual
+    mins <- rbind(mins,
+                  data.frame(host = h,
+                             p = mix[j],
+                             dist = dist4cov(host_obs, combined_dynamics)$dist))
+  }
+}
 
-line_df <- data.frame(x = "lower",
-                      xend = "upper",
-                      y = top_df %>% pull(mean1),
-                      yend = top_df %>% pull(mean2),
-                      top = TRUE)
-line_df <- rbind(line_df,
-                 data.frame(x = "lower",
-                            xend = "upper",
-                            y = bottom_df_subset %>% pull(mean1),
-                            yend = bottom_df_subset %>% pull(mean2),
-                            top = FALSE))
-
-line_alpha <- 0.25
-line_size <- 0.75
-
-p1 <- ggplot() +
-  geom_segment(data = line_df %>% filter(!top),
-               aes(x = factor(x), xend = factor(xend), y = y, yend = yend),
-               alpha = line_alpha/2,
-               size = line_size) +
-  geom_point(data = point_df %>% filter(!top),
-             aes(x = x, y = y)) +
+p2 <- ggplot(mins, aes(x = p, y = dist, color = factor(host))) +
+  geom_line() +
   theme_bw() +
-  labs(x = "\nmember of taxon pair",
-       y = "mean empirical CLR abundance\n") +
-  coord_cartesian(clip = "off") +
-  scale_x_discrete(expand = expansion(add = c(0.2, 0.2))) +
-  ylim(c(-2.5, 6.1))
+  scale_color_manual(values = generate_highcontrast_palette(N)) +
+  theme(legend.position = "none") +
+  labs(x = "proportion host-level effect",
+       y = "distance of composite\ndynamics from observed")
 
-p2 <- ggplot() +
-  geom_segment(data = line_df %>% filter(top),
-               aes(x = factor(x), xend = factor(xend), y = y, yend = yend),
-               alpha = line_alpha,
-               size = line_size) +
-  geom_point(data = point_df %>% filter(top),
-             aes(x = x, y = y)) +
-  theme_bw() +
-  labs(x = "\nmember of taxon pair",
-       y = "mean empirical CLR abundance\n") +
-  coord_cartesian(clip = "off") +
-  scale_x_discrete(expand = expansion(add = c(0.2, 0.2))) +
-  ylim(c(-2.5, 6.1))
+p3 <- plot_grid(p1, NULL, legend, ncol = 1, rel_heights = c(1, -0.1, 0.7))
+p4 <- plot_grid(p3, NULL, ncol = 1, rel_heights = c(1, 0.1))
+p_all <- plot_grid(p4, p2, ncol = 2,
+                   rel_widths = c(1, 0.75),
+                   labels = c("a", "b"),
+                   label_size = 18,
+                   scale = 0.90)
 
-p <- plot_grid(p1, p2, ncol = 2,
-          scale = 0.9,
-          rel_widths = c(1, 0.9),
-          labels = c("a", "b"),
-          label_size = 22,
-          label_x = 0.0,
-          label_y = 1.02) +
-  theme(plot.background = element_rect(fill = "white", color = "white"))
-
-ggsave(file.path("output", "figures", "S6_alt.png"),
-       p,
+ggsave(file.path("output", "figures", "S6_Sayan.png"),
+       p_all,
        dpi = 100,
        units = "in",
-       height = 5,
-       width = 7)
+       height = 3.5,
+       width = 10)
+

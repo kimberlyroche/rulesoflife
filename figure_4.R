@@ -111,7 +111,7 @@ ggsave("output/figures/F4ab.svg",
        width = 9)
 
 # ------------------------------------------------------------------------------
-#   Family-family enrichment bar plots
+#   Enrichment bar plots
 # ------------------------------------------------------------------------------
 
 data <- load_data(tax_level = "ASV")
@@ -121,18 +121,6 @@ data <- load_data(tax_level = "ASV")
 scores <- apply(rug_asv$rug, 2, calc_universality_score)
 consensus_signs <- apply(rug_asv$rug, 2, calc_consensus_sign)
 
-palette_fn <- file.path("output", "family_palette.rds")
-if(file.exists(palette_fn)) {
-  family_palette <- readRDS(palette_fn)
-} else {
-  unique_families <- unique(data$taxonomy[,6])
-  family_palette <- generate_highcontrast_palette(length(unique_families))
-  names(family_palette) <- unique_families
-  names(family_palette)[is.na(names(family_palette))] <- "Unknown"
-  family_palette[names(family_palette) == "Unknown"] <- "#999999"
-  saveRDS(family_palette, file = file.path("output", "family_palette.rds"))
-}
-
 # Pull top k percent most universal associations
 percent <- 2.5
 k <- round(length(scores)*(percent/100))
@@ -141,6 +129,109 @@ top_pairs <- order(scores, decreasing = TRUE)[1:k]
 # Get the taxon indices of each partner in these top pairs
 pair_idx1 <- rug_asv$tax_idx1[top_pairs]
 pair_idx2 <- rug_asv$tax_idx2[top_pairs]
+
+# ------------------------------------------------------------------------------
+#   Family version
+# ------------------------------------------------------------------------------
+
+families_top <- c(data$taxonomy[pair_idx1,6], data$taxonomy[pair_idx2,6])
+families_top <- families_top[!is.na(families_top)]
+
+families_all <- c(data$taxonomy[rug_asv$tax_idx1,6], data$taxonomy[rug_asv$tax_idx2,6])
+families_all <- families_all[!is.na(families_all)]
+
+frequencies_subset <- table(families_top)
+frequencies <- table(families_all)
+
+# Test for enrichment statistically
+signif <- c()
+for(fam in names(frequencies_subset)) {
+  fam_in_sample <- unname(unlist(frequencies_subset[fam]))
+  sample_size <- unname(unlist(sum(frequencies_subset)))
+  fam_in_bg <- unname(unlist(frequencies[fam]))
+  bg_size <- unname(unlist(sum(frequencies)))
+  ctab <- matrix(c(fam_in_sample,
+                   sample_size - fam_in_sample,
+                   fam_in_bg,
+                   bg_size - fam_in_bg),
+                 2, 2, byrow = TRUE)
+  prob <- fisher.test(ctab, alternative = "greater")$p.value
+  if(prob < 0.05) {
+    signif <- c(signif, fam)
+    cat(paste0("ASV family: ", fam, ", p-value: ", round(prob, 3), "\n"))
+  }
+}
+
+plot_enrichment(frequencies_subset1 = frequencies_subset,
+                frequencies_subset2 = NULL,
+                frequencies = frequencies,
+                significant_families1 = signif,
+                significant_families2 = NULL,
+                plot_height = 6,
+                plot_width = 5,
+                legend_topmargin = 100,
+                use_pairs = FALSE,
+                rel_widths = c(1, 0.35, 1, 0.3, 2),
+                labels = c("overall", "2.5% most universal ASVs"),
+                save_name = "F4-enrichment.png")
+
+# ------------------------------------------------------------------------------
+#   Family-family version
+# ------------------------------------------------------------------------------
+
+fam1 <- data$taxonomy[pair_idx1,6]
+fam2 <- data$taxonomy[pair_idx2,6]
+retain_idx <- !is.na(fam1) & !is.na(fam2)
+fam1 <- fam1[retain_idx]
+fam2 <- fam2[retain_idx]
+family_pairs_top <- paste0(fam1, " - ", fam2)
+
+fam1 <- data$taxonomy[rug_asv$tax_idx1,6]
+fam2 <- data$taxonomy[rug_asv$tax_idx2,6]
+retain_idx <- !is.na(fam1) & !is.na(fam2)
+fam1 <- fam1[retain_idx]
+fam2 <- fam2[retain_idx]
+
+family_pairs_all <- paste0(fam1, " - ", fam2)
+
+frequencies_subset <- table(family_pairs_top)
+frequencies <- table(family_pairs_all)
+
+# Test for enrichment statistically
+signif <- c()
+for(fam in names(frequencies_subset)) {
+  fam_in_sample <- unname(unlist(frequencies_subset[fam]))
+  sample_size <- unname(unlist(sum(frequencies_subset)))
+  fam_in_bg <- unname(unlist(frequencies[fam]))
+  bg_size <- unname(unlist(sum(frequencies)))
+  ctab <- matrix(c(fam_in_sample,
+                   sample_size - fam_in_sample,
+                   fam_in_bg,
+                   bg_size - fam_in_bg),
+                 2, 2, byrow = TRUE)
+  prob <- fisher.test(ctab, alternative = "greater")$p.value
+  if(prob < 0.05) {
+    signif <- c(signif, fam)
+    cat(paste0("ASV family: ", fam, ", p-value: ", round(prob, 3), "\n"))
+  }
+}
+
+plot_enrichment(frequencies_subset1 = frequencies_subset,
+                frequencies_subset2 = NULL,
+                frequencies = frequencies,
+                significant_families1 = signif,
+                significant_families2 = NULL,
+                plot_height = 6,
+                plot_width = 6,
+                legend_topmargin = 100,
+                use_pairs = TRUE,
+                rel_widths = c(1, 0.35, 1, 0.3, 2.75),
+                labels = c("overall", "2.5% most universal ASVs"),
+                save_name = "F4-enrichment-pair.png")
+
+# ------------------------------------------------------------------------------
+#   Network plot
+# ------------------------------------------------------------------------------
 
 # Build a mapping of taxon indices to new labels 1..n
 map_df <- data.frame(taxon_idx = unique(c(pair_idx1, pair_idx2)))
@@ -176,98 +267,6 @@ fam_df <- edge_df %>%
 fam_df <- fam_df %>%
   left_join(node_df, by = c("to" = "name")) %>%
   select(Family1, Family2 = Family)
-
-representation <- NULL
-proportional_representation <- NULL
-families <- unique(c(fam_df$Family1, fam_df$Family2))
-# Get baseline representation for all families
-for(fam in families) {
-  if(fam != "Unknown") {
-    n_fam <- sum(data$taxonomy[,6] == fam, na.rm = TRUE)
-    baseline <- (n_fam^2 - n_fam) / 2
-
-    # Number of family-family connection for this group in the top k percent
-    observed <- fam_df %>%
-      filter(Family1 == fam & Family2 == fam) %>%
-      count() %>%
-      pull(n)
-
-    representation <- rbind(representation,
-                            data.frame(family = fam,
-                                       baseline = baseline,
-                                       observed = observed))
-
-    # if(baseline > 10) {
-      proportional_representation <- rbind(proportional_representation,
-                                           data.frame(family = fam,
-                                                      value = baseline*0.025,
-                                                      type = "expected"))
-      proportional_representation <- rbind(proportional_representation,
-                                           data.frame(family = fam,
-                                                      value = observed,
-                                                      type = "observed in top 2.5%"))
-      proportional_representation <- rbind(proportional_representation,
-                                           data.frame(family = fam,
-                                                      value = baseline - observed,
-                                                      type = "not observed in top 2.5%"))
-    # }
-  }
-}
-
-proportional_representation$type <- factor(proportional_representation$type,
-                                           levels = c("not observed in top 2.5%",
-                                                      "observed in top 2.5%",
-                                                      "expected"))
-p <- ggplot(proportional_representation %>% filter(family %in% c("Atopobiaceae",
-                                                                 "Eggerthellaceae",
-                                                                 "Bifidobacteriaceae")),
-       aes(x = reorder(family, value), y = value, fill = type)) +
-  geom_bar(position = "stack", stat = "identity") +
-  guides(fill = guide_legend(reverse = TRUE)) +
-  scale_fill_manual(values = c("#aaaaaa", "#FF7F00", "#E41A1C")) +
-  # coord_flip() +
-  theme_bw() +
-  labs(fill = "Pair value",
-       x = "\nfamily",
-       y = "number family-family pairs\n") +
-  theme(legend.position = c(0.33, 0.8),
-        legend.background = element_rect(fill='transparent'))
-
-ggsave(file.path("output", "figures", "F4c.png"),
-       p,
-       units = "in",
-       dpi = 100,
-       height = 4,
-       width = 4)
-
-# Test enrichment of families
-for(i in 1:nrow(representation)) {
-  if(representation$baseline[i] > 0) {
-    fam_in_sample <- representation$observed[i]
-    sample_size <- sum(representation$observed)
-    fam_in_bg <- representation$baseline[i]
-    bg_size <- sum(representation$baseline)
-    ctab <- matrix(c(fam_in_sample,
-                     sample_size - fam_in_sample,
-                     fam_in_bg,
-                     bg_size - fam_in_bg),
-                   2, 2, byrow = TRUE)
-    prob <- fisher.test(ctab, alternative = "greater")$p.value
-    cat(paste0("ASV family: ",
-               representation$family[i],
-               ", p-value: ",
-               round(prob, 3),
-               " (",
-               representation$observed[i],
-               " / ",
-               representation$baseline[i],
-               ")\n"))
-  }
-}
-
-# ------------------------------------------------------------------------------
-#   network plot
-# ------------------------------------------------------------------------------
 
 graph <- graph_from_data_frame(edge_df, node_df, directed = FALSE)
 

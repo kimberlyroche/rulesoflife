@@ -1,20 +1,36 @@
+source("path_fix.R")
+
+library(tidyverse)
 library(rulesoflife)
 library(fido)
 library(driver)
 library(shapes)
-library(tidyverse)
+library(frechet)
 library(vegan) # for Mantel test
 library(pedtools)
 library(kinship2)
+library(RColorBrewer)
 library(cowplot)
 
+# ------------------------------------------------------------------------------
+#
+#   Supplemental Figure S10 - R^2 and ANOVA (no plots) analyses for factors
+#                             associated with dynamics distances
+#
+# ------------------------------------------------------------------------------
+
+# ------------------------------------------------------------------------------
+#
+#   R^2 association testing
+#
+# ------------------------------------------------------------------------------
+
+# Specify model output directory
 output_dir <- "asv_days90_diet25_scale1"
 p <- 999 # number of permutations
 
 # ------------------------------------------------------------------------------
-#   Load data, compute dynamics distances
-#
-#   Note: I'm using MAP estimates here
+#   Load data (MAP estimates), compute dynamics distances
 # ------------------------------------------------------------------------------
 
 # Load a few posterior samples for a few hosts
@@ -47,9 +63,8 @@ for(i in 1:ncol(host_combos)) {
   }
   a <- host_combos[1,i]
   b <- host_combos[2,i]
-  d <- distcov(Sigmas[[a]] + diag(D)*1e-06,
-               Sigmas[[b]] + diag(D)*1e-06,
-               method = "Riemannian")
+  d <- dist4cov(Sigmas[[a]] + diag(D)*1e-06,
+                Sigmas[[b]] + diag(D)*1e-06)$dist
   dynamics_distances[a,b] <- d
   dynamics_distances[b,a] <- d
 }
@@ -58,7 +73,7 @@ dynamics_dist_vec <- dynamics_distances[lower.tri(dynamics_distances)]
 
 # ------------------------------------------------------------------------------
 #
-#   Pedigree associations
+#   R^2: Pedigree associations
 #
 # ------------------------------------------------------------------------------
 
@@ -73,13 +88,14 @@ ped_vec <- ped_dist[lower.tri(ped_dist, diag = FALSE)]
 obs_Rsq_ped <- c(cor(scale(ped_vec), scale(dynamics_dist_vec))**2)
 
 # R^2 plot
-p1_ped <- ggplot(data.frame(x = scale(ped_vec), y = scale(dynamics_dist_vec)),
+# p1_ped <- ggplot(data.frame(x = scale(ped_vec), y = scale(dynamics_dist_vec)),
+p1_ped <- ggplot(data.frame(x = ped_vec, y = dynamics_dist_vec),
                  aes(x = x, y = y)) +
   # geom_smooth(color = "gray", alpha = 0.5) +
   geom_point(size = 3, shape = 21, fill = "#999999") +
   theme_bw() +
   labs(x = "kinship dissimilarity (1 - % relatedness)",
-       y = "host-host dynamics distance (Riemannian)")
+       y = "host-host dynamics distance")
 
 # ------------------------------------------------------------------------------
 #   Mantel test
@@ -135,7 +151,7 @@ draw_random_Rsq_ped <- function(g) {
   c(cor(scale(ped_vec), scale(dynamics_dist_vec))**2)
 }
 
-null_Rsq_ped <- sapply(1:p, function(pp) draw_random_Rsq_ped(g))
+null_Rsq_ped <- sapply(1:p, function(pp) draw_random_Rsq_ped(56))
 
 p2_ped <- ggplot(data.frame(x = null_Rsq_ped), aes(x = x)) +
   geom_histogram(color = "white") +
@@ -143,12 +159,11 @@ p2_ped <- ggplot(data.frame(x = null_Rsq_ped), aes(x = x)) +
   labs(x = "R-squared (random kinship dissimilarity x dynamics distance)")
 
 p3_ped <- plot_grid(p1_ped, p2_ped, ncol = 2,
-                rel_widths = c(1,1), labels = c("a", "b"),
-                scale = 0.9, label_size = 20)
-show(p3_ped)
+                    rel_widths = c(1,1), labels = c("a", "b"),
+                    scale = 0.9, label_size = 20)
 
-ggsave(file.path("output", "figures", "ANOVA_pedigree_dynamics.svg"),
-       plot = p3,
+ggsave(file.path("output", "figures", "ANOVA_pedigree_dynamics.png"),
+       plot = p3_ped,
        dpi = 100,
        units = "in",
        height = 4.5,
@@ -156,11 +171,12 @@ ggsave(file.path("output", "figures", "ANOVA_pedigree_dynamics.svg"),
 
 # Calculate a pseudo pvalue from quantiles
 res2 <- sum(null_Rsq_ped > obs_Rsq_ped) / p
+cat(paste0("Observed R^2: ", round(obs_Rsq_ped, 3), "\n"))
 cat(paste0("P-value from random null test: ", round(res2, 3), "\n"))
 
 # ------------------------------------------------------------------------------
 #
-#   Baseline composition associations
+#   R^2: Baseline composition associations
 #
 # ------------------------------------------------------------------------------
 
@@ -179,13 +195,13 @@ baseline_dist_vec <- c(baseline_distances)
 obs_Rsq_comp <- c(cor(baseline_dist_vec, dynamics_dist_vec)**2)
 
 # R^2 plot
-p1_comp <- ggplot(data.frame(x = scale(baseline_dist_vec), y = scale(dynamics_dist_vec)),
+p1_comp <- ggplot(data.frame(x = baseline_dist_vec, y = dynamics_dist_vec),
                   aes(x = x, y = y)) +
   # geom_smooth(color = "gray", alpha = 0.5) +
   geom_point(size = 3, shape = 21, fill = "#999999") +
   theme_bw() +
   labs(x = "Aitchison distance over baselines",
-       y = "host-host dynamics distance (Riemannian)")
+       y = "host-host dynamics distance")
 
 # ------------------------------------------------------------------------------
 #   Mantel test
@@ -228,7 +244,9 @@ p3_comp <- plot_grid(p1_comp, p2_comp, ncol = 2,
                      rel_widths = c(1,1), labels = c("a", "b"),
                      scale = 0.9, label_size = 20)
 
-ggsave(file.path("output", "figures", "ANOVA_baseline_dynamics.svg"),
+show(p3_comp)
+
+ggsave(file.path("output", "figures", "ANOVA_baseline_dynamics.png"),
        plot = p3_comp,
        dpi = 100,
        units = "in",
@@ -237,4 +255,146 @@ ggsave(file.path("output", "figures", "ANOVA_baseline_dynamics.svg"),
 
 # Calculate a pseudo pvalue from quantiles
 res2 <- sum(null_Rsq_comp > obs_Rsq_comp) / p
+cat(paste0("Observed R^2: ", round(obs_Rsq_comp, 3), "\n"))
 cat(paste0("P-value from random null test: ", round(res2, 3), "\n"))
+
+# ------------------------------------------------------------------------------
+#
+#   Pseudo-ANOVA
+#
+# ------------------------------------------------------------------------------
+
+# Plotting function
+heatmap_cov <- function(K, label) {
+  K <- cbind(1:nrow(K), K)
+  colnames(K) <- c("sample1", 1:nrow(K))
+  K <- pivot_longer(as.data.frame(K), !sample1, names_to = "sample2", values_to = "covariance")
+  K$sample2 <- as.numeric(K$sample2)
+  p <- ggplot(K, aes(x = sample1, y = sample2)) +
+    geom_raster(aes(fill = covariance)) +
+    scale_fill_gradient2(low = "navy", mid = "white", high = "red",
+                         midpoint = 0) +
+    scale_x_continuous(expand = c(0, 0)) +
+    scale_y_continuous(expand = c(0, 0)) +
+    theme(axis.text.x = element_blank(),
+          axis.text.y = element_blank(),
+          axis.ticks.x = element_blank(),
+          axis.ticks.y = element_blank()) +
+    labs(x = "",
+         y = "",
+         fill = "Covariance")
+  show(p)
+  output_dir <- check_dir(c("output", "figures"))
+  ggsave(file.path(output_dir, paste0(label, ".png")),
+         plot = p,
+         units = "in",
+         dpi = 100,
+         height = 3,
+         width = 4.25)
+}
+
+# ------------------------------------------------------------------------------
+#   Load dynamics estimates and Frechet mean
+# ------------------------------------------------------------------------------
+
+# Load a few posterior samples for a few hosts
+data <- load_data(tax_level = "ASV")
+md <- data$metadata
+hosts <- sort(unique(md$sname))
+
+# Pull the already-parsed MAP estimates of dynamics from this object, calculated
+# by `analysis_compute_Frechets.R`
+F1 <- readRDS(file.path("output", "Frechet_1_corr.rds"))
+
+# Calculate the mean using the `frechet` package
+F1$mean <- CovFMean(F1$Sigmas)$Mout[[1]]
+
+D <- dim(F1$Sigmas)[1]
+N <- dim(F1$Sigmas)[3]
+
+# ------------------------------------------------------------------------------
+#   Pull host social group / sex metadata
+# ------------------------------------------------------------------------------
+
+host_groups <- get_host_social_groups(hosts)
+groups <- unique(host_groups$grp)
+
+metadata <- load_data()$metadata
+host_sex <- metadata %>%
+  select(sname, sex) %>%
+  distinct() %>%
+  filter(sname %in% hosts) %>%
+  arrange(sname)
+sexes <- unique(host_sex$sex)
+
+# Load group means
+group_means <- list()
+for(g in 1:length(groups)) {
+  group_means[[g]] <- CovFMean(F1$Sigmas[,,host_groups$grp == groups[g]])$Mout[[1]]
+}
+
+# Load group means
+sex_means <- list()
+for(s in 1:length(sexes)) {
+  sex_means[[s]] <- CovFMean(F1$Sigmas[,,host_sex$sex == sexes[s]])$Mout[[1]]
+}
+
+# ------------------------------------------------------------------------------
+#   ANOVA on social group
+# ------------------------------------------------------------------------------
+
+K <- length(groups)
+N <- nrow(host_groups)
+between_sum <- 0
+for(i in 1:K) {
+  grp <- groups[i]
+  n_i <- sum(host_groups == grp)
+  d <- dist4cov(group_means[[i]], F1$mean)$dist**2
+  between_sum <- between_sum + (n_i * d)
+}
+numerator <- between_sum / (K-1)
+
+within_sum <- 0
+for(i in 1:K) {
+  grp <- groups[i]
+  idx_i <- which(host_groups$grp == grp)
+  for(j in idx_i) {
+    d <- dist4cov(F1$Sigmas[,,j], group_means[[i]])$dist**2
+    within_sum <- within_sum + d
+  }
+}
+denominator <- within_sum / (N-K)
+
+ratio <- numerator / denominator
+
+cat(paste0("P-value for pseudo-ANOVA on GROUP: ", round(1 - pf(ratio, K-1, N-K), 3), "\n"))
+
+# ------------------------------------------------------------------------------
+#   ANOVA on sex
+# ------------------------------------------------------------------------------
+
+K <- length(sexes)
+N <- nrow(host_sex)
+between_sum <- 0
+for(i in 1:K) {
+  sex <- sexes[i]
+  n_i <- sum(host_sex == sex)
+  d <- dist4cov(sex_means[[i]], F1$mean)$dist**2
+  between_sum <- between_sum + (n_i * d)
+}
+numerator <- between_sum / (K-1)
+
+within_sum <- 0
+for(i in 1:K) {
+  sex <- sexes[i]
+  idx_i <- which(host_sex$sex == sex)
+  for(j in idx_i) {
+    d <- dist4cov(F1$Sigmas[,,j], sex_means[[i]])$dist**2
+    within_sum <- within_sum + d
+  }
+}
+denominator <- within_sum / (N-K)
+
+ratio <- numerator / denominator
+
+cat(paste0("P-value for pseudo-ANOVA on GROUP: ", round(1 - pf(ratio, K-1, N-K), 3), "\n"))

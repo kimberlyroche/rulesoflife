@@ -8,7 +8,7 @@ library(fido)
 
 # ------------------------------------------------------------------------------
 #
-#   Supplemental Figure S8 - scatterplots of phylogenetic distance vs. univer-
+#   Supplemental Figure S9 - scatterplots of phylogenetic distance vs. univer-
 #                            sality score or median association strength, plus
 #                            barplots of enrichment of closely related and
 #                            strongly universal pairs
@@ -50,6 +50,22 @@ p <- ggplot(plot_df %>% filter(!is.na(sign)), aes(x = d, y = score, fill = facto
   labs(x = "phylogenetic distance",
        y = "universality score",
        fill = "Consensus\ncorrelation sign")
+
+# Calculate correlations between phylogenetic distance and universality
+# TO DO: replace with lm(); calculate significance
+overall <- cor(plot_df$d, plot_df$score)
+pos <- plot_df %>%
+  filter(sign == "positive") %>%
+  summarize(cor = cor(d, score)) %>%
+  pull(cor)
+neg <- plot_df %>%
+  filter(sign == "negative") %>%
+  summarize(cor = cor(d, score)) %>%
+  pull(cor)
+
+cat(paste0("Overall correlation: ", round(overall, 3), "\n"))
+cat(paste0("\tConsensus positive correlations only: ", round(pos, 3), "\n"))
+cat(paste0("\tConsensus negative correlations only: ", round(neg, 3), "\n"))
 
 ggsave("output/figures/SF6a.png",
        p,
@@ -113,41 +129,11 @@ all_pairs_noNA <- all_pairs_noNA %>%
   mutate(taxpair = paste0(tax1, " - ", tax2))
 
 if(use_pairs) {
-  # Calculate a baseline frequency for all family-family pairs
   frequencies <- table(all_pairs_noNA$taxpair)
 
-  # ------------------------------------------------------------------------------
-  #   Visualize differences in relative abundance of family pairs for top center
-  #   clump of pairs
-  # ------------------------------------------------------------------------------
-
-  # Stacked bar: plot observed relative representation of family-family pairs
   frequencies_subset <- table(all_pairs_noNA$taxpair[all_pairs_noNA$topleft == TRUE])
 
-  plot_enrichment(frequencies_subset,
-                  frequencies,
-                  plot_height = 6,
-                  plot_width = 8,
-                  legend_topmargin = 60,
-                  legend_leftmargin = -0.5,
-                  save_name = "SF6c.png")
-} else {
-  # Calculate a baseline frequency for all family-family pairs
-  frequencies <- table(c(all_pairs_noNA$tax1, all_pairs_noNA$tax2))
-
-  # ------------------------------------------------------------------------------
-  #   Visualize differences in relative abundance of family pairs for top center
-  #   clump of pairs
-  # ------------------------------------------------------------------------------
-
-  # Stacked bar: plot observed relative representation of family-family pairs
-  all_pairs_noNA_tl <- all_pairs_noNA %>%
-    filter(topleft == TRUE)
-  frequencies_subset <- table(c(all_pairs_noNA_tl$tax1, all_pairs_noNA_tl$tax2))
-
-  # Fisher's exact test for enrichment
-  # Arguments are always confusing; here's a good reference:
-  # http://mengnote.blogspot.com/2012/12/calculate-correct-hypergeometric-p.html
+  signif <- c()
   for(fam in names(frequencies_subset)) {
     fam_in_sample <- unname(unlist(frequencies_subset[fam]))
     sample_size <- unname(unlist(sum(frequencies_subset)))
@@ -159,15 +145,63 @@ if(use_pairs) {
                      bg_size - fam_in_bg),
                    2, 2, byrow = TRUE)
     prob <- fisher.test(ctab, alternative = "greater")$p.value
-    cat(paste0("ASV family: ", fam, ", p-value: ", round(prob, 3), "\n"))
+    if(prob < 0.05) {
+      signif <- c(signif, fam)
+      cat(paste0("ASV family: ", fam, ", p-value: ", round(prob, 3), "\n"))
+    }
   }
 
-  plot_enrichment(frequencies_subset,
-                  frequencies,
+  plot_enrichment(frequencies_subset1 = frequencies_subset,
+                  frequencies_subset2 = NULL,
+                  frequencies = frequencies,
+                  significant_families1 = signif,
+                  significant_families2 = NULL,
                   plot_height = 6,
-                  plot_width = 8,
+                  plot_width = 6,
                   legend_topmargin = 100,
-                  legend_leftmargin = -1,
+                  use_pairs = TRUE,
+                  rel_widths = c(1, 0.35, 1, 0.3, 3),
+                  labels = c("overall", "top left"),
+                  save_name = "SF8-enrichment-pair.png")
+
+} else {
+  # Calculate a baseline frequency for all family-family pairs
+  frequencies <- table(c(all_pairs_noNA$tax1, all_pairs_noNA$tax2))
+
+  # Stacked bar: plot observed relative representation of family-family pairs
+  all_pairs_noNA_tl <- all_pairs_noNA %>%
+    filter(topleft == TRUE)
+  frequencies_subset <- table(c(all_pairs_noNA_tl$tax1, all_pairs_noNA_tl$tax2))
+
+  signif <- c()
+  for(fam in names(frequencies_subset)) {
+    fam_in_sample <- unname(unlist(frequencies_subset[fam]))
+    sample_size <- unname(unlist(sum(frequencies_subset)))
+    fam_in_bg <- unname(unlist(frequencies[fam]))
+    bg_size <- unname(unlist(sum(frequencies)))
+    ctab <- matrix(c(fam_in_sample,
+                     sample_size - fam_in_sample,
+                     fam_in_bg,
+                     bg_size - fam_in_bg),
+                   2, 2, byrow = TRUE)
+    prob <- fisher.test(ctab, alternative = "greater")$p.value
+    if(prob < 0.05) {
+      signif <- c(signif, fam)
+      cat(paste0("ASV family: ", fam, ", p-value: ", round(prob, 3), "\n"))
+    }
+  }
+
+  plot_enrichment(frequencies_subset1 = frequencies_subset,
+                  frequencies_subset2 = NULL,
+                  frequencies = frequencies,
+                  significant_families1 = signif,
+                  significant_families2 = NULL,
+                  plot_height = 6,
+                  plot_width = 5,
+                  legend_topmargin = 100,
                   use_pairs = FALSE,
-                  save_name = "SF6c.png")
+                  rel_widths = c(1, 0.35, 1, 0.3, 2),
+                  labels = c("overall", "top left"),
+                  save_name = "SF8-enrichment.png")
+
 }

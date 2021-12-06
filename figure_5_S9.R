@@ -20,51 +20,6 @@ registerDoParallel(detectCores())
 # ------------------------------------------------------------------------------
 
 # ------------------------------------------------------------------------------
-#   "Cartoon"
-# ------------------------------------------------------------------------------
-
-df <- data.frame(x = c(3, 4, 5, 7, 10,
-                       1, 3, 6, 8, 9,
-                       5, 6, 9,
-                       1, 2, 7, 9, 10,
-                       2, 3, 4, 8),
-                 y = c(5, 5, 5, 5, 5,
-                       4, 4, 4, 4, 4,
-                       3, 3, 3,
-                       2, 2, 2, 2, 2,
-                       1, 1, 1, 1),
-                 shape = c(1, 0, 0, 0, 0,
-                           0, 2, 1, 0, 0,
-                           0, 2, 1,
-                           0, 1, 0, 2, 0,
-                           2, 0, 0, 0))
-
-df$shape <- factor(df$shape)
-levels(df$shape) <- c("Unused sample", "Series 1", "Series 2")
-
-p <- ggplot(df, aes(x = x, y = y, fill = shape)) +
-  geom_point(size = 6, shape = 21) +
-  theme_bw() +
-  scale_fill_manual(values = c("#dddddd", "#d99e57", "#9e87c9")) +
-  scale_x_discrete(name = "sample day",
-                   limits = 1:10) +
-  scale_y_discrete(name = "host",
-                   limits = c("E", "D", "C", "B", "A")) +
-  theme(panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        panel.background = element_blank(),
-        axis.line = element_line(colour = "black"),
-        legend.position = "bottom") +
-  labs(fill = "")
-
-ggsave(file.path("output", "figures", "S7a.png"),
-       p,
-       dpi = 100,
-       units = "in",
-       height = 3,
-       width = 4)
-
-# ------------------------------------------------------------------------------
 #   Perform the actual synchrony estimates
 # ------------------------------------------------------------------------------
 
@@ -418,7 +373,7 @@ cat(paste0("R^2: ", round(cor(plot_df$synchrony, plot_df$universality)^2, 3), "\
 # ------------------------------------------------------------------------------
 
 # Score enrichment of family pairs or families themselves?
-use_pairs <- FALSE
+use_pairs <- TRUE
 
 topcenter_pairs <- which(plot_df$synchrony < 0.3 & plot_df$universality > 0.4)
 topright_pairs <- which(plot_df$synchrony > 0.3 & plot_df$universality > 0.4)
@@ -453,37 +408,59 @@ all_pairs_noNA <- all_pairs_noNA %>%
 if(use_pairs) {
   frequencies <- table(all_pairs_noNA$taxpair)
 
-  # ------------------------------------------------------------------------------
-  #   Visualize differences in relative abundance of family pairs for top center
-  #   clump of pairs
-  # ------------------------------------------------------------------------------
+  frequencies_subset1 <- table(all_pairs_noNA$taxpair[all_pairs_noNA$topcenter == TRUE])
 
-  # Stacked bar: plot observed relative representation of family-family pairs
-  frequencies_subset <- table(all_pairs_noNA$taxpair[all_pairs_noNA$topcenter == TRUE])
+  signif1 <- c()
+  for(fam in names(frequencies_subset1)) {
+    fam_in_sample <- unname(unlist(frequencies_subset1[fam]))
+    sample_size <- unname(unlist(sum(frequencies_subset1)))
+    fam_in_bg <- unname(unlist(frequencies[fam]))
+    bg_size <- unname(unlist(sum(frequencies)))
+    ctab <- matrix(c(fam_in_sample,
+                     sample_size - fam_in_sample,
+                     fam_in_bg,
+                     bg_size - fam_in_bg),
+                   2, 2, byrow = TRUE)
+    prob <- fisher.test(ctab, alternative = "greater")$p.value
+    if(prob < 0.05) {
+      signif1 <- c(signif1, fam)
+      cat(paste0("ASV family: ", fam, ", p-value: ", round(prob, 3), "\n"))
+    }
+  }
 
-  plot_enrichment(frequencies_subset,
-                  frequencies,
+  frequencies_subset2 <- table(all_pairs_noNA$taxpair[all_pairs_noNA$topright == TRUE])
+
+  signif2 <- c()
+  for(fam in names(frequencies_subset2)) {
+    fam_in_sample <- unname(unlist(frequencies_subset2[fam]))
+    sample_size <- unname(unlist(sum(frequencies_subset2)))
+    fam_in_bg <- unname(unlist(frequencies[fam]))
+    bg_size <- unname(unlist(sum(frequencies)))
+    ctab <- matrix(c(fam_in_sample,
+                     sample_size - fam_in_sample,
+                     fam_in_bg,
+                     bg_size - fam_in_bg),
+                   2, 2, byrow = TRUE)
+    prob <- fisher.test(ctab, alternative = "greater")$p.value
+    if(prob < 0.05) {
+      signif2 <- c(signif2, fam)
+      cat(paste0("ASV family: ", fam, ", p-value: ", round(prob, 3), "\n"))
+    }
+  }
+
+  plot_enrichment(frequencies_subset1 = frequencies_subset1,
+                  frequencies_subset2 = frequencies_subset2,
+                  frequencies = frequencies,
+                  significant_families1 = signif1,
+                  significant_families2 = signif2,
                   plot_height = 6,
-                  plot_width = 8,
-                  legend_topmargin = 20,
-                  legend_leftmargin = -0.5,
-                  save_name = "F6-enrichment1.png")
+                  plot_width = 10,
+                  legend_topmargin = 100,
+                  use_pairs = use_pairs,
+                  rel_widths = c(1, 0.35, 1, 0.35, 1, 0.1, 6),
+                  labels = c("overall", "top left", "top right"),
+                  save_name = "F6-enrichment-pair.png")
 
-  # ------------------------------------------------------------------------------
-  #   Visualize differences in relative abundance of family pairs for top center
-  #   clump of pairs
-  # ------------------------------------------------------------------------------
-
-  # Stacked bar: plot observed relative representation of family-family pairs
-  frequencies_subset <- table(all_pairs_noNA$taxpair[all_pairs_noNA$topright == TRUE])
-
-  plot_enrichment(frequencies_subset,
-                              frequencies,
-                              plot_height = 6,
-                              plot_width = 9,
-                              legend_topmargin = 60,
-                              legend_leftmargin = 0.5,
-                              save_name = "F6-enrichment2.png")
 } else {
   # Calculate a baseline frequency for all family-family pairs
   frequencies <- table(c(all_pairs_noNA$tax1, all_pairs_noNA$tax2))
@@ -491,14 +468,12 @@ if(use_pairs) {
   # Observed frequency in this subregion
   all_pairs_noNA_tc <- all_pairs_noNA %>%
     filter(topcenter == TRUE)
-  frequencies_subset <- table(c(all_pairs_noNA_tc$tax1, all_pairs_noNA_tc$tax2))
+  frequencies_subset1 <- table(c(all_pairs_noNA_tc$tax1, all_pairs_noNA_tc$tax2))
 
-  # Fisher's exact test for enrichment
-  # Arguments are always confusing; here's a good reference:
-  # http://mengnote.blogspot.com/2012/12/calculate-correct-hypergeometric-p.html
-  for(fam in names(frequencies_subset)) {
-    fam_in_sample <- unname(unlist(frequencies_subset[fam]))
-    sample_size <- unname(unlist(sum(frequencies_subset)))
+  signif1 <- c()
+  for(fam in names(frequencies_subset1)) {
+    fam_in_sample <- unname(unlist(frequencies_subset1[fam]))
+    sample_size <- unname(unlist(sum(frequencies_subset1)))
     fam_in_bg <- unname(unlist(frequencies[fam]))
     bg_size <- unname(unlist(sum(frequencies)))
     ctab <- matrix(c(fam_in_sample,
@@ -507,26 +482,21 @@ if(use_pairs) {
                      bg_size - fam_in_bg),
                    2, 2, byrow = TRUE)
     prob <- fisher.test(ctab, alternative = "greater")$p.value
-    cat(paste0("ASV family: ", fam, ", p-value: ", round(prob, 3), "\n"))
+    if(prob < 0.05) {
+      signif1 <- c(signif1, fam)
+      cat(paste0("ASV family: ", fam, ", p-value: ", round(prob, 3), "\n"))
+    }
   }
-
-  plot_enrichment(frequencies_subset,
-                  frequencies,
-                  plot_height = 6,
-                  plot_width = 8,
-                  legend_topmargin = 100,
-                  legend_leftmargin = -1,
-                  use_pairs = FALSE,
-                  save_name = "F6-enrichment1.png")
 
   # Observed frequency in this region
   all_pairs_noNA_tr <- all_pairs_noNA %>%
     filter(topright == TRUE)
-  frequencies_subset <- table(c(all_pairs_noNA_tr$tax1, all_pairs_noNA_tr$tax2))
+  frequencies_subset2 <- table(c(all_pairs_noNA_tr$tax1, all_pairs_noNA_tr$tax2))
 
-  for(fam in names(frequencies_subset)) {
-    fam_in_sample <- unname(unlist(frequencies_subset[fam]))
-    sample_size <- unname(unlist(sum(frequencies_subset)))
+  signif2 <- c()
+  for(fam in names(frequencies_subset2)) {
+    fam_in_sample <- unname(unlist(frequencies_subset2[fam]))
+    sample_size <- unname(unlist(sum(frequencies_subset2)))
     fam_in_bg <- unname(unlist(frequencies[fam]))
     bg_size <- unname(unlist(sum(frequencies)))
     ctab <- matrix(c(fam_in_sample,
@@ -535,24 +505,80 @@ if(use_pairs) {
                      bg_size - fam_in_bg),
                    2, 2, byrow = TRUE)
     prob <- fisher.test(ctab, alternative = "greater")$p.value
-    cat(paste0("ASV family: ", fam, ", p-value: ", round(prob, 3), "\n"))
+    if(prob < 0.05) {
+      signif2 <- c(signif2, fam)
+      cat(paste0("ASV family: ", fam, ", p-value: ", round(prob, 3), "\n"))
+    }
   }
 
-  plot_enrichment(frequencies_subset,
-                  frequencies,
+  plot_enrichment(frequencies_subset1 = frequencies_subset1,
+                  frequencies_subset2 = frequencies_subset2,
+                  frequencies = frequencies,
+                  significant_families1 = signif1,
+                  significant_families2 = signif2,
                   plot_height = 6,
-                  plot_width = 8,
+                  plot_width = 6.5,
                   legend_topmargin = 100,
-                  legend_leftmargin = -1,
-                  use_pairs = FALSE,
-                  save_name = "F6-enrichment2.png")
+                  use_pairs = use_pairs,
+                  rel_widths = c(1, 0.35, 1, 0.35, 1, 0.2, 2),
+                  labels = c("overall", "top left", "top right"),
+                  save_name = "F6-enrichment.png")
 }
 
 # ------------------------------------------------------------------------------
 #
-#   Supplemental Figure S7 - synchrony of most synchronous taxon across a sample
+#   Supplemental Figure S8 - synchrony of most synchronous taxon across a sample
 #                            of hosts
 #
+# ------------------------------------------------------------------------------
+
+# ------------------------------------------------------------------------------
+#   "Cartoon"
+# ------------------------------------------------------------------------------
+
+df <- data.frame(x = c(3, 4, 5, 7, 10,
+                       1, 3, 6, 8, 9,
+                       5, 6, 9,
+                       1, 2, 7, 9, 10,
+                       2, 3, 4, 8),
+                 y = c(5, 5, 5, 5, 5,
+                       4, 4, 4, 4, 4,
+                       3, 3, 3,
+                       2, 2, 2, 2, 2,
+                       1, 1, 1, 1),
+                 shape = c(1, 0, 0, 0, 0,
+                           0, 2, 1, 0, 0,
+                           0, 2, 1,
+                           0, 1, 0, 2, 0,
+                           2, 0, 0, 0))
+
+df$shape <- factor(df$shape)
+levels(df$shape) <- c("Unused sample", "Series 1", "Series 2")
+
+p <- ggplot(df, aes(x = x, y = y, fill = shape)) +
+  geom_point(size = 6, shape = 21) +
+  theme_bw() +
+  scale_fill_manual(values = c("#dddddd", "#d99e57", "#9e87c9")) +
+  scale_x_discrete(name = "sample day",
+                   limits = 1:10) +
+  scale_y_discrete(name = "host",
+                   limits = c("E", "D", "C", "B", "A")) +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        axis.line = element_line(colour = "black"),
+        legend.position = "bottom") +
+  labs(fill = "")
+
+ggsave(file.path("output", "figures", "S8a.png"),
+       p,
+       dpi = 100,
+       units = "in",
+       height = 3,
+       width = 4)
+
+# ------------------------------------------------------------------------------
+#   Aligned trajectories of most-synchronous taxon over 5 hosts
 # ------------------------------------------------------------------------------
 
 tax_idx <- 23

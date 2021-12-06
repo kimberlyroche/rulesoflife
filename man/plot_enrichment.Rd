@@ -5,21 +5,35 @@
 \title{Plot relative representation of ASV pairs (using family labels)}
 \usage{
 plot_enrichment(
-  frequencies_subset,
+  frequencies_subset1,
+  frequencies_subset2 = NULL,
   frequencies,
+  significant_families1,
+  significant_families2 = NULL,
   plot_height,
   plot_width,
   legend_topmargin,
-  legend_leftmargin,
-  save_name
+  use_pairs = TRUE,
+  rel_widths = c(1, 0.35, 1, 0, 4.5),
+  labels = NULL,
+  save_name = NULL
 )
 }
 \arguments{
-\item{frequencies_subset}{table of ASV pairs (labeled as "Family - Family")
-and their frequency in some subset of case of interest}
+\item{frequencies_subset1}{table of ASVs or ASV pairs (labeled as
+"Family - Family") and their frequency in some subset of case of interest}
+
+\item{frequencies_subset2}{an optional second set of frequencies for another
+subset}
 
 \item{frequencies}{table of ASV pairs (labeled as "Family - Family")
 and their pverall frequency}
+
+\item{significant_families1}{labels associated with significant families in
+subset 1; only these families will be colored on the plot}
+
+\item{significant_families2}{optional labels for coloring families in subset
+2}
 
 \item{plot_height}{plot height in inches}
 
@@ -27,7 +41,16 @@ and their pverall frequency}
 
 \item{legend_topmargin}{top margin of legend in points}
 
-\item{legend_leftmargin}{left margin of legend in inches}
+\item{use_pairs}{if TRUE, renders relative abundances of pairs of taxa,
+otherwise, renders families}
+
+\item{rel_widths}{relative width of frequencies, frequencies_subset1,
+(optionally) frequencies_subset2, the legend, and a spacer between each of
+these elements}
+
+\item{labels}{optional labels for each set of frequencies}
+
+\item{save_name}{if NULL, ggplot object is returned}
 }
 \description{
 Plot relative representation of ASV pairs (using family labels)

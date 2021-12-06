@@ -10,6 +10,19 @@ generate_highcontrast_palette <- function(S) {
 }
 
 #' Generate a color palette suitable for stacked bar plots given a feature number (S)
+#' This version uses the Polychrome package in R and (I think) gives a more
+#' visually parsable result
+#'
+#' @param S number of features (colors to generate)
+#' @param seed_colors_hex optional list of hex colors to seed function with
+#' @return list of hex colors
+#' @import Polychrome
+#' @export
+generate_highcontrast_palette2 <- function(S, seed_colors_hex = c("#ff0000", "#00ff00", "#0000ff")) {
+  unname(createPalette(S,  seed_colors_hex))
+}
+
+#' Generate a color palette suitable for stacked bar plots given a feature number (S)
 #'
 #' @param hex_min hex code for min color in ramp
 #' @param hex_mid hex code for median color in ramp
@@ -732,73 +745,118 @@ plot_clr_vs_diet <- function(sname, tax_idx, counts, metadata) {
 
 #' Plot relative representation of ASV pairs (using family labels)
 #'
-#' @param frequencies_subset table of ASV pairs (labeled as "Family - Family")
-#' and their frequency in some subset of case of interest
+#' @param frequencies_subset1 table of ASVs or ASV pairs (labeled as
+#' "Family - Family") and their frequency in some subset of case of interest
+#' @param frequencies_subset2 an optional second set of frequencies for another
+#' subset
 #' @param frequencies table of ASV pairs (labeled as "Family - Family")
 #' and their pverall frequency
+#' @param significant_families1 labels associated with significant families in
+#' subset 1; only these families will be colored on the plot
+#' @param significant_families2 optional labels for coloring families in subset
+#' 2
 #' @param plot_height plot height in inches
 #' @param plot_width plot width in inches
 #' @param legend_topmargin top margin of legend in points
-#' @param legend_leftmargin left margin of legend in inches
 #' @param use_pairs if TRUE, renders relative abundances of pairs of taxa,
 #' otherwise, renders families
+#' @param rel_widths relative width of frequencies, frequencies_subset1,
+#' (optionally) frequencies_subset2, the legend, and a spacer between each of
+#' these elements
+#' @param labels optional labels for each set of frequencies
 #' @param save_name if NULL, ggplot object is returned
 #' @return NULL
 #' @import ggplot2
 #' @import cowplot
 #' @export
-plot_enrichment <- function(frequencies_subset, frequencies, plot_height, plot_width,
-                            legend_topmargin, legend_leftmargin, use_pairs = TRUE, save_name = NULL) {
+plot_enrichment <- function(frequencies_subset1, frequencies_subset2 = NULL, frequencies,
+                            significant_families1, significant_families2 = NULL,
+                            plot_height, plot_width, legend_topmargin, use_pairs = TRUE,
+                            rel_widths = c(1, 0.35, 1, 0, 4.5), labels = NULL,
+                            save_name = NULL) {
+  labeled_families <- sort(unique(c(significant_families1, significant_families2)))
+
   # Define a huge color palette over all observed family-family pairs
   if(use_pairs) {
-    palette_fn <- file.path("output", "family-family_palette.rds")
-    if(file.exists(palette_fn)) {
-      fam_palette <- readRDS(palette_fn)
-    } else {
-      fam_palette <- generate_highcontrast_palette(length(frequencies))
-      names(fam_palette) <- names(frequencies)
-      saveRDS(fam_palette, palette_fn)
-    }
+    # Palette-generation code; move this elsewhere eventually
+    # all_family_pairs <- names(frequencies)
+    # all_family_pair_palette <- generate_highcontrast_palette2(length(all_family_pairs))
+    # names(all_family_pair_palette) <- all_family_pairs
+    # saveRDS(all_family_pair_palette, "output/family-family_palette.rds")
+    all_family_pair_palette <- readRDS(file.path("output", "family-family_palette.rds"))
+    fam_palette_colored <- all_family_pair_palette[names(all_family_pair_palette) %in% labeled_families]
   } else {
-    palette_fn <- file.path("output", "family_palette.rds")
-    if(file.exists(palette_fn)) {
-      fam_palette <- readRDS(palette_fn)
-    } else {
-      fam_palette <- generate_highcontrast_palette(length(frequencies))
-      names(fam_palette) <- names(frequencies)
-      saveRDS(fam_palette, palette_fn)
-    }
+    all_family_palette <- readRDS(file.path("output", "family_palette.rds"))
+    fam_palette_colored <- all_family_palette[names(all_family_palette) %in% labeled_families]
   }
+  all_families <- sort(unique(c(names(frequencies))))
+  fam_palette <- sample(c("#dddddd", "#d5d5d5", "#cccccc", "#c5c5c5"), replace = TRUE, size = length(all_families))
+  names(fam_palette) <- all_families
+  fam_palette[names(fam_palette) %in% labeled_families] <- fam_palette_colored
 
-  observed_relative <- data.frame(pair = names(frequencies_subset),
-                                  count = unname(c(frequencies_subset)))
-  observed_relative$prop <- observed_relative$count / sum(observed_relative$count)
-
-  observed_relative$pair <- factor(observed_relative$pair,
-                                   levels = c(sort(observed_relative$pair[observed_relative$pair != "Other"]), "Other"))
-
-  fam_palette_sub <- fam_palette[names(fam_palette) %in% observed_relative$pair]
-
-  p2 <- ggplot(observed_relative, aes(x = 1, y = prop, fill = pair)) +
-    geom_bar(stat = "identity") +
-    scale_fill_manual(values = fam_palette_sub) +
-    theme_bw() +
-    scale_x_continuous(expand = c(0,0)) +
-    scale_y_continuous(expand = c(0,0)) +
-    theme(axis.text.x = element_blank(),
-          axis.ticks.x = element_blank(),
-          legend.justification = c("top"),
-          legend.margin = margin(t = legend_topmargin, r = 0, b = 0, l = 0, unit = "pt"))
+  # Dummy legend
   if(use_pairs) {
-    p2 <- p2 +
-    labs(x = "\nlow phylogenetic distance,\nhigh median assoc. strength",
-         y = "proportion shared family ASV pair",
-         fill = "Shared family ASV pair")
+    fill_label <- "Family pair"
   } else {
-    p2 <- p2 +
-      labs(x = "\nlow phylogenetic distance,\nhigh median assoc. strength",
-           y = "proportion shared ASVs from family",
-           fill = "ASV family")
+    fill_label <- "Family"
+  }
+  fam_palette_colored <- fam_palette[names(fam_palette) %in% labeled_families]
+  discard <- ggplot(data.frame(x = names(fam_palette_colored), y = runif(length(fam_palette_colored))),
+                    aes(x = x, y = y, fill = x)) +
+    geom_bar(stat = "identity") +
+    scale_fill_manual(values = fam_palette_colored) +
+    labs(fill = fill_label)
+  legend <- get_legend(discard)
+
+  p2 <- NULL
+  p3 <- NULL
+  for(i in 1:2) {
+    if(i == 1) {
+      frequencies_subset <- frequencies_subset1
+    } else if(i == 2 & !is.null(frequencies_subset2)) {
+      frequencies_subset <- frequencies_subset2
+    } else if(is.null(frequencies_subset2)) {
+      next
+    }
+    observed_relative <- data.frame(pair = names(frequencies_subset),
+                                    count = unname(c(frequencies_subset)))
+    observed_relative$prop <- observed_relative$count / sum(observed_relative$count)
+
+    observed_relative$pair <- factor(observed_relative$pair,
+                                     levels = c(sort(observed_relative$pair[observed_relative$pair != "Other"]), "Other"))
+
+    fam_palette_sub <- fam_palette[names(fam_palette) %in% observed_relative$pair]
+
+    px <- ggplot(observed_relative, aes(x = 1, y = prop, fill = pair)) +
+      geom_bar(stat = "identity") +
+      scale_fill_manual(values = fam_palette_sub) +
+      theme_bw() +
+      scale_x_continuous(expand = c(0,0)) +
+      scale_y_continuous(expand = c(0,0)) +
+      theme(axis.text.x = element_blank(),
+            axis.ticks.x = element_blank(),
+            axis.text.y = element_blank(),
+            axis.ticks.y = element_blank(),
+            legend.justification = c("top"),
+            # legend.margin = margin(t = legend_topmargin, r = 0, b = 0, l = 0, unit = "pt"),
+            legend.position = "none")
+    x_label <- "selected set"
+    if(!is.null(labels)) {
+      x_label <- labels[i+1]
+    }
+    if(use_pairs) {
+      y_label <- "proportion shared family ASV pair"
+    } else {
+      y_label <- "proportion shared ASVs from family"
+    }
+    px <- px +
+      labs(x = paste0("\n", x_label),
+           y = y_label)
+    if(i == 1) {
+      p2 <- px
+    } else if(i == 2) {
+      p3 <- px
+    }
   }
 
   # Stacked bar: render these pairs in the baseline representation of all
@@ -812,36 +870,34 @@ plot_enrichment <- function(frequencies_subset, frequencies, plot_height, plot_w
   colnames(baseline_relative) <- c("pair", "count")
   baseline_relative$prop <- baseline_relative$count / sum(baseline_relative$count)
 
-  fam_palette_gray <- fam_palette
-  repl_names <- baseline_relative$pair[which(!(baseline_relative$pair %in% observed_relative$pair))]
-  repl_idx <- which(names(fam_palette_gray) %in% repl_names)
-  grays <- sample(c("#dddddd", "#d5d5d5", "#cccccc", "#c5c5c5"), replace = TRUE, size = length(repl_idx))
-  fam_palette_gray[repl_idx] <- grays
-
   p1 <- ggplot(baseline_relative, aes(x = 1, y = prop, pair, fill = pair)) +
     geom_bar(stat = "identity") +
-    scale_fill_manual(values = fam_palette_gray) +
+    scale_fill_manual(values = fam_palette) +
     theme_bw() +
     scale_x_continuous(expand = c(0,0)) +
     scale_y_continuous(expand = c(0,0)) +
     theme(axis.text.x = element_blank(),
           axis.ticks.x = element_blank(),
+          axis.text.y = element_blank(),
+          axis.ticks.y = element_blank(),
           legend.position = "none")
-  if(use_pairs) {
-    p1 <- p1 +
-      labs(x = "\noverall\n",
-           y = "proportion shared family ASV pair")
-  } else {
-    p1 <- p1 +
-      labs(x = "\noverall\n",
-           y = "proportion shared ASVs from family")
+  x_label <- "overall"
+  if(!is.null(labels)) {
+    x_label <- labels[1]
   }
+  p1 <- p1 +
+    labs(x = paste0("\n", x_label),
+         y = y_label)
 
-  legend <- get_legend(p2)
-  p2 <- p2 +
-    theme(legend.position = "none")
-
-  p <- plot_grid(p1, NULL, p2, NULL, legend, ncol = 5, rel_widths = c(1, 0.35, 1, legend_leftmargin, 4.5), scale = 1)
+  if(!is.null(frequencies_subset2)) {
+    p <- plot_grid(p1, NULL, p2, NULL, p3, NULL, legend,
+                   ncol = length(rel_widths),
+                   rel_widths = rel_widths)
+  } else {
+    p <- plot_grid(p1, NULL, p2, NULL, legend,
+                   ncol = length(rel_widths),
+                   rel_widths = rel_widths)
+  }
 
   if(!is.null(save_name)) {
     ggsave(file.path("output", "figures", save_name),
