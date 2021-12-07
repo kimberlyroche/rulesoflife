@@ -2,6 +2,7 @@ source("path_fix.R")
 
 library(rulesoflife)
 library(tidyverse)
+library(ape)
 
 source("ggplot_fix.R")
 
@@ -34,7 +35,15 @@ write.table(tax_asv,
             row.names = F)
 
 # ------------------------------------------------------------------------------
-#   Print table of top 250 universal pairs
+#   Pre-calculate distances across sequences
+# ------------------------------------------------------------------------------
+
+sequence_identity <- sequence_distance(distance_type = "raw")
+mismatches <- sequence_distance(distance_type = "N")
+K80 <- sequence_distance(distance_type = "K80")
+
+# ------------------------------------------------------------------------------
+#   Print table of top universal pairs
 # ------------------------------------------------------------------------------
 
 output_dir <- "asv_days90_diet25_scale1"
@@ -82,9 +91,22 @@ for(percent in percents) {
     data$taxonomy[x,1]
   })
 
+  # Add phylogenetic distances from ape::dist.dna()
+  table_df$percent_identity <- NA
+  table_df$mismatches <- NA
+  table_df$K80_dist <- NA
+  for(i in 1:nrow(table_df)) {
+    table_df$percent_identity[i] <- sequence_identity[table_df$tax_index1[i],
+                                                      table_df$tax_index2[i]]
+    table_df$mismatches[i] <- mismatches[table_df$tax_index1[i],
+                                         table_df$tax_index2[i]]
+    table_df$K80_dist[i] <- K80[table_df$tax_index1[i],
+                                table_df$tax_index2[i]]
+  }
+
   write.table(table_df %>% select(rank, score, tax_index1, tax_index2,
-                                  consensus_sign, taxonomy_1, taxonomy_2,
-                                  sequence_1, sequence_2),
+                                  consensus_sign, percent_identity, mismatches, K80_dist,
+                                  taxonomy_1, taxonomy_2, sequence_1, sequence_2),
               file = file.path("output", paste0("top_", percent, "_universal.tsv")),
               sep = "\t",
               quote = FALSE,

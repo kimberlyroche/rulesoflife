@@ -4,6 +4,7 @@ library(tidyverse)
 library(rulesoflife)
 library(driver)
 library(cowplot)
+library(RColorBrewer)
 library(fido)
 
 # ------------------------------------------------------------------------------
@@ -28,7 +29,9 @@ median_assoc_strength <- apply(rug_asv$rug, 2, function(x) {
 plot_df <- data.frame(d = phy_dist,
                       score = scores,
                       sign = signs,
-                      mas = median_assoc_strength)
+                      mas = median_assoc_strength,
+                      tax_idx1 = rug_asv$tax_idx1,
+                      tax_idx2 = rug_asv$tax_idx2)
 plot_df$sign <- factor(plot_df$sign, levels = c(1, 0, -1))
 levels(plot_df$sign) <- c("positive", NA, "negative")
 
@@ -51,21 +54,18 @@ p <- ggplot(plot_df %>% filter(!is.na(sign)), aes(x = d, y = score, fill = facto
        y = "universality score",
        fill = "Consensus\ncorrelation sign")
 
-# Calculate correlations between phylogenetic distance and universality
-# TO DO: replace with lm(); calculate significance
-overall <- cor(plot_df$d, plot_df$score)
-pos <- plot_df %>%
-  filter(sign == "positive") %>%
-  summarize(cor = cor(d, score)) %>%
-  pull(cor)
-neg <- plot_df %>%
-  filter(sign == "negative") %>%
-  summarize(cor = cor(d, score)) %>%
-  pull(cor)
+overall <- lm(y ~ x, data.frame(x = plot_df$d, y = plot_df$score))
+cat(paste0("Overall trend: ", round(summary(overall)$coef[2,1], 3), ", p-value: ", round(summary(overall)$coef[2,4], 3), "\n"))
 
-cat(paste0("Overall correlation: ", round(overall, 3), "\n"))
-cat(paste0("\tConsensus positive correlations only: ", round(pos, 3), "\n"))
-cat(paste0("\tConsensus negative correlations only: ", round(neg, 3), "\n"))
+pos <- plot_df %>%
+  filter(sign == "positive")
+pos <- lm(y ~ x, data.frame(x = pos$d, y = pos$score))
+cat(paste0("Positive trend: ", round(summary(pos)$coef[2,1], 3), ", p-value: ", round(summary(pos)$coef[2,4], 3), "\n"))
+
+neg <- plot_df %>%
+  filter(sign == "negative")
+neg <- lm(y ~ x, data.frame(x = neg$d, y = neg$score))
+cat(paste0("Negative trend: ", round(summary(neg)$coef[2,1], 3), ", p-value: ", round(summary(neg)$coef[2,4], 3), "\n"))
 
 ggsave("output/figures/SF6a.png",
        p,
@@ -96,6 +96,50 @@ ggsave("output/figures/SF6b.png",
        units = "in",
        height = 5,
        width = 6.5)
+
+# ------------------------------------------------------------------------------
+#   Label the phylogenetic distance vs. median association strength plot by the
+#   number of sequence mismatches
+# ------------------------------------------------------------------------------
+
+if(FALSE) {
+  d <- sequence_distance(distance_type = "N")
+  plot_df$mismatches <- NA
+  for(i in 1:nrow(plot_df)) {
+    plot_df$mismatches[i] <- d[plot_df$tax_idx1[i],
+                               plot_df$tax_idx2[i]]
+  }
+
+  plot_df$mismatch_factor <- as.factor(plot_df$mismatches)
+  show_max <- 8
+  levels(plot_df$mismatch_factor) <- c(1:show_max,
+                                       rep(paste0(show_max+1, "+"),
+                                           length(levels(plot_df$mismatch_factor))-show_max))
+
+  p <- ggplot(plot_df,
+              aes(x = d, y = mas, fill = factor(mismatch_factor))) +
+    geom_point(size = 3, shape = 21) +
+    theme_bw() +
+    scale_fill_manual(values = c(brewer.pal(show_max, "Spectral"), "#dddddd")) +
+    labs(x = "phylogenetic distance",
+         y = "median association strength",
+         fill = "Sequence mismatches")
+
+  ggsave("output/figures/SF6a-mismatches.png",
+         p,
+         dpi = 100,
+         units = "in",
+         height = 5,
+         width = 8)
+
+  plot_df$fam1 <- sapply(plot_df$tax_idx1, function(x) data$taxonomy[x,6])
+  plot_df$fam2 <- sapply(plot_df$tax_idx2, function(x) data$taxonomy[x,6])
+
+  plot_df %>%
+    filter(mismatches < 10) %>%
+    arrange(mismatches) %>%
+    select(mismatches, fam1, fam2)
+}
 
 # ------------------------------------------------------------------------------
 #   Enrichment of top left-hand pairs

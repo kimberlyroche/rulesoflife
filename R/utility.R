@@ -490,3 +490,33 @@ convert_alr_Sigma_clr <- function(Sigma) {
   Sigma.clr.cor <- cov2cor(Sigma.clr)
   return(list(Sigma.clr = Sigma.clr, Sigma.clr.cor = Sigma.clr.cor))
 }
+
+#' Compute sequence distances across ASVs
+#'
+#' @param distance_type optional; default is "N" (number of mismatches)
+#' @return matrix of ASV-ASV distances in terms of their 16S sequences
+#' @import stringr
+#' @import ape
+#' @export
+sequence_distance <- function(distance_type = "N") {
+  data <- load_data(tax_level = "ASV")
+  OTUs <- data$taxonomy$OTU
+  OTUs <- OTUs[1:(length(OTUs)-1)]
+  OTUs <- unname(sapply(OTUs, tolower))
+
+  # Split these up into a list of character vectors; that's apparently the input
+  # format dist.dna() wants
+  OTU_list <- list()
+  for(i in 1:length(OTUs)) {
+    OTU_list[[i]] <- str_split(OTUs[i], "")[[1]][1:252]
+  }
+  OTU_list <- as.DNAbin(OTU_list)
+
+  if(distance_type == "raw") {
+    d <- dist.dna(OTU_list, model = "raw")
+    d <- 1 - as.matrix(d)
+  } else {
+    d <- as.matrix(dist.dna(OTU_list, model = distance_type))
+  }
+  d
+}

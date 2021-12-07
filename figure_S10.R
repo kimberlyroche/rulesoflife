@@ -260,6 +260,69 @@ cat(paste0("P-value from random null test: ", round(res2, 3), "\n"))
 
 # ------------------------------------------------------------------------------
 #
+#   R^2: Lifespan
+#
+# ------------------------------------------------------------------------------
+
+females_only <- FALSE
+
+# Load lifespan data
+lifespan <- read.delim(file.path("input", "lifespanForKim_4Dec2021.csv"), sep = ",")
+if(females_only) {
+  lifespan <- lifespan %>%
+    filter(sex == "F")
+}
+host_list <- lifespan %>% pull(sname)
+
+host_include <- names(Sigmas) %in% host_list
+use_Sigmas <- Sigmas[host_include]
+
+# Load pedigree
+mapping <- data.frame(sname = names(use_Sigmas)) %>%
+  left_join(data.frame(sname = host_list, order = 1:length(host_list)), by = "sname")
+
+lifespan <- lifespan$age_at_death_censor[mapping$order]
+lifespan_dist <- as.matrix(dist(lifespan))
+lifespan_vec <- lifespan_dist[lower.tri(lifespan_dist)]
+
+# Subset dynamics distances to these hosts
+use_dd <- dynamics_distances[host_include,host_include]
+use_dd_vec <- use_dd[lower.tri(use_dd)]
+
+obs_Rsq_lifespan <- c(cor(scale(lifespan_vec), scale(use_dd_vec))**2)
+
+# R^2 plot
+# p1_ped <- ggplot(data.frame(x = scale(ped_vec), y = scale(dynamics_dist_vec)),
+p1_life <- ggplot(data.frame(x = lifespan_vec, y = use_dd_vec),
+                  aes(x = x, y = y)) +
+  # geom_smooth(color = "gray", alpha = 0.5) +
+  geom_point(size = 3, shape = 21, fill = "#999999") +
+  theme_bw() +
+  labs(x = paste0("lifespance distance", ifelse(females_only, " (females only)", "")),
+       y = "host-host dynamics distance")
+
+# ------------------------------------------------------------------------------
+#   Mantel test
+#
+#   This answers the question: How much variation is explained by X on distances
+#   in dynamics *in a population this related*?
+# ------------------------------------------------------------------------------
+
+res1_life <- mantel(as.dist(lifespan_dist), as.dist(use_dd))
+cat(paste0("P-value from Mantel test (lifespan): ", round(res1_life$signif, 3), "\n"))
+cat(paste0("Observed R^2: ", round(obs_Rsq_lifespan, 3), "\n"))
+
+# ------------------------------------------------------------------------------
+#   Null distribution - lifespan
+#
+#   Note: I think permutations of observed lifespan will have the same problem
+#     as the Mantel test!
+#   Essentially we would need an independent model of lifespan here.
+#   But luckily, this isn't remotely significant by Mantel.
+# ------------------------------------------------------------------------------
+
+# ------------------------------------------------------------------------------
+#
 #   Pseudo-ANOVA
 #
 # ------------------------------------------------------------------------------
