@@ -17,15 +17,7 @@ library(igraph)
 #
 # ------------------------------------------------------------------------------
 
-# These are hard-coded. See `figures_supplemental.R` for the calculation of
-# "important" universality scores from permuted data.
-thresholds_scores <- data.frame(type = factor(c("Phylum", "Family", "ASV")),
-                                x0 = c(0.162, 0.140, 0.136))
-
-# "Important"/significant correlations.
-thresholds <- data.frame(type = factor(c("Phylum", "Family", "ASV")),
-                         lower = c(-0.303, -0.256, -0.263),
-                         upper = c(0.149, 0.207, 0.254))
+source("thresholds.R")
 
 rug_phy <- summarize_Sigmas(output_dir = "phy_days90_diet25_scale1")
 rug_fam <- summarize_Sigmas(output_dir = "fam_days90_diet25_scale1")
@@ -143,6 +135,8 @@ families_all <- families_all[!is.na(families_all)]
 frequencies_subset <- table(families_top)
 frequencies <- table(families_all)
 
+enrichment <- NULL
+
 # Test for enrichment statistically
 signif <- c()
 for(fam in names(frequencies_subset)) {
@@ -156,6 +150,11 @@ for(fam in names(frequencies_subset)) {
                    bg_size - fam_in_bg),
                  2, 2, byrow = TRUE)
   prob <- fisher.test(ctab, alternative = "greater")$p.value
+  enrichment <- rbind(enrichment,
+                      data.frame(name = fam,
+                                 type = "family",
+                                 location = "2.5% most universal ASVs",
+                                 pvalue = prob))
   if(prob < 0.05) {
     signif <- c(signif, fam)
     cat(paste0("ASV family: ", fam, ", p-value: ", round(prob, 3), "\n"))
@@ -210,6 +209,11 @@ for(fam in names(frequencies_subset)) {
                    bg_size - fam_in_bg),
                  2, 2, byrow = TRUE)
   prob <- fisher.test(ctab, alternative = "greater")$p.value
+  enrichment <- rbind(enrichment,
+                      data.frame(name = fam,
+                                 type = "family-pair",
+                                 location = "2.5% most universal ASVs",
+                                 pvalue = prob))
   if(prob < 0.05) {
     signif <- c(signif, fam)
     cat(paste0("ASV family: ", fam, ", p-value: ", round(prob, 3), "\n"))
@@ -228,6 +232,18 @@ plot_enrichment(frequencies_subset1 = frequencies_subset,
                 rel_widths = c(1, 0.35, 1, 0.3, 2.75),
                 labels = c("overall", "2.5% most universal ASVs"),
                 save_name = "F4-enrichment-pair.png")
+
+enrichment <- enrichment %>%
+  arrange(type, name)
+colnames(enrichment) <- c("ASV family or pair name",
+                          "Type",
+                          "Enrichment evaluated in",
+                          "P-value (Fisher's exact test)")
+write.table(enrichment,
+            file = file.path("output", "Fig4_table.tsv"),
+            sep = "\t",
+            quote = FALSE,
+            row.names = FALSE)
 
 # ------------------------------------------------------------------------------
 #   Network plot

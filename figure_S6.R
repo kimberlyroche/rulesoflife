@@ -119,6 +119,85 @@ ggsave(file.path("output", "figures", "S6.png"),
 #
 # ------------------------------------------------------------------------------
 
+# ------------------------------------------------------------------------------
+#
+#   Cartoon explanatory figure
+#
+# ------------------------------------------------------------------------------
+
+y <- matrix(c(1, 0.8, -0.5,
+              0.8, 1, -0.3,
+              -0.5, -0.3, 1), 3, 3, byrow = TRUE)
+m <- matrix(c(1, 0.3, -0.4,
+              0.3, 1, 0.1,
+              -0.4, 0.1, 1), 3, 3, byrow = TRUE)
+e <- y - m
+diag(e) <- 1
+
+y_plot <- plot_kernel_or_cov_matrix(y) +
+  labs(title = "observed host dynamics\n(y)") +
+  geom_text(aes(label = round(covariance, 1))) +
+  theme(legend.position = "none",
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.ticks = element_blank(),
+        axis.text = element_blank(),
+        plot.title = element_text(size = 10, hjust = 0.5)) +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_continuous(expand = c(0, 0))
+m_plot <- plot_kernel_or_cov_matrix(m) +
+  labs(title = "population mean dynamics\n(m)") +
+  geom_text(aes(label = round(covariance, 1))) +
+  theme(legend.position = "none",
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.ticks = element_blank(),
+        axis.text = element_blank(),
+        plot.title = element_text(size = 10, hjust = 0.5)) +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_continuous(expand = c(0, 0))
+e_plot <- plot_kernel_or_cov_matrix(e) +
+  geom_text(aes(label = round(covariance, 1))) +
+  labs(title = "residual host dynamics\n(e)") +
+  theme(legend.position = "none",
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.ticks = element_blank(),
+        axis.text = element_blank(),
+        plot.title = element_text(size = 10, hjust = 0.5)) +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_continuous(expand = c(0, 0))
+c_plot <- plot_kernel_or_cov_matrix(0.5*m + 0.5*e) +
+  geom_text(aes(label = round(covariance, 1))) +
+  labs(title = "composite dynamics\n(0.5 m + 0.5 e)") +
+  theme(legend.position = "none",
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.ticks = element_blank(),
+        axis.text = element_blank(),
+        plot.title = element_text(size = 10, hjust = 0.5)) +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_continuous(expand = c(0, 0))
+
+p <- plot_grid(y_plot, m_plot, e_plot, c_plot,
+               ncol = 4)
+
+ggsave(file.path("output", "figures", "S6_cartoon.png"),
+       p,
+       dpi = 100,
+       units = "in",
+       height = 2,
+       width = 7)
+
+# Find the distance-minimizer for this tiny example
+# props <- seq(0, 1, by = 0.1)
+# dists <- c()
+# for(prop in props) {
+#   dists <- c(dists,
+#              dist4cov(y, (1-prop)*m + prop*e)$dist)
+# }
+# plot(props, dists)
+
 global_mean <- F1$mean
 mix <- seq(from = 0, to = 1, by = 0.05)
 mins <- NULL

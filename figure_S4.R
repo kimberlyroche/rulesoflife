@@ -228,6 +228,7 @@ score_distros <- rbind(score_distros,
 rug_asv <- summarize_Sigmas(output_dir = "asv_days90_diet25_scale1")
 permuted_scores_asv <- NULL
 for(i in 1:iterations) {
+  cat(paste0(i,"\n"))
   rug_scrambled <- rug_asv$rug
   for(j in 1:nrow(rug_asv$rug)) {
     rug_scrambled[j,] <- sample(rug_scrambled[j,])
@@ -276,14 +277,30 @@ ggsave("output/figures/SF2.svg",
 #                 expected by chance?
 # ------------------------------------------------------------------------------
 
+source("thresholds.R")
+
 bounds <- quantile(score_distros %>% filter(scheme == "permuted") %>% pull(x),
                    probs = c(0.0275, 0.975))
 
-n <- nrow(score_distros %>% filter(scheme == "observed"))
-below_n <- sum((score_distros %>% filter(scheme == "observed") %>% pull(x) < bounds[1]))
+pw_scores <- apply(rug_asv$rug, 2, function(x) calc_universality_score(x, return_pieces = TRUE))
 
-cat(paste0("Percent of ASV pairs with universality scores lower than 95% random interval: ",
-           round(below_n / n, 3)*100, "\n"))
+# Find pairs will unusually low scores below the 95% interval in the permuted distribution
+lower <- which(apply(pw_scores, 2, function(x) {
+  x[1]*x[2] < bounds[1]
+}))
+
+cat(paste0(round(length(lower) / ncol(rug_asv$rug) * 100, 2),
+           "% of pairs have universality scores below the 95% interval of the permuted (null) distribution"))
+
+subset_correlations <- rug_asv$rug[,lower]
+
+cat(paste0("The median correlation strength of these pairs is: ",
+           round(median(apply(subset_correlations, 2, median)), 3), "\n"))
+
+cat(paste0("The percent of correlations 'significant' by our correlation threshold is: ",
+           round(sum(subset_correlations < thresholds %>% filter(type == "ASV") %>% pull(lower) |
+                       subset_correlations > thresholds %>% filter(type == "ASV") %>% pull(upper)) / length(subset_correlations) * 100, 2),
+           "\n"))
 
 # Optionally visualize the distribution of very-low-universality score pairs
 if(FALSE) {
@@ -321,6 +338,8 @@ if(FALSE) {
 
 # ------------------------------------------------------------------------------
 #   Report stats: correlation
+#
+#   Note: these thresholds have been hard-coded into `thresholds.R`
 # ------------------------------------------------------------------------------
 
 # Define cutoffs at <0.025 percentile and >97.5 percentile
@@ -405,6 +424,8 @@ cat(paste0("Mean / median / range of correlations for ASV: ",
 
 # ------------------------------------------------------------------------------
 #   Report stats: universality scores
+#
+#   Note: these thresholds have been hard-coded into `thresholds.R`
 # ------------------------------------------------------------------------------
 
 obs_scores_phy <- apply(rug_phy$rug, 2, calc_universality_score)

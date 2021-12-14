@@ -8,6 +8,7 @@ library(MASS)
 library(reshape2)
 library(lubridate)
 library(ggridges)
+library(RColorBrewer)
 
 # ------------------------------------------------------------------------------
 #   Functions
@@ -35,6 +36,7 @@ fit_model <- function(counts, host_columns, host_dates, dataset_name, depth = 1)
   n_interactions <- (D^2 - D)/2
   vectorized_Sigmas <- array(NA, dim = c(length(host_columns), n_interactions, depth))
 
+  pair_indices <- NULL
   for(subject in 1:length(host_columns)) {
     cat(paste0("Evaluating ", dataset_name, " (", subject, " / ", length(host_columns), ")\n"))
     subject_samples <- host_columns[[subject]]
@@ -51,7 +53,8 @@ fit_model <- function(counts, host_columns, host_dates, dataset_name, depth = 1)
 
       taxa_covariance <- get_Xi(D, total_variance = 1)
 
-      rho <- calc_se_decay(min_correlation = 0.1, days_to_min_autocorrelation = 7)
+      # rho <- calc_se_decay(min_correlation = 0.1, days_to_min_autocorrelation = 7)
+      rho <- calc_se_decay(min_correlation = 0.1, days_to_min_autocorrelation = 90)
       Gamma <- function(X) {
         SE(X, sigma = 1, rho = rho, jitter = 1e-08)
       }
@@ -71,12 +74,15 @@ fit_model <- function(counts, host_columns, host_dates, dataset_name, depth = 1)
       Sigmas <- fit.clr$Sigma
       for(k in 1:depth) {
         temp <- cov2cor(Sigmas[,,k])
+        if(is.null(pair_indices)) {
+          pair_indices <- combn(D:1, m = 2)[2:1,((D^2 - D)/2):1]
+        }
         temp <- c(temp[upper.tri(temp, diag = F)])
         vectorized_Sigmas[subject,,k] <- temp
       }
     }
   }
-  vectorized_Sigmas
+  list(Sigmas = vectorized_Sigmas, pairs = pair_indices)
 }
 
 plot_heatmap2 <- function(rug, x_label, title) {
@@ -144,7 +150,9 @@ mapping <- read.delim(file.path("input", "johnson2019", "SampleID_map.txt"),
                       sep = "\t")
 
 # Basic filtering
-counts <- counts[filter_taxa(counts[,2:ncol(counts)]),]
+filter_vec <- filter_taxa(counts[,2:ncol(counts)])
+tax_johnson <- counts$taxonomy[filter_vec]
+counts <- counts[filter_vec,]
 
 subjects <- unique(mapping$UserName)
 host_columns <- list()
@@ -175,14 +183,51 @@ saved_fn <- file.path("input", "johnson2019", "fitted_results.rds")
 if(file.exists(saved_fn)) {
   johnson <- readRDS(saved_fn)
 } else {
-  johnson <- fit_model(counts, host_columns, host_dates, dataset_name = "Johnson et al.", depth = 1)[,,1]
+  johnson <- fit_model(counts, host_columns, host_dates, dataset_name = "Johnson et al.", depth = 1)
   saveRDS(johnson, saved_fn)
 }
+pairs_johnson <- johnson$pairs
+johnson <- johnson$Sigmas[,,1]
+
+# Plot rug
+rug <- johnson[,order(colMeans(johnson))]
+rug <- cbind(1:nrow(rug), rug)
+colnames(rug) <- c("host", paste0(1:(ncol(rug)-1)))
+rug <- pivot_longer(as.data.frame(rug), !host, names_to = "pair", values_to = "correlation")
+rug$pair <- as.numeric(rug$pair)
+
+p <- ggplot(rug, aes(x = pair, y = host)) +
+  geom_raster(aes(fill = correlation)) +
+  scale_fill_gradient2(low = "navy", mid = "white", high = "red",
+                       midpoint = 0) +
+  labs(y = "") +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_continuous(expand = c(0, 0)) +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank()) +
+  labs(fill = "correlation\nmetric") +
+  theme(axis.text = element_text(size = 7),
+          axis.title = element_text(size = 12, face = "plain"),
+          legend.title = element_text(size = 12))
+
+ggsave(file.path("output", "figures", "Johnson_rug.png"),
+       plot = p,
+       dpi = 100,
+       units = "in",
+       height = 4,
+       width = 6)
+
 scores <- apply(johnson, 2, function(x) calc_universality_score(x, return_pieces = TRUE))
+consensus_sign <- apply(johnson, 2, calc_consensus_sign)
 
 all_scores <- rbind(all_scores,
                     data.frame(X1 = scores[1,],
                                X2 = scores[2,],
+                               idx1 = pairs_johnson[1,],
+                               idx2 = pairs_johnson[2,],
+                               sign = consensus_sign,
                                dataset = "Johnson et al.",
                                n_subjects = length(subjects)))
 
@@ -232,10 +277,12 @@ if(file.exists(saved_fn)) {
   saveRDS(dethlefsen_relman, saved_fn)
 }
 scores <- apply(dethlefsen_relman, 2, function(x) calc_universality_score(x, return_pieces = TRUE))
+consensus_sign <- apply(dethlefsen_relman, 2, calc_consensus_sign)
 
 all_scores <- rbind(all_scores,
                     data.frame(X1 = scores[1,],
                                X2 = scores[2,],
+                               sign = consensus_sign,
                                dataset = "Dethlefsen & Relman",
                                n_subjects = 3))
 
@@ -248,12 +295,15 @@ load(file.path("input", "DIABIMMUNE", "DIABIMMUNE_Karelia_metadata.RData"))
 
 counts <- t(data_16s)
 rm(data_16s)
+tax_diabimmune <- rownames(counts)
 rownames(counts) <- NULL # omit taxonomy
 
 # These aren't counts but relative abundances (summing to 5).
 # Let's scale them into CPM.
 counts <- counts*1e06/5
-counts <- counts[filter_taxa(counts),]
+filter_vec <- filter_taxa(counts)
+tax_diabimmune <- tax_diabimmune[filter_vec]
+counts <- counts[filter_vec,]
 
 # Use kids with at least 15 samples
 use_subjects <- names(which(table(metadata$subjectID) >= 15))
@@ -294,14 +344,51 @@ saved_fn <- file.path("input", "DIABIMMUNE", "fitted_results.rds")
 if(file.exists(saved_fn)) {
   diabimmune <- readRDS(saved_fn)
 } else {
-  diabimmune <- fit_model(counts, host_columns, host_dates, "DIABIMMUNE", depth = 1)[,,1]
+  diabimmune <- fit_model(counts, host_columns, host_dates, "DIABIMMUNE", depth = 1)
   saveRDS(diabimmune, saved_fn)
 }
+pairs_diabimmune <- diabimmune$pairs
+diabimmune <- diabimmune$Sigmas[,,1]
+
+# Plot rug
+rug <- diabimmune[,order(colMeans(diabimmune))]
+rug <- cbind(1:nrow(rug), rug)
+colnames(rug) <- c("host", paste0(1:(ncol(rug)-1)))
+rug <- pivot_longer(as.data.frame(rug), !host, names_to = "pair", values_to = "correlation")
+rug$pair <- as.numeric(rug$pair)
+
+p <- ggplot(rug, aes(x = pair, y = host)) +
+  geom_raster(aes(fill = correlation)) +
+  scale_fill_gradient2(low = "navy", mid = "white", high = "red",
+                       midpoint = 0) +
+  labs(y = "") +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_continuous(expand = c(0, 0)) +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank()) +
+  labs(fill = "correlation\nmetric") +
+  theme(axis.text = element_text(size = 7),
+        axis.title = element_text(size = 12, face = "plain"),
+        legend.title = element_text(size = 12))
+
+ggsave(file.path("output", "figures", "DIABIMMUNE_rug.png"),
+       plot = p,
+       dpi = 100,
+       units = "in",
+       height = 4,
+       width = 6)
+
 scores <- apply(diabimmune, 2, function(x) calc_universality_score(x, return_pieces = TRUE))
+consensus_sign <- apply(diabimmune, 2, calc_consensus_sign)
 
 all_scores <- rbind(all_scores,
                     data.frame(X1 = scores[1,],
                                X2 = scores[2,],
+                               idx1 = pairs_diabimmune[1,],
+                               idx2 = pairs_diabimmune[2,],
+                               sign = consensus_sign,
                                dataset = "DIABIMMUNE",
                                n_subjects = length(use_subjects)))
 
@@ -368,10 +455,12 @@ if(file.exists(saved_fn)) {
   saveRDS(grossart, saved_fn)
 }
 scores <- apply(grossart, 2, function(x) calc_universality_score(x, return_pieces = TRUE))
+consensus_sign <- apply(grossart, 2, calc_consensus_sign)
 
 all_scores <- rbind(all_scores,
                     data.frame(X1 = scores[1,],
                                X2 = scores[2,],
+                               sign = consensus_sign,
                                dataset = "Grossart et al.",
                                n_subjects = length(conditions)))
 
@@ -479,15 +568,19 @@ if(file.exists(saved_fn)) {
   saveRDS(list(mc_e, mc_h), saved_fn)
 }
 scores <- apply(mc_e, 2, function(x) calc_universality_score(x, return_pieces = TRUE))
+consensus_sign <- apply(mc_e, 2, calc_consensus_sign)
 all_scores <- rbind(all_scores,
                     data.frame(X1 = scores[1,],
                                X2 = scores[2,],
+                               sign = consensus_sign,
                                dataset = "McMahon et al. (epilimnion)",
                                n_subjects = length(unique(metadata$lake))))
 scores <- apply(mc_h, 2, function(x) calc_universality_score(x, return_pieces = TRUE))
+consensus_sign <- apply(mc_h, 2, calc_consensus_sign)
 all_scores <- rbind(all_scores,
                     data.frame(X1 = scores[1,],
                                X2 = scores[2,],
+                               sign = consensus_sign,
                                dataset = "McMahon et al. (hypolimnion)",
                                n_subjects = length(unique(metadata$lake))))
 
@@ -583,9 +676,11 @@ if(file.exists(saved_fn)) {
   saveRDS(david, saved_fn)
 }
 scores <- apply(david, 2, function(x) calc_universality_score(x, return_pieces = TRUE))
+consensus_sign <- apply(david, 2, calc_consensus_sign)
 all_scores <- rbind(all_scores,
                     data.frame(X1 = scores[1,],
                                X2 = scores[2,],
+                               sign = consensus_sign,
                                dataset = "David et al.",
                                n_subjects = 2))
 
@@ -632,9 +727,11 @@ if(file.exists(saved_fn)) {
   saveRDS(caporaso, saved_fn)
 }
 scores <- apply(caporaso, 2, function(x) calc_universality_score(x, return_pieces = TRUE))
+consensus_sign <- apply(caporaso, 2, calc_consensus_sign)
 all_scores <- rbind(all_scores,
                     data.frame(X1 = scores[1,],
                                X2 = scores[2,],
+                               sign = consensus_sign,
                                dataset = "Caporaso et al.",
                                n_subjects = 2))
 
@@ -644,15 +741,212 @@ all_scores <- rbind(all_scores,
 
 amboseli <- summarize_Sigmas("asv_days90_diet25_scale1")
 scores <- apply(amboseli$rug, 2, function(x) calc_universality_score(x, return_pieces = TRUE))
+consensus_sign <- apply(amboseli$rug, 2, calc_consensus_sign)
+tax_abrp <- load_data(tax_level = "ASV")$taxonomy
 all_scores <- rbind(all_scores,
                     data.frame(X1 = scores[1,],
                                X2 = scores[2,],
+                               idx1 = amboseli$tax_idx1,
+                               idx2 = amboseli$tax_idx2,
+                               sign = consensus_sign,
                                dataset = "Amboseli",
                                n_subjects = 56))
 
 # ------------------------------------------------------------------------------
+#   QUESTION 1: Are strong relationships (large median unsigned association)
+#               the most universal?
+# ------------------------------------------------------------------------------
+
+for(this_dataset in c("Johnson et al.", "DIABIMMUNE", "Amboseli")) {
+  x <- all_scores[all_scores$dataset == this_dataset,]$X2
+  y <- all_scores[all_scores$dataset == this_dataset,]$X1
+
+  cat(paste0(toupper(this_dataset),
+             " Spearman cor. betw. % agreement and median assoc.: ",
+             round(cor(x, y, method = "spearman"), 3),
+             "\n"))
+}
+
+# ------------------------------------------------------------------------------
+#   QUESTION 2: Are the top 1% to 2.5% most universal pairs also skewed towards
+#               positive associations?
+# ------------------------------------------------------------------------------
+
+for(this_dataset in c("Johnson et al.", "DIABIMMUNE", "Amboseli")) {
+  subset_scores <- all_scores %>%
+    filter(dataset == this_dataset) %>%
+    mutate(score = X1*X2) %>%
+    arrange(desc(score))
+  n_pairs <- nrow(subset_scores)
+  top_1 <- round(n_pairs * 0.01)
+  top_2p5 <- round(n_pairs * 0.025)
+  pn_tally_1 <- subset_scores %>%
+    slice(1:top_1) %>%
+    group_by(sign) %>%
+    tally()
+  ppos_1 <- pn_tally_1 %>%
+    mutate(n_all = sum(n)) %>%
+    filter(sign == 1) %>%
+    mutate(prop = n/n_all) %>%
+    pull(prop)
+  pn_tally_2p5 <- subset_scores %>%
+    slice(1:top_2p5) %>%
+    group_by(sign) %>%
+    tally()
+  ppos_2p5 <- pn_tally_2p5 %>%
+    mutate(n_all = sum(n)) %>%
+    filter(sign == 1) %>%
+    mutate(prop = n/n_all) %>%
+    pull(prop)
+  cat(paste0(toupper(this_dataset),
+             " proportion positive in top 1%: ",
+             round(ppos_1, 2),
+             " (of ", sum(pn_tally_1$n), " pairs)",
+             "\n"))
+  cat(paste0(toupper(this_dataset),
+             " proportion positive in top 2.5%: ",
+             round(ppos_2p5, 2),
+             " (of ", sum(pn_tally_2p5$n), " pairs)",
+             "\n"))
+}
+
+# ------------------------------------------------------------------------------
+#   QUESTION 3: Are the most universal pairs from the same families?
+# ------------------------------------------------------------------------------
+
+tax_map <- list("Johnson et al." = tax_johnson,
+                "DIABIMMUNE" = tax_diabimmune)
+for(this_dataset in c("Johnson et al.", "DIABIMMUNE")) {
+  subset_scores <- all_scores %>%
+    filter(dataset == this_dataset) %>%
+    mutate(score = X1*X2) %>%
+    arrange(desc(score))
+
+  n_pairs <- nrow(subset_scores)
+  top_2p5 <- round(n_pairs * 0.025)
+  subset_scores$top <- c(rep(TRUE, top_2p5),
+                         rep(FALSE, n_pairs - top_2p5))
+  # Append families
+  if(this_dataset == "Johnson et al.") {
+    families <- unname(sapply(tax_johnson, function(x) {
+      str_replace(str_split(x, pattern = ";")[[1]][5], "f__", "")
+    }))
+  } else {
+    families <- unname(sapply(tax_diabimmune, function(x) {
+      pieces <- str_split(x, pattern = "\\|")[[1]]
+      if(length(pieces) < 5) {
+        ""
+      } else {
+        str_replace(pieces[5], "f__", "")
+      }
+    }))
+  }
+  families[families %in% c("", "NA")] <- ""
+  subset_scores$fam1 <- families[subset_scores$idx1]
+  subset_scores$fam2 <- families[subset_scores$idx2]
+
+  # Remove any with missing families
+  subset_scores <- subset_scores %>%
+    filter(fam1 != "" & fam2 != "")
+
+  subset_scores$taxpair <- paste0(subset_scores$fam1, " - ", subset_scores$fam2)
+
+  # ----------------------------------------------------------------------------
+  #   Enrichment of family pairs
+  # ----------------------------------------------------------------------------
+
+  frequencies <- table(subset_scores$taxpair)
+  frequencies_subset <- table(subset_scores %>% filter(top == TRUE) %>% pull(taxpair))
+
+  signif <- c()
+  for(fam in names(frequencies_subset)) {
+    fam_in_sample <- unname(unlist(frequencies_subset[fam]))
+    sample_size <- unname(unlist(sum(frequencies_subset)))
+    fam_in_bg <- unname(unlist(frequencies[fam]))
+    bg_size <- unname(unlist(sum(frequencies)))
+    ctab <- matrix(c(fam_in_sample,
+                     sample_size - fam_in_sample,
+                     fam_in_bg,
+                     bg_size - fam_in_bg),
+                   2, 2, byrow = TRUE)
+    prob <- fisher.test(ctab, alternative = "greater")$p.value
+    if(prob < 0.05) {
+      signif <- c(signif, fam)
+      cat(paste0("ASV family: ", fam, ", p-value: ", round(prob, 3), "\n"))
+    }
+  }
+
+  temp_palette <- generate_highcontrast_palette(length(signif))
+  names(temp_palette) <- signif
+
+  plot_enrichment(frequencies_subset1 = frequencies_subset,
+                  frequencies = frequencies,
+                  significant_families1 = signif,
+                  plot_height = 6,
+                  plot_width = 6,
+                  legend_topmargin = 100,
+                  use_pairs = TRUE,
+                  rel_widths = c(1, 0.35, 1, 0.25, 3),
+                  labels = c("overall", "top 2.5% pairs"),
+                  palette = temp_palette,
+                  save_name = paste0(this_dataset, "-enrichment-pair.png"))
+
+  # ----------------------------------------------------------------------------
+  #   Enrichment of families
+  # ----------------------------------------------------------------------------
+
+  frequencies <- table(c(subset_scores$fam1, subset_scores$fam2))
+  frequencies_subset <- table(c(subset_scores %>% filter(top == TRUE) %>% pull(fam1),
+                                subset_scores %>% filter(top == TRUE) %>% pull(fam2)))
+
+  signif <- c()
+  for(fam in names(frequencies_subset)) {
+    fam_in_sample <- unname(unlist(frequencies_subset[fam]))
+    sample_size <- unname(unlist(sum(frequencies_subset)))
+    fam_in_bg <- unname(unlist(frequencies[fam]))
+    bg_size <- unname(unlist(sum(frequencies)))
+    ctab <- matrix(c(fam_in_sample,
+                     sample_size - fam_in_sample,
+                     fam_in_bg,
+                     bg_size - fam_in_bg),
+                   2, 2, byrow = TRUE)
+    prob <- fisher.test(ctab, alternative = "greater")$p.value
+    if(prob < 0.05) {
+      signif <- c(signif, fam)
+      cat(paste0("ASV family: ", fam, ", p-value: ", round(prob, 3), "\n"))
+    }
+  }
+
+  temp_palette <- generate_highcontrast_palette(length(signif))
+  names(temp_palette) <- signif
+
+  plot_enrichment(frequencies_subset1 = frequencies_subset,
+                  frequencies = frequencies,
+                  significant_families1 = signif,
+                  plot_height = 6,
+                  plot_width = 4.5,
+                  legend_topmargin = 100,
+                  use_pairs = FALSE,
+                  rel_widths = c(1, 0.35, 1, 0.1, 1.75),
+                  labels = c("overall", "top 2.5% pairs"),
+                  palette = temp_palette,
+                  save_name = paste0(this_dataset, "-enrichment.png"))
+}
+
+
+
+
+
+
+
+
+# ------------------------------------------------------------------------------
 #   VISUALIZATION VERSION 1: Plot densities together
 # ------------------------------------------------------------------------------
+
+# Define a color palette
+dataset_palette <- c(brewer.pal(9, "Spectral")[c(1:4,6:9)], "#aaaaaa")
+names(dataset_palette) <- sort(unique(all_scores$dataset))[c(2,1,3,4,6,8,5,7,9)]
 
 # Density plot from:
 # https://stackoverflow.com/questions/23437000/how-to-plot-a-contour-line-showing-where-95-of-values-fall-within-in-r-and-in
@@ -661,23 +955,19 @@ all_scores <- rbind(all_scores,
 prob <- c(0.95, 0.5)
 
 # I'm just using the studies with 5+ subjects
-dc_combined <- rbind(cbind(get_density_obj(all_scores %>% filter(dataset == "DIABIMMUNE") %>% select(X1, X2)), type = "A"),
-                     cbind(get_density_obj(all_scores %>% filter(dataset == "McMahon et al. (hypolimnion)") %>% select(X1, X2)), type = "B"),
-                     cbind(get_density_obj(all_scores %>% filter(dataset == "Amboseli") %>% select(X1, X2)), type = "C"),
-                     cbind(get_density_obj(all_scores %>% filter(dataset == "Johnson et al.") %>% select(X1, X2)), type = "D"))
+dc_combined <- rbind(cbind(get_density_obj(all_scores %>% filter(dataset == "DIABIMMUNE") %>% dplyr::select(X1, X2)), type = "DIABIMMUNE"),
+                     cbind(get_density_obj(all_scores %>% filter(dataset == "Amboseli") %>% dplyr::select(X1, X2)), type = "Amboseli"),
+                     cbind(get_density_obj(all_scores %>% filter(dataset == "Johnson et al.") %>% dplyr::select(X1, X2)), type = "Johnson et al."))
 
-dc_combined$type <- factor(dc_combined$type)
-levels(dc_combined$type) <- c("DIABIMMUNE human infants",
-                              "McMahon et al. lakes",
-                              "Amboseli baboons",
-                              "Johnson et al. human adults")
+dc_combined$type <- factor(dc_combined$type, levels = c("DIABIMMUNE", "Johnson et al.", "Amboseli"))
 
 p <- ggplot(data = dc_combined,
-            aes(x = Var1, y = Var2, z = prob, color = type, fill = type, alpha = ..level..)) +
+            aes(x = Var1, y = Var2, z = prob, fill = type, alpha = ..level..)) +
   geom_contour_filled(breaks = c(prob, 0)) +
   scale_alpha_discrete(range = c(0.4, 0.7)) +
+  scale_fill_manual(values = dataset_palette[c(2,7,8)]) +
   theme_bw() +
-  xlim(c(0.45, 1.05)) +
+  xlim(c(0.5, 1)) +
   ylim(c(0, 1)) +
   labs(x = "proportion shared sign",
        y = "median association strength",
@@ -689,29 +979,58 @@ ggsave(file.path("output", "figures", "6-alt.png"),
        p,
        dpi = 100,
        units = "in",
-       height = 6,
-       width = 8)
+       height = 5,
+       width = 6.5)
 
 # ------------------------------------------------------------------------------
 #   VISUALIZATION VERSION 2: Stacked histograms
 # ------------------------------------------------------------------------------
 
-p <- ggplot(all_scores %>% filter(dataset != "McMahon et al. (epilimnion)"), aes(x = X2, y = reorder(dataset, n_subjects), alpha = n_subjects, fill = dataset)) +
+plot_scores <- all_scores %>%
+  mutate(prop_subjects = n_subjects / max(n_subjects))
+
+p1 <- ggplot(plot_scores %>% filter(!(dataset %in% c("McMahon et al. (epilimnion)",
+                                                    "McMahon et al. (hypolimnion)",
+                                                    "Grossart et al."))),
+             aes(x = X2, y = reorder(dataset, n_subjects), alpha = prop_subjects, fill = dataset)) +
   geom_density_ridges(stat = "binline", bins = 20, scale = 0.95, draw_baseline = TRUE) +
-  # geom_density_ridges(scale = 1.5, draw_baseline = TRUE) +
   theme_bw() +
-  # scale_x_continuous(expand = c(0, 0)) +
+  # scale_alpha_continuous(range = c(0.1, 1.0)) +
+  scale_fill_manual(values = dataset_palette) +
   scale_y_discrete(expand = expansion(add = c(0.35, 0.75))) +
   coord_cartesian(clip = "off") +
-  guides(fill = "none") +
+  guides(fill = "none",
+         alpha = "none") +
   labs(x = "universality scores",
-       y = "",
-       alpha = "No. subjects")
+       y = "")
+
+p2 <- ggplot(plot_scores %>% filter(dataset %in% c("McMahon et al. (epilimnion)",
+                                                   "McMahon et al. (hypolimnion)",
+                                                   "Grossart et al.")),
+             aes(x = X2, y = reorder(dataset, n_subjects), alpha = prop_subjects, fill = dataset)) +
+  geom_density_ridges(stat = "binline", bins = 20, scale = 0.5, draw_baseline = TRUE) +
+  theme_bw() +
+  scale_alpha_continuous(range = c(0.089, 0.161)) +
+  scale_fill_manual(values = dataset_palette) +
+  scale_y_discrete(expand = expansion(add = c(0.35, 0.75))) +
+  coord_cartesian(clip = "off") +
+  guides(fill = "none",
+         alpha = "none") +
+  labs(x = "universality scores",
+       y = "")
+
+p3 <- plot_grid(NULL, p1,
+                ncol = 2,
+                rel_widths = c(0.07, 1))
+
+p <- plot_grid(p3, NULL, p2,
+               ncol = 1,
+               rel_heights = c(1, 0.1, 0.55))
 
 ggsave(file.path("output", "figures", "6.png"),
        p,
        dpi = 100,
        units = "in",
-       height = 6,
-       width = 7)
+       height = 7,
+       width = 6)
 

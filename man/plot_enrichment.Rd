@@ -16,6 +16,7 @@ plot_enrichment(
   use_pairs = TRUE,
   rel_widths = c(1, 0.35, 1, 0, 4.5),
   labels = NULL,
+  palette = NULL,
   save_name = NULL
 )
 }

@@ -773,21 +773,25 @@ plot_enrichment <- function(frequencies_subset1, frequencies_subset2 = NULL, fre
                             significant_families1, significant_families2 = NULL,
                             plot_height, plot_width, legend_topmargin, use_pairs = TRUE,
                             rel_widths = c(1, 0.35, 1, 0, 4.5), labels = NULL,
-                            save_name = NULL) {
+                            palette = NULL, save_name = NULL) {
   labeled_families <- sort(unique(c(significant_families1, significant_families2)))
 
   # Define a huge color palette over all observed family-family pairs
-  if(use_pairs) {
-    # Palette-generation code; move this elsewhere eventually
-    # all_family_pairs <- names(frequencies)
-    # all_family_pair_palette <- generate_highcontrast_palette2(length(all_family_pairs))
-    # names(all_family_pair_palette) <- all_family_pairs
-    # saveRDS(all_family_pair_palette, "output/family-family_palette.rds")
-    all_family_pair_palette <- readRDS(file.path("output", "family-family_palette.rds"))
-    fam_palette_colored <- all_family_pair_palette[names(all_family_pair_palette) %in% labeled_families]
+  if(is.null(palette)) {
+    if(use_pairs) {
+      # Palette-generation code; move this elsewhere eventually
+      # all_family_pairs <- names(frequencies)
+      # all_family_pair_palette <- generate_highcontrast_palette2(length(all_family_pairs))
+      # names(all_family_pair_palette) <- all_family_pairs
+      # saveRDS(all_family_pair_palette, "output/family-family_palette.rds")
+      all_family_pair_palette <- readRDS(file.path("output", "family-family_palette.rds"))
+      fam_palette_colored <- all_family_pair_palette[names(all_family_pair_palette) %in% labeled_families]
+    } else {
+      all_family_palette <- readRDS(file.path("output", "family_palette.rds"))
+      fam_palette_colored <- all_family_palette[names(all_family_palette) %in% labeled_families]
+    }
   } else {
-    all_family_palette <- readRDS(file.path("output", "family_palette.rds"))
-    fam_palette_colored <- all_family_palette[names(all_family_palette) %in% labeled_families]
+    fam_palette_colored <- palette
   }
   all_families <- sort(unique(c(names(frequencies))))
   fam_palette <- sample(c("#dddddd", "#d5d5d5", "#cccccc", "#c5c5c5"), replace = TRUE, size = length(all_families))
@@ -865,7 +869,7 @@ plot_enrichment <- function(frequencies_subset1, frequencies_subset2 = NULL, fre
   baseline_relative <- observed_relative %>%
     full_join(data.frame(pair = names(frequencies),
                          count = unname(c(frequencies))), by = "pair") %>%
-    select(pair, count.y) %>%
+    dplyr::select(pair, count.y) %>%
     arrange(pair)
   colnames(baseline_relative) <- c("pair", "count")
   baseline_relative$prop <- baseline_relative$count / sum(baseline_relative$count)

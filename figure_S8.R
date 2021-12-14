@@ -6,10 +6,11 @@ library(driver)
 library(cowplot)
 library(RColorBrewer)
 library(fido)
+library(ape)
 
 # ------------------------------------------------------------------------------
 #
-#   Supplemental Figure S9 - scatterplots of phylogenetic distance vs. univer-
+#   Supplemental Figure S8 - scatterplots of phylogenetic distance vs. univer-
 #                            sality score or median association strength, plus
 #                            barplots of enrichment of closely related and
 #                            strongly universal pairs
@@ -110,17 +111,20 @@ if(FALSE) {
                                plot_df$tax_idx2[i]]
   }
 
+  max_mismatches <- max(plot_df$mismatches)
   plot_df$mismatch_factor <- as.factor(plot_df$mismatches)
-  show_max <- 8
-  levels(plot_df$mismatch_factor) <- c(1:show_max,
-                                       rep(paste0(show_max+1, "+"),
-                                           length(levels(plot_df$mismatch_factor))-show_max))
+  levels(plot_df$mismatch_factor) <- c("1",
+                                       "2",
+                                       rep("3-5", 3),
+                                       rep("5-10", 6),
+                                       rep("10-20", 11),
+                                       rep(">20", sum(plot_df$mismatches > 20)))
 
   p <- ggplot(plot_df,
               aes(x = d, y = mas, fill = factor(mismatch_factor))) +
     geom_point(size = 3, shape = 21) +
     theme_bw() +
-    scale_fill_manual(values = c(brewer.pal(show_max, "Spectral"), "#dddddd")) +
+    scale_fill_manual(values = c(brewer.pal(6, "Spectral")[1:5], "#dddddd")) +
     labs(x = "phylogenetic distance",
          y = "median association strength",
          fill = "Sequence mismatches")
@@ -132,21 +136,18 @@ if(FALSE) {
          height = 5,
          width = 8)
 
-  plot_df$fam1 <- sapply(plot_df$tax_idx1, function(x) data$taxonomy[x,6])
-  plot_df$fam2 <- sapply(plot_df$tax_idx2, function(x) data$taxonomy[x,6])
-
-  plot_df %>%
-    filter(mismatches < 10) %>%
-    arrange(mismatches) %>%
-    select(mismatches, fam1, fam2)
+  # plot_df$fam1 <- sapply(plot_df$tax_idx1, function(x) data$taxonomy[x,6])
+  # plot_df$fam2 <- sapply(plot_df$tax_idx2, function(x) data$taxonomy[x,6])
+  #
+  # plot_df %>%
+  #   filter(mismatches < 10) %>%
+  #   arrange(mismatches) %>%
+  #   select(mismatches, fam1, fam2)
 }
 
 # ------------------------------------------------------------------------------
 #   Enrichment of top left-hand pairs
 # ------------------------------------------------------------------------------
-
-# Score enrichment of family pairs or families themselves?
-use_pairs <- FALSE
 
 topleft_pairs <- which(phy_dist < 0.2 & median_assoc_strength > 0.5)
 
@@ -172,80 +173,108 @@ all_pairs_noNA <- all_pairs %>%
 all_pairs_noNA <- all_pairs_noNA %>%
   mutate(taxpair = paste0(tax1, " - ", tax2))
 
-if(use_pairs) {
-  frequencies <- table(all_pairs_noNA$taxpair)
+# ------------------------------------------------------------------------------
+#   Family enrichment
+# ------------------------------------------------------------------------------
 
-  frequencies_subset <- table(all_pairs_noNA$taxpair[all_pairs_noNA$topleft == TRUE])
+enrichment <- NULL
 
-  signif <- c()
-  for(fam in names(frequencies_subset)) {
-    fam_in_sample <- unname(unlist(frequencies_subset[fam]))
-    sample_size <- unname(unlist(sum(frequencies_subset)))
-    fam_in_bg <- unname(unlist(frequencies[fam]))
-    bg_size <- unname(unlist(sum(frequencies)))
-    ctab <- matrix(c(fam_in_sample,
-                     sample_size - fam_in_sample,
-                     fam_in_bg,
-                     bg_size - fam_in_bg),
-                   2, 2, byrow = TRUE)
-    prob <- fisher.test(ctab, alternative = "greater")$p.value
-    if(prob < 0.05) {
-      signif <- c(signif, fam)
-      cat(paste0("ASV family: ", fam, ", p-value: ", round(prob, 3), "\n"))
-    }
+# Calculate a baseline frequency for all family-family pairs
+frequencies <- table(c(all_pairs_noNA$tax1, all_pairs_noNA$tax2))
+
+# Stacked bar: plot observed relative representation of family-family pairs
+all_pairs_noNA_tl <- all_pairs_noNA %>%
+  filter(topleft == TRUE)
+frequencies_subset <- table(c(all_pairs_noNA_tl$tax1, all_pairs_noNA_tl$tax2))
+
+signif <- c()
+for(fam in names(frequencies_subset)) {
+  fam_in_sample <- unname(unlist(frequencies_subset[fam]))
+  sample_size <- unname(unlist(sum(frequencies_subset)))
+  fam_in_bg <- unname(unlist(frequencies[fam]))
+  bg_size <- unname(unlist(sum(frequencies)))
+  ctab <- matrix(c(fam_in_sample,
+                   sample_size - fam_in_sample,
+                   fam_in_bg,
+                   bg_size - fam_in_bg),
+                 2, 2, byrow = TRUE)
+  prob <- fisher.test(ctab, alternative = "greater")$p.value
+  enrichment <- rbind(enrichment,
+                      data.frame(name = fam,
+                                 type = "family",
+                                 location = "Low phylogenetic distance, high median association strength",
+                                 pvalue = prob))
+  if(prob < 0.05) {
+    signif <- c(signif, fam)
+    cat(paste0("ASV family: ", fam, ", p-value: ", round(prob, 3), "\n"))
   }
-
-  plot_enrichment(frequencies_subset1 = frequencies_subset,
-                  frequencies_subset2 = NULL,
-                  frequencies = frequencies,
-                  significant_families1 = signif,
-                  significant_families2 = NULL,
-                  plot_height = 6,
-                  plot_width = 6,
-                  legend_topmargin = 100,
-                  use_pairs = TRUE,
-                  rel_widths = c(1, 0.35, 1, 0.3, 3),
-                  labels = c("overall", "top left"),
-                  save_name = "SF8-enrichment-pair.png")
-
-} else {
-  # Calculate a baseline frequency for all family-family pairs
-  frequencies <- table(c(all_pairs_noNA$tax1, all_pairs_noNA$tax2))
-
-  # Stacked bar: plot observed relative representation of family-family pairs
-  all_pairs_noNA_tl <- all_pairs_noNA %>%
-    filter(topleft == TRUE)
-  frequencies_subset <- table(c(all_pairs_noNA_tl$tax1, all_pairs_noNA_tl$tax2))
-
-  signif <- c()
-  for(fam in names(frequencies_subset)) {
-    fam_in_sample <- unname(unlist(frequencies_subset[fam]))
-    sample_size <- unname(unlist(sum(frequencies_subset)))
-    fam_in_bg <- unname(unlist(frequencies[fam]))
-    bg_size <- unname(unlist(sum(frequencies)))
-    ctab <- matrix(c(fam_in_sample,
-                     sample_size - fam_in_sample,
-                     fam_in_bg,
-                     bg_size - fam_in_bg),
-                   2, 2, byrow = TRUE)
-    prob <- fisher.test(ctab, alternative = "greater")$p.value
-    if(prob < 0.05) {
-      signif <- c(signif, fam)
-      cat(paste0("ASV family: ", fam, ", p-value: ", round(prob, 3), "\n"))
-    }
-  }
-
-  plot_enrichment(frequencies_subset1 = frequencies_subset,
-                  frequencies_subset2 = NULL,
-                  frequencies = frequencies,
-                  significant_families1 = signif,
-                  significant_families2 = NULL,
-                  plot_height = 6,
-                  plot_width = 5,
-                  legend_topmargin = 100,
-                  use_pairs = FALSE,
-                  rel_widths = c(1, 0.35, 1, 0.3, 2),
-                  labels = c("overall", "top left"),
-                  save_name = "SF8-enrichment.png")
-
 }
+
+plot_enrichment(frequencies_subset1 = frequencies_subset,
+                frequencies_subset2 = NULL,
+                frequencies = frequencies,
+                significant_families1 = signif,
+                significant_families2 = NULL,
+                plot_height = 6,
+                plot_width = 5,
+                legend_topmargin = 100,
+                use_pairs = FALSE,
+                rel_widths = c(1, 0.35, 1, 0.3, 2),
+                labels = c("overall", "top left"),
+                save_name = "SF8-enrichment.png")
+
+# ------------------------------------------------------------------------------
+#   Family-pair enrichment
+# ------------------------------------------------------------------------------
+
+frequencies <- table(all_pairs_noNA$taxpair)
+
+frequencies_subset <- table(all_pairs_noNA$taxpair[all_pairs_noNA$topleft == TRUE])
+
+signif <- c()
+for(fam in names(frequencies_subset)) {
+  fam_in_sample <- unname(unlist(frequencies_subset[fam]))
+  sample_size <- unname(unlist(sum(frequencies_subset)))
+  fam_in_bg <- unname(unlist(frequencies[fam]))
+  bg_size <- unname(unlist(sum(frequencies)))
+  ctab <- matrix(c(fam_in_sample,
+                   sample_size - fam_in_sample,
+                   fam_in_bg,
+                   bg_size - fam_in_bg),
+                 2, 2, byrow = TRUE)
+  prob <- fisher.test(ctab, alternative = "greater")$p.value
+  enrichment <- rbind(enrichment,
+                      data.frame(name = fam,
+                                 type = "family-pair",
+                                 location = "Low phylogenetic distance, high median association strength",
+                                 pvalue = prob))
+  if(prob < 0.05) {
+    signif <- c(signif, fam)
+    cat(paste0("ASV family: ", fam, ", p-value: ", round(prob, 3), "\n"))
+  }
+}
+
+plot_enrichment(frequencies_subset1 = frequencies_subset,
+                frequencies_subset2 = NULL,
+                frequencies = frequencies,
+                significant_families1 = signif,
+                significant_families2 = NULL,
+                plot_height = 6,
+                plot_width = 6,
+                legend_topmargin = 100,
+                use_pairs = TRUE,
+                rel_widths = c(1, 0.35, 1, 0.3, 3),
+                labels = c("overall", "top left"),
+                save_name = "SF8-enrichment-pair.png")
+
+enrichment <- enrichment %>%
+  arrange(location, type, name)
+colnames(enrichment) <- c("ASV family or pair name",
+                          "Type",
+                          "Enrichment evaluated in",
+                          "P-value (Fisher's exact test)")
+write.table(enrichment,
+            file = file.path("output", "FigS8_table.tsv"),
+            sep = "\t",
+            quote = FALSE,
+            row.names = FALSE)

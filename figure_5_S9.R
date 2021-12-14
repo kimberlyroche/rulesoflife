@@ -373,8 +373,6 @@ cat(paste0("R^2: ", round(cor(plot_df$synchrony, plot_df$universality)^2, 3), "\
 # ------------------------------------------------------------------------------
 
 # Score enrichment of family pairs or families themselves?
-use_pairs <- TRUE
-
 topcenter_pairs <- which(plot_df$synchrony < 0.3 & plot_df$universality > 0.4)
 topright_pairs <- which(plot_df$synchrony > 0.3 & plot_df$universality > 0.4)
 
@@ -405,125 +403,164 @@ all_pairs_noNA <- all_pairs %>%
 all_pairs_noNA <- all_pairs_noNA %>%
   mutate(taxpair = paste0(tax1, " - ", tax2))
 
-if(use_pairs) {
-  frequencies <- table(all_pairs_noNA$taxpair)
+# ------------------------------------------------------------------------------
+#   Family enrichment
+# ------------------------------------------------------------------------------
 
-  frequencies_subset1 <- table(all_pairs_noNA$taxpair[all_pairs_noNA$topcenter == TRUE])
+enrichment <- NULL
 
-  signif1 <- c()
-  for(fam in names(frequencies_subset1)) {
-    fam_in_sample <- unname(unlist(frequencies_subset1[fam]))
-    sample_size <- unname(unlist(sum(frequencies_subset1)))
-    fam_in_bg <- unname(unlist(frequencies[fam]))
-    bg_size <- unname(unlist(sum(frequencies)))
-    ctab <- matrix(c(fam_in_sample,
-                     sample_size - fam_in_sample,
-                     fam_in_bg,
-                     bg_size - fam_in_bg),
-                   2, 2, byrow = TRUE)
-    prob <- fisher.test(ctab, alternative = "greater")$p.value
-    if(prob < 0.05) {
-      signif1 <- c(signif1, fam)
-      cat(paste0("ASV family: ", fam, ", p-value: ", round(prob, 3), "\n"))
-    }
+# Calculate a baseline frequency for all family-family pairs
+frequencies <- table(c(all_pairs_noNA$tax1, all_pairs_noNA$tax2))
+
+# Observed frequency in this subregion
+all_pairs_noNA_tc <- all_pairs_noNA %>%
+  filter(topcenter == TRUE)
+frequencies_subset1 <- table(c(all_pairs_noNA_tc$tax1, all_pairs_noNA_tc$tax2))
+
+signif1 <- c()
+for(fam in names(frequencies_subset1)) {
+  fam_in_sample <- unname(unlist(frequencies_subset1[fam]))
+  sample_size <- unname(unlist(sum(frequencies_subset1)))
+  fam_in_bg <- unname(unlist(frequencies[fam]))
+  bg_size <- unname(unlist(sum(frequencies)))
+  ctab <- matrix(c(fam_in_sample,
+                   sample_size - fam_in_sample,
+                   fam_in_bg,
+                   bg_size - fam_in_bg),
+                 2, 2, byrow = TRUE)
+  prob <- fisher.test(ctab, alternative = "greater")$p.value
+  enrichment <- rbind(enrichment,
+                      data.frame(name = fam,
+                                 type = "family",
+                                 location = "Low synchrony, high universality",
+                                 pvalue = prob))
+  if(prob < 0.05) {
+    signif1 <- c(signif1, fam)
+    cat(paste0("ASV family: ", fam, ", p-value: ", round(prob, 3), "\n"))
   }
-
-  frequencies_subset2 <- table(all_pairs_noNA$taxpair[all_pairs_noNA$topright == TRUE])
-
-  signif2 <- c()
-  for(fam in names(frequencies_subset2)) {
-    fam_in_sample <- unname(unlist(frequencies_subset2[fam]))
-    sample_size <- unname(unlist(sum(frequencies_subset2)))
-    fam_in_bg <- unname(unlist(frequencies[fam]))
-    bg_size <- unname(unlist(sum(frequencies)))
-    ctab <- matrix(c(fam_in_sample,
-                     sample_size - fam_in_sample,
-                     fam_in_bg,
-                     bg_size - fam_in_bg),
-                   2, 2, byrow = TRUE)
-    prob <- fisher.test(ctab, alternative = "greater")$p.value
-    if(prob < 0.05) {
-      signif2 <- c(signif2, fam)
-      cat(paste0("ASV family: ", fam, ", p-value: ", round(prob, 3), "\n"))
-    }
-  }
-
-  plot_enrichment(frequencies_subset1 = frequencies_subset1,
-                  frequencies_subset2 = frequencies_subset2,
-                  frequencies = frequencies,
-                  significant_families1 = signif1,
-                  significant_families2 = signif2,
-                  plot_height = 6,
-                  plot_width = 10,
-                  legend_topmargin = 100,
-                  use_pairs = use_pairs,
-                  rel_widths = c(1, 0.35, 1, 0.35, 1, 0.1, 6),
-                  labels = c("overall", "top left", "top right"),
-                  save_name = "F6-enrichment-pair.png")
-
-} else {
-  # Calculate a baseline frequency for all family-family pairs
-  frequencies <- table(c(all_pairs_noNA$tax1, all_pairs_noNA$tax2))
-
-  # Observed frequency in this subregion
-  all_pairs_noNA_tc <- all_pairs_noNA %>%
-    filter(topcenter == TRUE)
-  frequencies_subset1 <- table(c(all_pairs_noNA_tc$tax1, all_pairs_noNA_tc$tax2))
-
-  signif1 <- c()
-  for(fam in names(frequencies_subset1)) {
-    fam_in_sample <- unname(unlist(frequencies_subset1[fam]))
-    sample_size <- unname(unlist(sum(frequencies_subset1)))
-    fam_in_bg <- unname(unlist(frequencies[fam]))
-    bg_size <- unname(unlist(sum(frequencies)))
-    ctab <- matrix(c(fam_in_sample,
-                     sample_size - fam_in_sample,
-                     fam_in_bg,
-                     bg_size - fam_in_bg),
-                   2, 2, byrow = TRUE)
-    prob <- fisher.test(ctab, alternative = "greater")$p.value
-    if(prob < 0.05) {
-      signif1 <- c(signif1, fam)
-      cat(paste0("ASV family: ", fam, ", p-value: ", round(prob, 3), "\n"))
-    }
-  }
-
-  # Observed frequency in this region
-  all_pairs_noNA_tr <- all_pairs_noNA %>%
-    filter(topright == TRUE)
-  frequencies_subset2 <- table(c(all_pairs_noNA_tr$tax1, all_pairs_noNA_tr$tax2))
-
-  signif2 <- c()
-  for(fam in names(frequencies_subset2)) {
-    fam_in_sample <- unname(unlist(frequencies_subset2[fam]))
-    sample_size <- unname(unlist(sum(frequencies_subset2)))
-    fam_in_bg <- unname(unlist(frequencies[fam]))
-    bg_size <- unname(unlist(sum(frequencies)))
-    ctab <- matrix(c(fam_in_sample,
-                     sample_size - fam_in_sample,
-                     fam_in_bg,
-                     bg_size - fam_in_bg),
-                   2, 2, byrow = TRUE)
-    prob <- fisher.test(ctab, alternative = "greater")$p.value
-    if(prob < 0.05) {
-      signif2 <- c(signif2, fam)
-      cat(paste0("ASV family: ", fam, ", p-value: ", round(prob, 3), "\n"))
-    }
-  }
-
-  plot_enrichment(frequencies_subset1 = frequencies_subset1,
-                  frequencies_subset2 = frequencies_subset2,
-                  frequencies = frequencies,
-                  significant_families1 = signif1,
-                  significant_families2 = signif2,
-                  plot_height = 6,
-                  plot_width = 6.5,
-                  legend_topmargin = 100,
-                  use_pairs = use_pairs,
-                  rel_widths = c(1, 0.35, 1, 0.35, 1, 0.2, 2),
-                  labels = c("overall", "top left", "top right"),
-                  save_name = "F6-enrichment.png")
 }
+
+# Observed frequency in this region
+all_pairs_noNA_tr <- all_pairs_noNA %>%
+  filter(topright == TRUE)
+frequencies_subset2 <- table(c(all_pairs_noNA_tr$tax1, all_pairs_noNA_tr$tax2))
+
+signif2 <- c()
+for(fam in names(frequencies_subset2)) {
+  fam_in_sample <- unname(unlist(frequencies_subset2[fam]))
+  sample_size <- unname(unlist(sum(frequencies_subset2)))
+  fam_in_bg <- unname(unlist(frequencies[fam]))
+  bg_size <- unname(unlist(sum(frequencies)))
+  ctab <- matrix(c(fam_in_sample,
+                   sample_size - fam_in_sample,
+                   fam_in_bg,
+                   bg_size - fam_in_bg),
+                 2, 2, byrow = TRUE)
+  prob <- fisher.test(ctab, alternative = "greater")$p.value
+  enrichment <- rbind(enrichment,
+                      data.frame(name = fam,
+                                 type = "family",
+                                 location = "High synchrony, high universality",
+                                 pvalue = prob))
+  if(prob < 0.05) {
+    signif2 <- c(signif2, fam)
+    cat(paste0("ASV family: ", fam, ", p-value: ", round(prob, 3), "\n"))
+  }
+}
+
+plot_enrichment(frequencies_subset1 = frequencies_subset1,
+                frequencies_subset2 = frequencies_subset2,
+                frequencies = frequencies,
+                significant_families1 = signif1,
+                significant_families2 = signif2,
+                plot_height = 6,
+                plot_width = 6.5,
+                legend_topmargin = 100,
+                use_pairs = use_pairs,
+                rel_widths = c(1, 0.35, 1, 0.35, 1, 0.2, 2),
+                labels = c("overall", "top left", "top right"),
+                save_name = "F6-enrichment.png")
+
+# ------------------------------------------------------------------------------
+#   Family-pair enrichment
+# ------------------------------------------------------------------------------
+
+frequencies <- table(all_pairs_noNA$taxpair)
+
+frequencies_subset1 <- table(all_pairs_noNA$taxpair[all_pairs_noNA$topcenter == TRUE])
+
+signif1 <- c()
+for(fam in names(frequencies_subset1)) {
+  fam_in_sample <- unname(unlist(frequencies_subset1[fam]))
+  sample_size <- unname(unlist(sum(frequencies_subset1)))
+  fam_in_bg <- unname(unlist(frequencies[fam]))
+  bg_size <- unname(unlist(sum(frequencies)))
+  ctab <- matrix(c(fam_in_sample,
+                   sample_size - fam_in_sample,
+                   fam_in_bg,
+                   bg_size - fam_in_bg),
+                 2, 2, byrow = TRUE)
+  prob <- fisher.test(ctab, alternative = "greater")$p.value
+  enrichment <- rbind(enrichment,
+                      data.frame(name = fam,
+                                 type = "family-pair",
+                                 location = "Low synchrony, high universality",
+                                 pvalue = prob))
+  if(prob < 0.05) {
+    signif1 <- c(signif1, fam)
+    cat(paste0("ASV family: ", fam, ", p-value: ", round(prob, 3), "\n"))
+  }
+}
+
+frequencies_subset2 <- table(all_pairs_noNA$taxpair[all_pairs_noNA$topright == TRUE])
+
+signif2 <- c()
+for(fam in names(frequencies_subset2)) {
+  fam_in_sample <- unname(unlist(frequencies_subset2[fam]))
+  sample_size <- unname(unlist(sum(frequencies_subset2)))
+  fam_in_bg <- unname(unlist(frequencies[fam]))
+  bg_size <- unname(unlist(sum(frequencies)))
+  ctab <- matrix(c(fam_in_sample,
+                   sample_size - fam_in_sample,
+                   fam_in_bg,
+                   bg_size - fam_in_bg),
+                 2, 2, byrow = TRUE)
+  prob <- fisher.test(ctab, alternative = "greater")$p.value
+  enrichment <- rbind(enrichment,
+                      data.frame(name = fam,
+                                 type = "family-pair",
+                                 location = "High synchrony, high universality",
+                                 pvalue = prob))
+  if(prob < 0.05) {
+    signif2 <- c(signif2, fam)
+    cat(paste0("ASV family: ", fam, ", p-value: ", round(prob, 3), "\n"))
+  }
+}
+
+plot_enrichment(frequencies_subset1 = frequencies_subset1,
+                frequencies_subset2 = frequencies_subset2,
+                frequencies = frequencies,
+                significant_families1 = signif1,
+                significant_families2 = signif2,
+                plot_height = 6,
+                plot_width = 10,
+                legend_topmargin = 100,
+                use_pairs = use_pairs,
+                rel_widths = c(1, 0.35, 1, 0.35, 1, 0.1, 6),
+                labels = c("overall", "top left", "top right"),
+                save_name = "F6-enrichment-pair.png")
+
+enrichment <- enrichment %>%
+  arrange(location, type, name)
+colnames(enrichment) <- c("ASV family or pair name",
+                          "Type",
+                          "Enrichment evaluated in",
+                          "P-value (Fisher's exact test)")
+write.table(enrichment,
+            file = file.path("output", "Fig5_table.tsv"),
+            sep = "\t",
+            quote = FALSE,
+            row.names = FALSE)
 
 # ------------------------------------------------------------------------------
 #
