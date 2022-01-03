@@ -7,142 +7,273 @@ library(cowplot)
 
 # ------------------------------------------------------------------------------
 #
-#   Figure 2 - overview of sampling scheme and timecourses for all baboon hosts
+#   Figure 2 - three "rug" plots at different taxonomic levels plus breakout
+#              plots of negatively and positively correlated highly "universal"
+#              taxa
 #
 # ------------------------------------------------------------------------------
 
-data <- load_data(tax_level = "family")
-
-hosts_dates <- data$metadata %>%
-  select(sname, collection_date)
-hosts_dates$sname <- factor(hosts_dates$sname,
-                            levels = sort(unique(hosts_dates$sname), decreasing = TRUE))
-baseline_time <- min(hosts_dates$collection_date)
-hosts_dates$time <- as.numeric(sapply(hosts_dates$collection_date, function(x) difftime(x, baseline_time, units = "days")))
-
-xticks <- seq(from = 0, to = 5000, length = 20)
-xlabs <- character(length(xticks))
-for(i in 1:length(xticks)) {
-  xlabs[i] <- as.character(as.Date(baseline_time) + xticks[i])
-}
-
-p <- ggplot(hosts_dates, aes(x = time, y = sname)) +
-  geom_point() +
-  theme_bw() +
-  labs(x = "days from first sample",
-       y = "host short name") +
-  scale_x_continuous(breaks = xticks, labels = xlabs) +
-  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1))
-
-ggsave(file.path(plot_dir, "F2a.svg"),
-       p,
-       units = "in",
-       dpi = 100,
-       height = 7,
-       width = 8)
-
-# ------------------------------------------------------------------------------
-#   Timecourse plots
-# ------------------------------------------------------------------------------
-
-relative_abundances <- data$counts
-for(j in 1:ncol(relative_abundances)) {
-  relative_abundances[,j] <- relative_abundances[,j]/sum(relative_abundances[,j])
-}
-
-# Collapse rare stuff for visualization
-retain_taxa <- which(apply(relative_abundances[1:(nrow(relative_abundances)-1),], 1, mean) >= 0.025)
-collapse_taxa <- setdiff(1:nrow(relative_abundances), retain_taxa)
-trimmed_relab <- relative_abundances[retain_taxa,]
-trimmed_relab <- rbind(trimmed_relab,
-                       colSums(relative_abundances[collapse_taxa,]))
-
-labels <- character(length(retain_taxa))
-for(i in 1:length(retain_taxa)) {
-  taxon_idx <- retain_taxa[i]
-  level <- max(which(!is.na(data$taxonomy[taxon_idx,])))
-  labels[i] <- paste0(colnames(data$taxonomy)[level],
-                      " ",
-                      data$taxonomy[taxon_idx,level])
-}
-labels <- c(labels, "rare phyla")
-
-palette_fn <- file.path("output", "timecourse_palette.rds")
-# palette_fn <- file.path("output", "family_palette.rds")
-if(file.exists(palette_fn)) {
-  palette <- readRDS(palette_fn)
-} else {
-  # Random palette
-  getPalette <- colorRampPalette(brewer.pal(9, "Set1"))
-  palette <- sample(getPalette(nrow(trimmed_relab)))
-  saveRDS(palette, palette_fn)
-}
-
-# Get all hosts
-ref_hosts <- unique(data$metadata$sname)
-
-# Get the top 20 best-sampled hosts
-# ref_hosts <- sort(data$metadata %>%
-#   group_by(sname) %>%
-#   tally() %>%
-#   arrange(desc(n)) %>%
-#   slice(1:20) %>%
-#   pull(sname))
-
-# Get the best represented in the primary social groups
-# ref_hosts <- c("DUI", "DUX", "LIW", "PEB", "VET")
+rugs <- list(a = summarize_Sigmas(output_dir = "phy_days90_diet25_scale1"),
+             b = summarize_Sigmas(output_dir = "fam_days90_diet25_scale1"),
+             c = summarize_Sigmas(output_dir = "asv_days90_diet25_scale1"))
 
 plots <- list()
 legend <- NULL
-for(host in ref_hosts) {
-  host_relab <- trimmed_relab[,data$metadata$sname == host]
+for(rtype in names(rugs)) {
+  order_obj <- order_rug_row_pedigree(rugs[[rtype]])
+  row_order <- order_obj$order
 
-  # Downsample
-  ds_idx <- round(seq(1, ncol(host_relab), length.out = min(ncol(host_relab), 20)))
-  ds_idx[1] <- 1
-  ds_idx[length(ds_idx)] <- ncol(host_relab)
-  host_ds <- host_relab[,ds_idx]
+  # Compute column order
+  rug <- rugs[[rtype]]$rug
+  row_labels <- rugs[[rtype]]$hosts
+  cluster_obj <- order_obj$hc
+  canonical_col_order <- order(colMeans(rug))
+  canonical_row_order <- row_order
+  rug <- rug[canonical_row_order,canonical_col_order]
+  row_labels <- row_labels[canonical_row_order]
 
-  plot_df <- cbind(1:nrow(host_ds), as.data.frame(host_ds))
-  colnames(plot_df) <- c("taxon", 1:(ncol(plot_df)-1))
-  plot_df <- pivot_longer(plot_df, !taxon, names_to = "sample", values_to = "relative_abundance")
-  plot_df$taxon <- factor(plot_df$taxon)
-  plot_df$sample <- as.numeric(plot_df$sample)
+  rug <- cbind(1:nrow(rug), rug)
+  colnames(rug) <- c("host", paste0(1:(ncol(rug)-1)))
+  rug <- pivot_longer(as.data.frame(rug), !host, names_to = "pair", values_to = "correlation")
+  rug$pair <- as.numeric(rug$pair)
 
-  plot_df <- plot_df %>%
-    left_join(data.frame(taxon = levels(plot_df$taxon), name = labels), by = "taxon")
-  plot_df$taxon <- plot_df$name
+  p <- ggplot(rug, aes(x = pair, y = host)) +
+    geom_raster(aes(fill = correlation)) +
+    scale_fill_gradient2(low = "navy", mid = "white", high = "red", midpoint = 0,
+                         guide = guide_colorbar(frame.colour = "black",
+                                                ticks.colour = "black"))
 
-  p <- ggplot(plot_df, aes(x = sample, y = relative_abundance, fill = taxon)) +
-    geom_area() +
-    scale_fill_manual(values = palette) +
-    theme(legend.position = "bottom")
-  if(is.null(legend)) {
+  if(is.null(row_labels)) {
+    row_labels <- 1:length(rug$host)
+  }
+
+  title <- "ASVs"
+  xlabel <- "ASV-ASV pairs"
+  if(rtype == "a") {
+    title <- "Phyla"
+    xlabel <- "phylum-phylum pairs"
+  } else if(rtype == "b") {
+    title <- "Families"
+    xlabel <- "family-family pairs"
+  }
+
+  row_breaks <- 1:length(row_labels)
+
+  # Subset the row labels for readability
+  select_vec <- rep(c(FALSE, TRUE, FALSE, FALSE), 56/4)
+
+  p <- p +
+    scale_x_continuous(expand = c(0, 0)) +
+    labs(fill = "Correlation",
+         x = xlabel,
+         y = "",
+         title = title) +
+    scale_y_continuous(breaks = row_breaks[select_vec],
+                       labels = row_labels[select_vec],
+                       expand = c(0, 0)) +
+    theme(axis.text.y = element_text(size = rel(0.95)),
+          axis.text = element_text(size = 10),
+          axis.title = element_text(size = 14, face = "plain"),
+          plot.title = element_text(size = 20, hjust = 0.5),
+          legend.title = element_text(size = 14),
+          # legend.position = "bottom",
+          plot.margin = margin(t = 20, r = 10, b = 10, l = 0),
+          axis.text.x = element_blank(),
+          axis.ticks.x = element_blank(),
+          axis.ticks.y = element_blank())
+  # legend.text = element_text(margin = margin(b = -20)))
+  if(rtype == "a") {
+    p <- p +
+      theme(plot.margin = margin(t = 20, r = 10, b = 10, l = 0))
+  } else {
+    p <- p +
+      theme(plot.margin = margin(t = 20, r = 10, b = 10, l = 10))
+  }
+  if(rtype == "c") {
     legend <- get_legend(p)
   }
   p <- p +
-    # geom_area(linetype = 1, size = 0.3, color = "black") +
-    theme_nothing() +
-    scale_x_continuous(expand = c(0, 0)) +
-    scale_y_continuous(expand = c(0, 0)) +
-    theme(plot.margin = margin(t = 10, r = , b = 0, l = 1))
-  plots[[length(plots) + 1]] <- p
+    theme(legend.position = "none")
+  if(rtype == "a") {
+    dhc <- as.dendrogram(cluster_obj)
+    ddata <- dendro_data(dhc, type = "rectangle")
+    pd <- ggplot(segment(ddata)) +
+      geom_segment(aes(x = x, y = y, xend = xend, yend = yend)) +
+      coord_flip() +
+      scale_y_reverse() +
+      theme_nothing() +
+      theme(plot.margin = margin(t = 0, r = -10, b = 0, l = 10))
+    plots[[1]] <- pd
+  }
+  plots[[length(plots)+1]] <- p
 }
 
-p <- plot_grid(plotlist = plots,
-               # ncol = length(plots),
-               nrow = 4,
-               # labels = letters[1:length(plots)],
-               labels = ref_hosts,
-               scale = 0.95,
-               label_x = -0.1,
-               label_y = 1,
-               label_size = 8)
-pl <- plot_grid(p, legend, ncol = 1, rel_heights = c(1, 0.15))
-ggsave(file.path(plot_dir, "F2b.svg"),
-       pl,
-       units = "in",
+# Pad the dendrogram
+p1 <- plot_grid(nullGrob(), plots[[1]], nullGrob(), ncol = 1, rel_heights = c(0.08, 1, 0.05))
+p2 <- plot_grid(p1, plots[[2]],
+                ncol = 2,
+                rel_widths = c(0.1, 0.9))
+p3 <- plot_grid(p2, plots[[3]], plots[[4]],
+                ncol = 3,
+                scale = 1,
+                rel_widths = c(1, 1.2, 1.2),
+                labels = c("a", "b", "c"),
+                label_size = 24,
+                label_x = 0.02,
+                label_y = 0.99)
+p4 <- plot_grid(p3, legend, ncol = 2, rel_widths = c(1, 0.1))
+ggsave("output/figures/F3.svg",
+       p4,
        dpi = 100,
-       # height = 2,
+       units = "in",
        height = 6,
-       width = 10)
+       width = 18)
+
+# ------------------------------------------------------------------------------
+#   Supplemental figure: 2021-11-30
+#   Scrambled "rug"
+# ------------------------------------------------------------------------------
+
+D_combos <- NULL
+i <- 1 # permuted sample to use
+pdir <- paste0("asv_days90_diet25_scale1_scramble-sample-", sprintf("%02d", i))
+fits <- list.files(file.path("output", "model_fits", pdir, "MAP"), full.names = TRUE)
+for(j in 1:length(fits)) {
+  Sigma <- cov2cor(to_clr(readRDS(fits[j]))$Sigma[,,1])
+  if(is.null(D_combos)) {
+    D <- nrow(Sigma)
+    D_combos <- (D^2 - D)/2
+    rug <- matrix(NA, length(fits), D_combos)
+  }
+  rug[j,] <- Sigma[upper.tri(Sigma)]
+}
+
+rug <- cbind(1:nrow(rug), rug)
+colnames(rug) <- c("host", paste0(1:(ncol(rug)-1)))
+rug <- pivot_longer(as.data.frame(rug), !host, names_to = "pair", values_to = "correlation")
+rug$pair <- as.numeric(rug$pair)
+
+p <- ggplot(rug, aes(x = pair, y = host)) +
+  geom_raster(aes(fill = correlation)) +
+  scale_fill_gradient2(low = "navy", mid = "white", high = "red", midpoint = 0,
+                       guide = guide_colorbar(frame.colour = "black",
+                                              ticks.colour = "black")) +
+  scale_x_continuous(expand = c(0, 0)) +
+  labs(fill = "Correlation",
+       x = "ASV-ASV pairs",
+       y = "hosts") +
+  scale_y_continuous(expand = c(0, 0)) +
+  theme(axis.text.y = element_blank(),
+        axis.text = element_text(size = 10),
+        axis.title = element_text(size = 14, face = "plain"),
+        plot.title = element_text(size = 20, hjust = 0.5),
+        legend.title = element_text(size = 14),
+        # legend.position = "bottom",
+        plot.margin = margin(t = 10, r = 10, b = 10, l = 10),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.ticks.y = element_blank())
+
+ggsave(file.path("output", "figures", "permuted_rug.png"),
+       p,
+       dpi = 100,
+       units = "in",
+       height = 6,
+       width = 8)
+
+# ------------------------------------------------------------------------------
+#   Breakout plots of positively and negative correlated taxa
+# ------------------------------------------------------------------------------
+
+pred_obj <- get_predictions_host_list(host_list = c("VEX"),
+                                      output_dir = "asv_days90_diet25_scale1",
+                                      metadata = data$metadata)
+
+l_idx <- which(rugs$a$hosts == "VEX")
+eta_df <- gather_array(pred_obj$predictions$VEX$Eta, val, coord, sample, iteration)
+
+pos_pair <- eta_df %>%
+  filter(coord %in% c(2,3)) %>%
+  group_by(coord, sample) %>%
+  summarize(p2.5 = quantile(val, probs = c(0.025)),
+            p25 = quantile(val, probs = c(0.25)),
+            mean = mean(val),
+            p75 = quantile(val, probs = c(0.75)),
+            p97.5 = quantile(val, probs = c(0.975)))
+
+neg_pair <- eta_df %>%
+  filter(coord %in% c(31,114)) %>%
+  group_by(coord, sample) %>%
+  summarize(p2.5 = quantile(val, probs = c(0.025)),
+            p25 = quantile(val, probs = c(0.25)),
+            mean = mean(val),
+            p75 = quantile(val, probs = c(0.75)),
+            p97.5 = quantile(val, probs = c(0.975)))
+
+alpha <- 0.6
+
+p <- ggplot() +
+  geom_ribbon(data = pos_pair %>% filter(coord == 2),
+              mapping = aes(x = sample, ymin = p25, ymax = p75),
+              fill = "#fdbf6f",
+              alpha = alpha) +
+  geom_line(data = pos_pair %>% filter(coord == 2),
+            mapping = aes(x = sample, y = mean),
+            color = "#ff7f00",
+            size = 1.5,
+            alpha = alpha) +
+  geom_ribbon(data = pos_pair %>% filter(coord == 3),
+              mapping = aes(x = sample, ymin = p25, ymax = p75),
+              fill = "#a6cee3",
+              alpha = alpha) +
+  geom_line(data = pos_pair %>% filter(coord == 3),
+            mapping = aes(x = sample, y = mean),
+            color = "#1f78b4",
+            size = 1.5,
+            alpha = alpha) +
+  theme_bw() +
+  labs(x = "days from first sample",
+       y = "CLR abundance")
+
+ggsave("output/figures/F3_positive_pair.svg",
+       p,
+       dpi = 100,
+       units = "in",
+       height = 2,
+       width = 6)
+
+cat(paste0("Median correlation across hosts for this pair: ",
+           round(median(rugs$c$rug[,which(rugs$c$tax_idx1 == 2 & rugs$c$tax_idx2 == 3)]), 3)))
+
+p <- ggplot() +
+  geom_ribbon(data = neg_pair %>% filter(coord == 31),
+              mapping = aes(x = sample, ymin = p25, ymax = p75),
+              fill = "#fdbf6f",
+              alpha = alpha) +
+  geom_line(data = neg_pair %>% filter(coord == 31),
+            mapping = aes(x = sample, y = mean),
+            color = "#ff7f00",
+            size = 1.5,
+            alpha = alpha) +
+  geom_ribbon(data = neg_pair %>% filter(coord == 114),
+              mapping = aes(x = sample, ymin = p25, ymax = p75),
+              fill = "#a6cee3",
+              alpha = alpha) +
+  geom_line(data = neg_pair %>% filter(coord == 114),
+            mapping = aes(x = sample, y = mean),
+            color = "#1f78b4",
+            size = 1.5,
+            alpha = alpha) +
+  theme_bw() +
+  labs(x = "days from first sample",
+       y = "CLR abundance")
+ggsave("output/figures/F3_negative_pair.svg",
+       p,
+       dpi = 100,
+       units = "in",
+       height = 2,
+       width = 6)
+
+cat(paste0("Median correlation across hosts for this pair: ",
+           round(median(rugs$c$rug[,which(rugs$c$tax_idx1 == 31 & rugs$c$tax_idx2 == 114)]), 3)))
+

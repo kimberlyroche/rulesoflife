@@ -17,6 +17,9 @@ registerDoParallel(detectCores())
 #              plus enrichment barplots, for relative abundances of family-
 #              family pairs in subregions
 #
+#   Supplemental Figure S9 - synchrony of most synchronous taxon across a sample
+#                            of hosts
+#
 # ------------------------------------------------------------------------------
 
 # ------------------------------------------------------------------------------
@@ -564,8 +567,7 @@ write.table(enrichment,
 
 # ------------------------------------------------------------------------------
 #
-#   Supplemental Figure S8 - synchrony of most synchronous taxon across a sample
-#                            of hosts
+#   Supplemental Figure S9
 #
 # ------------------------------------------------------------------------------
 

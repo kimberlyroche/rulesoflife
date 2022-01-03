@@ -8,14 +8,12 @@ library(cowplot)
 # ------------------------------------------------------------------------------
 #
 #   Supplemental Figure S5 - "hockey stick" plots for family and phylum levels
+#                            and stacked density plots of universality scores
+#                            for phyla and families
 #
 # ------------------------------------------------------------------------------
 
-# These are hard-coded. See `figures_supplemental.R` for the calculation of
-# "important"/significant correlations from permuted data.
-thresholds <- data.frame(type = factor(c("Phylum", "Family", "ASV")),
-                         lower = c(-0.303, -0.256, -0.263),
-                         upper = c(0.149, 0.207, 0.254))
+source("thresholds.R")
 
 rug_fam <- summarize_Sigmas(output_dir = "fam_days90_diet25_scale1")
 
@@ -72,3 +70,60 @@ ggsave("output/figures/S5.svg",
        units = "in",
        height = 4,
        width = 8)
+
+# ------------------------------------------------------------------------------
+#   ggridges stacked histograms of universality scores at the ASV level
+# ------------------------------------------------------------------------------
+
+# rug_asv <- summarize_Sigmas(output_dir = "asv_days90_diet25_scale1")
+
+# ------------------------------------------------------------------------------
+#   ggridges stacked histograms of universality scores at the ASV level
+# ------------------------------------------------------------------------------
+
+plot_df <- data.frame(score = apply(rug_phy$rug, 2, calc_universality_score),
+                      type = "Phylum")
+plot_df <- rbind(plot_df,
+                 data.frame(score = apply(rug_fam$rug, 2, calc_universality_score),
+                            type = "Family"))
+# plot_df <- rbind(plot_df,
+#                  data.frame(score = apply(rug_asv$rug, 2, calc_universality_score),
+#                             type = "ASV"))
+
+plot_df2 <- thresholds_scores %>%
+  filter(type != "ASV")
+plot_df2$type <- factor(plot_df2$type)
+
+p2 <- ggplot(plot_df, aes(x = score, y = type, fill = type)) +
+  geom_density_ridges(stat = "binline", bins = 20, scale = 0.9, draw_baseline = TRUE) +
+  geom_segment(data = plot_df2,
+               aes(x = x0, xend = x0, y = as.numeric(type), yend = as.numeric(type) + .9),
+               color = "black",
+               size = 1,
+               linetype = "dashed") +
+  theme_bw() +
+  labs(x = "universality score",
+       y = "") +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_discrete(expand = c(0, 0)) +
+  coord_cartesian(clip = "off") +
+  theme_ridges(grid = FALSE, center_axis_labels = TRUE) +
+  theme(legend.position = "none") +
+  xlim(c(-0.05, 0.65)) +
+  scale_fill_brewer(palette = "Blues")
+
+p <- plot_grid(p1, p2, ncol = 2,
+               rel_widths = c(1.5, 1),
+               labels = c("a", "b"),
+               label_size = 18,
+               # label_x = -0.02,
+               scale = 0.95)
+
+ggsave("output/figures/SFb.svg",
+       p,
+       dpi = 100,
+       units = "in",
+       height = 4,
+       width = 9)
+
+

@@ -8,8 +8,10 @@ library(matrixsampling)
 library(cowplot)
 
 # ------------------------------------------------------------------------------
+#
 #   Supplemental Figure S6 - distributions of distances from mean dynamics for
 #                            dynamics estimates
+#
 # ------------------------------------------------------------------------------
 
 # ------------------------------------------------------------------------------
@@ -271,7 +273,7 @@ p_all <- plot_grid(p4, p2, ncol = 2,
                    label_size = 18,
                    scale = 0.90)
 
-ggsave(file.path("output", "figures", "S6_Sayan.png"),
+ggsave(file.path("output", "figures", "S6.png"),
        p_all,
        dpi = 100,
        units = "in",
