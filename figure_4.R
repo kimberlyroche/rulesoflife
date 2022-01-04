@@ -309,6 +309,7 @@ if(file.exists(saved_fn)) {
   dethlefsen_relman <- fit_model(counts, host_columns, host_dates, "Dethlefsen & Relman", depth = 1)
   saveRDS(dethlefsen_relman, saved_fn)
 }
+pairs_df <- dethlefsen_relman$pairs
 dethlefsen_relman <- dethlefsen_relman$Sigmas[,,1]
 scores <- apply(dethlefsen_relman, 2, function(x) calc_universality_score(x, return_pieces = TRUE))
 consensus_sign <- apply(dethlefsen_relman, 2, calc_consensus_sign)
@@ -316,6 +317,8 @@ consensus_sign <- apply(dethlefsen_relman, 2, calc_consensus_sign)
 all_scores <- rbind(all_scores,
                     data.frame(X1 = scores[1,],
                                X2 = scores[2,],
+                               idx1 = pairs_df[1,],
+                               idx2 = pairs_df[2,],
                                sign = consensus_sign,
                                dataset = "Dethlefsen & Relman",
                                n_subjects = 3))
@@ -494,6 +497,7 @@ if(file.exists(saved_fn)) {
   grossart <- fit_model(counts, host_columns, host_dates, "Grossart", depth = 1)
   saveRDS(grossart, saved_fn)
 }
+pairs_grossart <- grossart$pairs
 grossart <- grossart$Sigmas[,,1]
 scores <- apply(grossart, 2, function(x) calc_universality_score(x, return_pieces = TRUE))
 consensus_sign <- apply(grossart, 2, calc_consensus_sign)
@@ -501,6 +505,8 @@ consensus_sign <- apply(grossart, 2, calc_consensus_sign)
 all_scores <- rbind(all_scores,
                     data.frame(X1 = scores[1,],
                                X2 = scores[2,],
+                               idx1 = pairs_grossart[1,],
+                               idx2 = pairs_grossart[2,],
                                sign = consensus_sign,
                                dataset = "Grossart et al.",
                                n_subjects = length(conditions)))
@@ -612,13 +618,17 @@ if(file.exists(saved_fn)) {
   mc_h <- fit_model(counts_H, host_columns_H, host_dates_H, "McMahon (hypolimnion; deep water)", depth = 1)
   saveRDS(list(mc_e, mc_h), saved_fn)
 }
+pairs_mce <- mc_e$pairs
 mc_e <- mc_e$Sigmas[,,1]
+pairs_mch <- mc_h$pairs
 mc_h <- mc_h$Sigmas[,,1]
 scores <- apply(mc_e, 2, function(x) calc_universality_score(x, return_pieces = TRUE))
 consensus_sign <- apply(mc_e, 2, calc_consensus_sign)
 all_scores <- rbind(all_scores,
                     data.frame(X1 = scores[1,],
                                X2 = scores[2,],
+                               idx1 = pairs_mce[1,],
+                               idx2 = pairs_mce[2,],
                                sign = consensus_sign,
                                dataset = "McMahon et al. (epilimnion)",
                                n_subjects = length(unique(metadata$lake))))
@@ -627,6 +637,8 @@ consensus_sign <- apply(mc_h, 2, calc_consensus_sign)
 all_scores <- rbind(all_scores,
                     data.frame(X1 = scores[1,],
                                X2 = scores[2,],
+                               idx1 = pairs_mch[1,],
+                               idx2 = pairs_mch[2,],
                                sign = consensus_sign,
                                dataset = "McMahon et al. (hypolimnion)",
                                n_subjects = length(unique(metadata$lake))))
@@ -725,12 +737,15 @@ if(file.exists(saved_fn)) {
   david <- fit_model(counts, host_columns, host_dates, "David et al.", depth = 1)
   saveRDS(david, saved_fn)
 }
+pairs_david <- david$pairs
 david <- david$Sigmas[,,1]
 scores <- apply(david, 2, function(x) calc_universality_score(x, return_pieces = TRUE))
 consensus_sign <- apply(david, 2, calc_consensus_sign)
 all_scores <- rbind(all_scores,
                     data.frame(X1 = scores[1,],
                                X2 = scores[2,],
+                               idx1 = pairs_david[1,],
+                               idx2 = pairs_david[2,],
                                sign = consensus_sign,
                                dataset = "David et al.",
                                n_subjects = 2))
@@ -783,12 +798,15 @@ if(file.exists(saved_fn)) {
   caporaso <- fit_model(counts[2:nrow(counts),], host_columns, host_dates, "Caporaso et al.", depth = 1)
   saveRDS(caporaso, saved_fn)
 }
+pairs_caporaso <- caporaso$pairs
 caporaso <- caporaso$Sigmas[,,1]
 scores <- apply(caporaso, 2, function(x) calc_universality_score(x, return_pieces = TRUE))
 consensus_sign <- apply(caporaso, 2, calc_consensus_sign)
 all_scores <- rbind(all_scores,
                     data.frame(X1 = scores[1,],
                                X2 = scores[2,],
+                               idx1 = pairs_caporaso[1,],
+                               idx2 = pairs_caporaso[2,],
                                sign = consensus_sign,
                                dataset = "Caporaso et al.",
                                n_subjects = 2))
