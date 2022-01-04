@@ -306,9 +306,10 @@ saved_fn <- file.path("input", "dethlefsen_relman2011", "fitted_results.rds")
 if(file.exists(saved_fn)) {
   dethlefsen_relman <- readRDS(saved_fn)
 } else {
-  dethlefsen_relman <- fit_model(counts, host_columns, host_dates, "Dethlefsen & Relman", depth = 1)[,,1]
+  dethlefsen_relman <- fit_model(counts, host_columns, host_dates, "Dethlefsen & Relman", depth = 1)
   saveRDS(dethlefsen_relman, saved_fn)
 }
+dethlefsen_relman <- dethlefsen_relman$Sigmas[,,1]
 scores <- apply(dethlefsen_relman, 2, function(x) calc_universality_score(x, return_pieces = TRUE))
 consensus_sign <- apply(dethlefsen_relman, 2, calc_consensus_sign)
 
@@ -490,9 +491,10 @@ saved_fn <- file.path("input", "grossart_lakes", "fitted_results.rds")
 if(file.exists(saved_fn)) {
   grossart <- readRDS(saved_fn)
 } else {
-  grossart <- fit_model(counts, host_columns, host_dates, "Grossart", depth = 1)[,,1]
+  grossart <- fit_model(counts, host_columns, host_dates, "Grossart", depth = 1)
   saveRDS(grossart, saved_fn)
 }
+grossart <- grossart$Sigmas[,,1]
 scores <- apply(grossart, 2, function(x) calc_universality_score(x, return_pieces = TRUE))
 consensus_sign <- apply(grossart, 2, calc_consensus_sign)
 
@@ -606,10 +608,12 @@ if(file.exists(saved_fn)) {
   mc_h <- mcmahon[[2]]
   rm(mcmahon)
 } else {
-  mc_e <- fit_model(counts_E, host_columns_E, host_dates_E, "McMahon (epilimnion; shallow water)", depth = 1)[,,1]
-  mc_h <- fit_model(counts_H, host_columns_H, host_dates_H, "McMahon (hypolimnion; deep water)", depth = 1)[,,1]
+  mc_e <- fit_model(counts_E, host_columns_E, host_dates_E, "McMahon (epilimnion; shallow water)", depth = 1)
+  mc_h <- fit_model(counts_H, host_columns_H, host_dates_H, "McMahon (hypolimnion; deep water)", depth = 1)
   saveRDS(list(mc_e, mc_h), saved_fn)
 }
+mc_e <- mc_e$Sigmas[,,1]
+mc_h <- mc_h$Sigmas[,,1]
 scores <- apply(mc_e, 2, function(x) calc_universality_score(x, return_pieces = TRUE))
 consensus_sign <- apply(mc_e, 2, calc_consensus_sign)
 all_scores <- rbind(all_scores,
@@ -718,9 +722,10 @@ saved_fn <- file.path("input", "david2014", "fitted_results.rds")
 if(file.exists(saved_fn)) {
   david <- readRDS(saved_fn)
 } else {
-  david <- fit_model(counts, host_columns, host_dates, "David et al.", depth = 1)[,,1]
+  david <- fit_model(counts, host_columns, host_dates, "David et al.", depth = 1)
   saveRDS(david, saved_fn)
 }
+david <- david$Sigmas[,,1]
 scores <- apply(david, 2, function(x) calc_universality_score(x, return_pieces = TRUE))
 consensus_sign <- apply(david, 2, calc_consensus_sign)
 all_scores <- rbind(all_scores,
@@ -775,9 +780,10 @@ saved_fn <- file.path("input", "caporaso2011", "fitted_results.rds")
 if(file.exists(saved_fn)) {
   caporaso <- readRDS(saved_fn)
 } else {
-  caporaso <- fit_model(counts[2:nrow(counts),], host_columns, host_dates, "Caporaso et al.", depth = 1)[,,1]
+  caporaso <- fit_model(counts[2:nrow(counts),], host_columns, host_dates, "Caporaso et al.", depth = 1)
   saveRDS(caporaso, saved_fn)
 }
+caporaso <- caporaso$Sigmas[,,1]
 scores <- apply(caporaso, 2, function(x) calc_universality_score(x, return_pieces = TRUE))
 consensus_sign <- apply(caporaso, 2, calc_consensus_sign)
 all_scores <- rbind(all_scores,
