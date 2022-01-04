@@ -21,14 +21,31 @@ library(RColorBrewer)
 #   Functions
 # ------------------------------------------------------------------------------
 
+# Simple version of filtering
 # This assumes a matrix of taxa (rows) x samples (columns)
-# Identify taxa with > 1/10% average relative abundance
-# TO DO: Remove rare in any individual; similar filtering to ABRP
+# Identify taxa with > 1/10% average relative abundance as those to retain
 filter_taxa <- function(counts) {
   proportions <- as.matrix(counts)
   proportions <- apply(proportions, 2, function(x) x / sum(x))
   mean_rel_abundance <- rowMeans(proportions)
   mean_rel_abundance >= 0.001
+}
+
+# This version of filtering matches the Amboseli analyses
+# Retain taxa observed at at least a single count in 20% of each subject's
+# samples
+filter_taxa2 <- function(host_columns, counts) {
+  retain_tax <- rep(TRUE, nrow(counts))
+  for(h in 1:length(host_columns)) {
+    sub_counts <- counts[,host_columns[[h]]]
+    retain_tax <- retain_tax & apply(sub_counts, 1, function(x) {
+      sum(x >= 1)/length(x) >= 0.2
+    })
+  }
+  agglom_tax <- colSums(as.matrix(counts[!retain_tax,]))
+  counts <- rbind(counts[retain_tax,],
+                  agglom_tax)
+  return(list(counts = counts, filter_vec = retain_tax))
 }
 
 # `counts` is taxa x samples
@@ -157,9 +174,11 @@ mapping <- read.delim(file.path("input", "johnson2019", "SampleID_map.txt"),
                       sep = "\t")
 
 # Basic filtering
-filter_vec <- filter_taxa(counts[,2:ncol(counts)])
-tax_johnson <- counts$taxonomy[filter_vec]
-counts <- counts[filter_vec,]
+# filter_vec <- filter_taxa(counts[,2:ncol(counts)])
+# tax_johnson <- counts$taxonomy[filter_vec]
+# counts <- counts[filter_vec,]
+tax_johnson <- counts$taxonomy
+counts <- counts[,2:ncol(counts)]
 
 subjects <- unique(mapping$UserName)
 host_columns <- list()
@@ -177,6 +196,9 @@ for(i in 1:length(subjects)) {
     host_dates[[idx]] <- subject_days
   }
 }
+
+# Filter counts
+counts <- filter_taxa2(host_columns, counts)$counts
 
 # Stats
 study_stats <- rbind(study_stats,
@@ -247,7 +269,8 @@ counts <- read.delim(file.path("input", "dethlefsen_relman2011", "sd01.txt"),
                      sep = "\t")
 
 # Basic filtering
-counts <- counts[filter_taxa(counts[,2:163]),]
+# counts <- counts[filter_taxa(counts[,2:163]),]
+counts <- counts[,2:163]
 
 # Read the sampling schedule metadata
 metadata <- read.delim(file.path("input", "dethlefsen_relman2011", "sampling_schedule.txt"),
@@ -256,17 +279,20 @@ metadata <- read.delim(file.path("input", "dethlefsen_relman2011", "sampling_sch
 colnames(metadata) <- c("sample", "date")
 metadata$date <- as.Date(mdy(metadata$date))
 
-host_samples <- list(unname(which(sapply(metadata$sample, function(x) str_detect(x, "^D") ))),
+host_columns <- list(unname(which(sapply(metadata$sample, function(x) str_detect(x, "^D") ))),
                      unname(which(sapply(metadata$sample, function(x) str_detect(x, "^E") ))),
                      unname(which(sapply(metadata$sample, function(x) str_detect(x, "^F") ))))
 
 host_dates <- list()
 for(i in 1:3) {
-  subject_dates <- metadata[host_samples[[i]],]$date
+  subject_dates <- metadata[host_columns[[i]],]$date
   host_dates[[i]] <- sapply(subject_dates, function(x) {
     difftime(x, subject_dates[1], units = "days")
   })
 }
+
+# Filter counts
+counts <- filter_taxa2(host_columns, counts)$counts
 
 # Stats
 study_stats <- rbind(study_stats,
@@ -280,7 +306,7 @@ saved_fn <- file.path("input", "dethlefsen_relman2011", "fitted_results.rds")
 if(file.exists(saved_fn)) {
   dethlefsen_relman <- readRDS(saved_fn)
 } else {
-  dethlefsen_relman <- fit_model(counts, host_samples, host_dates, "Dethlefsen & Relman", depth = 1)[,,1]
+  dethlefsen_relman <- fit_model(counts, host_columns, host_dates, "Dethlefsen & Relman", depth = 1)[,,1]
   saveRDS(dethlefsen_relman, saved_fn)
 }
 scores <- apply(dethlefsen_relman, 2, function(x) calc_universality_score(x, return_pieces = TRUE))
@@ -308,9 +334,9 @@ rownames(counts) <- NULL # omit taxonomy
 # These aren't counts but relative abundances (summing to 5).
 # Let's scale them into CPM.
 counts <- counts*1e06/5
-filter_vec <- filter_taxa(counts)
-tax_diabimmune <- tax_diabimmune[filter_vec]
-counts <- counts[filter_vec,]
+# filter_vec <- filter_taxa(counts)
+# tax_diabimmune <- tax_diabimmune[filter_vec]
+# counts <- counts[filter_vec,]
 
 # Use kids with at least 15 samples
 use_subjects <- names(which(table(metadata$subjectID) >= 15))
@@ -338,6 +364,9 @@ for(i in 1:length(host_dates)) {
   sample_days <- sapply(host_dates[[i]], function(x) x - baseline_day) + 1
   host_dates[[i]] <- sample_days
 }
+
+# Filter counts
+counts <- filter_taxa2(host_columns, counts)$counts
 
 # Stats
 study_stats <- rbind(study_stats,
@@ -408,7 +437,7 @@ counts <- readRDS(file.path("input", "grossart_lakes", "data.rds"))
 counts <- otu_table(counts)@.Data
 
 # Filter data
-counts <- counts[filter_taxa(counts),]
+# counts <- counts[filter_taxa(counts),]
 
 metadata <- read.delim(file.path("input", "grossart_lakes", "945_20190102-074005.txt"),
                        header = TRUE,
@@ -446,6 +475,9 @@ for(i in 1:length(conditions)) {
   host_dates[[i]] <- days_vector
 }
 
+# Filter counts
+counts <- filter_taxa2(host_columns, counts)$counts
+
 # Stats
 study_stats <- rbind(study_stats,
                      data.frame(name = "Grossart et al.",
@@ -480,7 +512,7 @@ counts <- readRDS(file.path("input", "mcmahon_lakes", "data.rds"))
 counts <- otu_table(counts)@.Data
 
 # Filter data
-counts <- counts[filter_taxa(counts),]
+# counts <- counts[filter_taxa(counts),]
 
 metadata <- read.delim(file.path("input", "mcmahon_lakes", "1288_20180418-110149.txt"),
                        header = TRUE,
@@ -555,12 +587,16 @@ for(i in 1:length(host_dates_H)) {
   host_dates_H[[i]] <- sample_days
 }
 
+# Filter counts
+counts_E <- filter_taxa2(host_columns_E, counts)$counts
+counts_H <- filter_taxa2(host_columns_H, counts)$counts
+
 # Stats
 study_stats <- rbind(study_stats,
                      data.frame(name = "McMahon et al.",
                                 n_subjects = length(unique(metadata$lake)),
                                 n_samples = ncol(counts),
-                                n_taxa = nrow(counts),
+                                n_taxa = min(nrow(counts_E), nrow(counts_H)),
                                 tax_level = "unknown"))
 
 saved_fn <- file.path("input", "mcmahon_lakes", "fitted_results.rds")
@@ -570,8 +606,8 @@ if(file.exists(saved_fn)) {
   mc_h <- mcmahon[[2]]
   rm(mcmahon)
 } else {
-  mc_e <- fit_model(counts, host_columns_E, host_dates_E, "McMahon (epilimnion; shallow water)", depth = 1)[,,1]
-  mc_h <- fit_model(counts, host_columns_H, host_dates_H, "McMahon (hypolimnion; deep water)", depth = 1)[,,1]
+  mc_e <- fit_model(counts_E, host_columns_E, host_dates_E, "McMahon (epilimnion; shallow water)", depth = 1)[,,1]
+  mc_h <- fit_model(counts_H, host_columns_H, host_dates_H, "McMahon (hypolimnion; deep water)", depth = 1)[,,1]
   saveRDS(list(mc_e, mc_h), saved_fn)
 }
 scores <- apply(mc_e, 2, function(x) calc_universality_score(x, return_pieces = TRUE))
@@ -662,10 +698,13 @@ subj_B_counts <- subj_B_counts[,reorder]
 counts <- cbind(subj_A_counts, subj_B_counts)
 
 # Filter data
-counts <- counts[filter_taxa(counts),]
+# counts <- counts[filter_taxa(counts),]
 
 host_columns <- list(1:length(subj_A_days), (length(subj_A_days) + 1):ncol(counts)) # individuals 1, 2
 host_dates <- list(subj_A_days, subj_B_days)
+
+# Filter counts
+counts <- filter_taxa2(host_columns, counts)$counts
 
 # Stats
 study_stats <- rbind(study_stats,
@@ -710,13 +749,19 @@ counts <- cbind(counts_1, counts_2)
 
 # Filter low abundance taxa
 # The first row consists of sample day identifiers
-counts <- counts[c(TRUE, filter_taxa(counts[2:nrow(counts),])),]
+sample_days <- counts[1,]
+# counts <- counts[c(TRUE, filter_taxa(counts[2:nrow(counts),])),]
+counts <- counts[2:nrow(counts),]
 
 host_columns <- list(1:ncol(counts_1), (ncol(counts_1)+1):ncol(counts)) # individuals 1, 2
 host_dates <- list()
 for(i in 1:2) {
-  host_dates[[i]] <- unname(unlist(counts[1,host_columns[[i]]]))
+  # host_dates[[i]] <- unname(unlist(counts[1,host_columns[[i]]]))
+  host_dates[[i]] <- unname(unlist(sample_days[host_columns[[i]]]))
 }
+
+# Filter counts
+counts <- filter_taxa2(host_columns, counts)$counts
 
 # Stats
 study_stats <- rbind(study_stats,
@@ -764,14 +809,16 @@ all_scores <- rbind(all_scores,
 #               the most universal?
 # ------------------------------------------------------------------------------
 
-for(this_dataset in c("Johnson et al.", "DIABIMMUNE", "Amboseli")) {
-  x <- all_scores[all_scores$dataset == this_dataset,]$X2
-  y <- all_scores[all_scores$dataset == this_dataset,]$X1
+if(FALSE) {
+  for(this_dataset in c("Johnson et al.", "DIABIMMUNE", "Amboseli")) {
+    x <- all_scores[all_scores$dataset == this_dataset,]$X2
+    y <- all_scores[all_scores$dataset == this_dataset,]$X1
 
-  cat(paste0(toupper(this_dataset),
-             " Spearman cor. betw. % agreement and median assoc.: ",
-             round(cor(x, y, method = "spearman"), 3),
-             "\n"))
+    cat(paste0(toupper(this_dataset),
+               " Spearman cor. betw. % agreement and median assoc.: ",
+               round(cor(x, y, method = "spearman"), 3),
+               "\n"))
+  }
 }
 
 # ------------------------------------------------------------------------------
@@ -779,173 +826,170 @@ for(this_dataset in c("Johnson et al.", "DIABIMMUNE", "Amboseli")) {
 #               positive associations?
 # ------------------------------------------------------------------------------
 
-for(this_dataset in c("Johnson et al.", "DIABIMMUNE", "Amboseli")) {
-  subset_scores <- all_scores %>%
-    filter(dataset == this_dataset) %>%
-    mutate(score = X1*X2) %>%
-    arrange(desc(score))
-  n_pairs <- nrow(subset_scores)
-  top_1 <- round(n_pairs * 0.01)
-  top_2p5 <- round(n_pairs * 0.025)
-  pn_tally_1 <- subset_scores %>%
-    slice(1:top_1) %>%
-    group_by(sign) %>%
-    tally()
-  ppos_1 <- pn_tally_1 %>%
-    mutate(n_all = sum(n)) %>%
-    filter(sign == 1) %>%
-    mutate(prop = n/n_all) %>%
-    pull(prop)
-  pn_tally_2p5 <- subset_scores %>%
-    slice(1:top_2p5) %>%
-    group_by(sign) %>%
-    tally()
-  ppos_2p5 <- pn_tally_2p5 %>%
-    mutate(n_all = sum(n)) %>%
-    filter(sign == 1) %>%
-    mutate(prop = n/n_all) %>%
-    pull(prop)
-  cat(paste0(toupper(this_dataset),
-             " proportion positive in top 1%: ",
-             round(ppos_1, 2),
-             " (of ", sum(pn_tally_1$n), " pairs)",
-             "\n"))
-  cat(paste0(toupper(this_dataset),
-             " proportion positive in top 2.5%: ",
-             round(ppos_2p5, 2),
-             " (of ", sum(pn_tally_2p5$n), " pairs)",
-             "\n"))
+if(FALSE) {
+  for(this_dataset in c("Johnson et al.", "DIABIMMUNE", "Amboseli")) {
+    subset_scores <- all_scores %>%
+      filter(dataset == this_dataset) %>%
+      mutate(score = X1*X2) %>%
+      arrange(desc(score))
+    n_pairs <- nrow(subset_scores)
+    top_1 <- round(n_pairs * 0.01)
+    top_2p5 <- round(n_pairs * 0.025)
+    pn_tally_1 <- subset_scores %>%
+      slice(1:top_1) %>%
+      group_by(sign) %>%
+      tally()
+    ppos_1 <- pn_tally_1 %>%
+      mutate(n_all = sum(n)) %>%
+      filter(sign == 1) %>%
+      mutate(prop = n/n_all) %>%
+      pull(prop)
+    pn_tally_2p5 <- subset_scores %>%
+      slice(1:top_2p5) %>%
+      group_by(sign) %>%
+      tally()
+    ppos_2p5 <- pn_tally_2p5 %>%
+      mutate(n_all = sum(n)) %>%
+      filter(sign == 1) %>%
+      mutate(prop = n/n_all) %>%
+      pull(prop)
+    cat(paste0(toupper(this_dataset),
+               " proportion positive in top 1%: ",
+               round(ppos_1, 2),
+               " (of ", sum(pn_tally_1$n), " pairs)",
+               "\n"))
+    cat(paste0(toupper(this_dataset),
+               " proportion positive in top 2.5%: ",
+               round(ppos_2p5, 2),
+               " (of ", sum(pn_tally_2p5$n), " pairs)",
+               "\n"))
+  }
 }
 
 # ------------------------------------------------------------------------------
 #   QUESTION 3: Are the most universal pairs from the same families?
 # ------------------------------------------------------------------------------
 
-tax_map <- list("Johnson et al." = tax_johnson,
-                "DIABIMMUNE" = tax_diabimmune)
-for(this_dataset in c("Johnson et al.", "DIABIMMUNE")) {
-  subset_scores <- all_scores %>%
-    filter(dataset == this_dataset) %>%
-    mutate(score = X1*X2) %>%
-    arrange(desc(score))
+if(FALSE) {
+  tax_map <- list("Johnson et al." = tax_johnson,
+                  "DIABIMMUNE" = tax_diabimmune)
+  for(this_dataset in c("Johnson et al.", "DIABIMMUNE")) {
+    subset_scores <- all_scores %>%
+      filter(dataset == this_dataset) %>%
+      mutate(score = X1*X2) %>%
+      arrange(desc(score))
 
-  n_pairs <- nrow(subset_scores)
-  top_2p5 <- round(n_pairs * 0.025)
-  subset_scores$top <- c(rep(TRUE, top_2p5),
-                         rep(FALSE, n_pairs - top_2p5))
-  # Append families
-  if(this_dataset == "Johnson et al.") {
-    families <- unname(sapply(tax_johnson, function(x) {
-      str_replace(str_split(x, pattern = ";")[[1]][5], "f__", "")
-    }))
-  } else {
-    families <- unname(sapply(tax_diabimmune, function(x) {
-      pieces <- str_split(x, pattern = "\\|")[[1]]
-      if(length(pieces) < 5) {
-        ""
-      } else {
-        str_replace(pieces[5], "f__", "")
+    n_pairs <- nrow(subset_scores)
+    top_2p5 <- round(n_pairs * 0.025)
+    subset_scores$top <- c(rep(TRUE, top_2p5),
+                           rep(FALSE, n_pairs - top_2p5))
+    # Append families
+    if(this_dataset == "Johnson et al.") {
+      families <- unname(sapply(tax_johnson, function(x) {
+        str_replace(str_split(x, pattern = ";")[[1]][5], "f__", "")
+      }))
+    } else {
+      families <- unname(sapply(tax_diabimmune, function(x) {
+        pieces <- str_split(x, pattern = "\\|")[[1]]
+        if(length(pieces) < 5) {
+          ""
+        } else {
+          str_replace(pieces[5], "f__", "")
+        }
+      }))
+    }
+    families[families %in% c("", "NA")] <- ""
+    subset_scores$fam1 <- families[subset_scores$idx1]
+    subset_scores$fam2 <- families[subset_scores$idx2]
+
+    # Remove any with missing families
+    subset_scores <- subset_scores %>%
+      filter(fam1 != "" & fam2 != "")
+
+    subset_scores$taxpair <- paste0(subset_scores$fam1, " - ", subset_scores$fam2)
+
+    # ----------------------------------------------------------------------------
+    #   Enrichment of family pairs
+    # ----------------------------------------------------------------------------
+
+    frequencies <- table(subset_scores$taxpair)
+    frequencies_subset <- table(subset_scores %>% filter(top == TRUE) %>% pull(taxpair))
+
+    signif <- c()
+    for(fam in names(frequencies_subset)) {
+      fam_in_sample <- unname(unlist(frequencies_subset[fam]))
+      sample_size <- unname(unlist(sum(frequencies_subset)))
+      fam_in_bg <- unname(unlist(frequencies[fam]))
+      bg_size <- unname(unlist(sum(frequencies)))
+      ctab <- matrix(c(fam_in_sample,
+                       sample_size - fam_in_sample,
+                       fam_in_bg,
+                       bg_size - fam_in_bg),
+                     2, 2, byrow = TRUE)
+      prob <- fisher.test(ctab, alternative = "greater")$p.value
+      if(prob < 0.05) {
+        signif <- c(signif, fam)
+        cat(paste0("ASV family: ", fam, ", p-value: ", round(prob, 3), "\n"))
       }
-    }))
-  }
-  families[families %in% c("", "NA")] <- ""
-  subset_scores$fam1 <- families[subset_scores$idx1]
-  subset_scores$fam2 <- families[subset_scores$idx2]
-
-  # Remove any with missing families
-  subset_scores <- subset_scores %>%
-    filter(fam1 != "" & fam2 != "")
-
-  subset_scores$taxpair <- paste0(subset_scores$fam1, " - ", subset_scores$fam2)
-
-  # ----------------------------------------------------------------------------
-  #   Enrichment of family pairs
-  # ----------------------------------------------------------------------------
-
-  frequencies <- table(subset_scores$taxpair)
-  frequencies_subset <- table(subset_scores %>% filter(top == TRUE) %>% pull(taxpair))
-
-  signif <- c()
-  for(fam in names(frequencies_subset)) {
-    fam_in_sample <- unname(unlist(frequencies_subset[fam]))
-    sample_size <- unname(unlist(sum(frequencies_subset)))
-    fam_in_bg <- unname(unlist(frequencies[fam]))
-    bg_size <- unname(unlist(sum(frequencies)))
-    ctab <- matrix(c(fam_in_sample,
-                     sample_size - fam_in_sample,
-                     fam_in_bg,
-                     bg_size - fam_in_bg),
-                   2, 2, byrow = TRUE)
-    prob <- fisher.test(ctab, alternative = "greater")$p.value
-    if(prob < 0.05) {
-      signif <- c(signif, fam)
-      cat(paste0("ASV family: ", fam, ", p-value: ", round(prob, 3), "\n"))
     }
-  }
 
-  temp_palette <- generate_highcontrast_palette(length(signif))
-  names(temp_palette) <- signif
+    temp_palette <- generate_highcontrast_palette(length(signif))
+    names(temp_palette) <- signif
 
-  plot_enrichment(frequencies_subset1 = frequencies_subset,
-                  frequencies = frequencies,
-                  significant_families1 = signif,
-                  plot_height = 6,
-                  plot_width = 6,
-                  legend_topmargin = 100,
-                  use_pairs = TRUE,
-                  rel_widths = c(1, 0.35, 1, 0.25, 3),
-                  labels = c("overall", "top 2.5% pairs"),
-                  palette = temp_palette,
-                  save_name = paste0(this_dataset, "-enrichment-pair.png"))
+    plot_enrichment(frequencies_subset1 = frequencies_subset,
+                    frequencies = frequencies,
+                    significant_families1 = signif,
+                    plot_height = 6,
+                    plot_width = 6,
+                    legend_topmargin = 100,
+                    use_pairs = TRUE,
+                    rel_widths = c(1, 0.35, 1, 0.25, 3),
+                    labels = c("overall", "top 2.5% pairs"),
+                    palette = temp_palette,
+                    save_name = paste0(this_dataset, "-enrichment-pair.png"))
 
-  # ----------------------------------------------------------------------------
-  #   Enrichment of families
-  # ----------------------------------------------------------------------------
+    # ----------------------------------------------------------------------------
+    #   Enrichment of families
+    # ----------------------------------------------------------------------------
 
-  frequencies <- table(c(subset_scores$fam1, subset_scores$fam2))
-  frequencies_subset <- table(c(subset_scores %>% filter(top == TRUE) %>% pull(fam1),
-                                subset_scores %>% filter(top == TRUE) %>% pull(fam2)))
+    frequencies <- table(c(subset_scores$fam1, subset_scores$fam2))
+    frequencies_subset <- table(c(subset_scores %>% filter(top == TRUE) %>% pull(fam1),
+                                  subset_scores %>% filter(top == TRUE) %>% pull(fam2)))
 
-  signif <- c()
-  for(fam in names(frequencies_subset)) {
-    fam_in_sample <- unname(unlist(frequencies_subset[fam]))
-    sample_size <- unname(unlist(sum(frequencies_subset)))
-    fam_in_bg <- unname(unlist(frequencies[fam]))
-    bg_size <- unname(unlist(sum(frequencies)))
-    ctab <- matrix(c(fam_in_sample,
-                     sample_size - fam_in_sample,
-                     fam_in_bg,
-                     bg_size - fam_in_bg),
-                   2, 2, byrow = TRUE)
-    prob <- fisher.test(ctab, alternative = "greater")$p.value
-    if(prob < 0.05) {
-      signif <- c(signif, fam)
-      cat(paste0("ASV family: ", fam, ", p-value: ", round(prob, 3), "\n"))
+    signif <- c()
+    for(fam in names(frequencies_subset)) {
+      fam_in_sample <- unname(unlist(frequencies_subset[fam]))
+      sample_size <- unname(unlist(sum(frequencies_subset)))
+      fam_in_bg <- unname(unlist(frequencies[fam]))
+      bg_size <- unname(unlist(sum(frequencies)))
+      ctab <- matrix(c(fam_in_sample,
+                       sample_size - fam_in_sample,
+                       fam_in_bg,
+                       bg_size - fam_in_bg),
+                     2, 2, byrow = TRUE)
+      prob <- fisher.test(ctab, alternative = "greater")$p.value
+      if(prob < 0.05) {
+        signif <- c(signif, fam)
+        cat(paste0("ASV family: ", fam, ", p-value: ", round(prob, 3), "\n"))
+      }
     }
+
+    temp_palette <- generate_highcontrast_palette(length(signif))
+    names(temp_palette) <- signif
+
+    plot_enrichment(frequencies_subset1 = frequencies_subset,
+                    frequencies = frequencies,
+                    significant_families1 = signif,
+                    plot_height = 6,
+                    plot_width = 4.5,
+                    legend_topmargin = 100,
+                    use_pairs = FALSE,
+                    rel_widths = c(1, 0.35, 1, 0.1, 1.75),
+                    labels = c("overall", "top 2.5% pairs"),
+                    palette = temp_palette,
+                    save_name = paste0(this_dataset, "-enrichment.png"))
   }
-
-  temp_palette <- generate_highcontrast_palette(length(signif))
-  names(temp_palette) <- signif
-
-  plot_enrichment(frequencies_subset1 = frequencies_subset,
-                  frequencies = frequencies,
-                  significant_families1 = signif,
-                  plot_height = 6,
-                  plot_width = 4.5,
-                  legend_topmargin = 100,
-                  use_pairs = FALSE,
-                  rel_widths = c(1, 0.35, 1, 0.1, 1.75),
-                  labels = c("overall", "top 2.5% pairs"),
-                  palette = temp_palette,
-                  save_name = paste0(this_dataset, "-enrichment.png"))
 }
-
-
-
-
-
-
-
 
 # ------------------------------------------------------------------------------
 #   VISUALIZATION VERSION 1: Plot densities together
