@@ -34,12 +34,13 @@ filter_taxa <- function(counts) {
 # This version of filtering matches the Amboseli analyses
 # Retain taxa observed at at least a single count in 20% of each subject's
 # samples
-filter_taxa2 <- function(host_columns, counts) {
+filter_taxa2 <- function(host_columns, counts, min_relab = 1/10000) {
+  relab <- apply(counts, 2, function(x) x/sum(x))
   retain_tax <- rep(TRUE, nrow(counts))
   for(h in 1:length(host_columns)) {
-    sub_counts <- counts[,host_columns[[h]]]
-    retain_tax <- retain_tax & apply(sub_counts, 1, function(x) {
-      sum(x >= 1)/length(x) >= 0.2
+    sub_relab <- relab[,host_columns[[h]]]
+    retain_tax <- retain_tax & apply(sub_relab, 1, function(x) {
+      sum(x >= min_relab)/length(x) >= 0.2
     })
   }
   agglom_tax <- colSums(as.matrix(counts[!retain_tax,]))
@@ -199,6 +200,7 @@ for(i in 1:length(subjects)) {
 
 # Filter counts
 counts <- filter_taxa2(host_columns, counts)$counts
+dim(counts)
 
 # Stats
 study_stats <- rbind(study_stats,
@@ -208,13 +210,13 @@ study_stats <- rbind(study_stats,
                                 n_taxa = nrow(counts),
                                 tax_level = "species"))
 
-saved_fn <- file.path("input", "johnson2019", "fitted_results.rds")
-if(file.exists(saved_fn)) {
-  johnson <- readRDS(saved_fn)
-} else {
+#saved_fn <- file.path("input", "johnson2019", "fitted_results.rds")
+#if(file.exists(saved_fn)) {
+#  johnson <- readRDS(saved_fn)
+#} else {
   johnson <- fit_model(counts, host_columns, host_dates, dataset_name = "Johnson et al.", depth = 1)
   saveRDS(johnson, saved_fn)
-}
+#}
 pairs_johnson <- johnson$pairs
 johnson <- johnson$Sigmas[,,1]
 
@@ -293,6 +295,7 @@ for(i in 1:3) {
 
 # Filter counts
 counts <- filter_taxa2(host_columns, counts)$counts
+print(dim(counts))
 
 # Stats
 study_stats <- rbind(study_stats,
@@ -302,13 +305,13 @@ study_stats <- rbind(study_stats,
                                 n_taxa = nrow(counts),
                                 tax_level = "unknown"))
 
-saved_fn <- file.path("input", "dethlefsen_relman2011", "fitted_results.rds")
-if(file.exists(saved_fn)) {
-  dethlefsen_relman <- readRDS(saved_fn)
-} else {
+#saved_fn <- file.path("input", "dethlefsen_relman2011", "fitted_results.rds")
+#if(file.exists(saved_fn)) {
+#  dethlefsen_relman <- readRDS(saved_fn)
+#} else {
   dethlefsen_relman <- fit_model(counts, host_columns, host_dates, "Dethlefsen & Relman", depth = 1)
   saveRDS(dethlefsen_relman, saved_fn)
-}
+#}
 pairs_df <- dethlefsen_relman$pairs
 dethlefsen_relman <- dethlefsen_relman$Sigmas[,,1]
 scores <- apply(dethlefsen_relman, 2, function(x) calc_universality_score(x, return_pieces = TRUE))
@@ -371,6 +374,7 @@ for(i in 1:length(host_dates)) {
 
 # Filter counts
 counts <- filter_taxa2(host_columns, counts)$counts
+print(dim(counts))
 
 # Stats
 study_stats <- rbind(study_stats,
@@ -380,13 +384,13 @@ study_stats <- rbind(study_stats,
                                 n_taxa = nrow(counts),
                                 tax_level = "unknown"))
 
-saved_fn <- file.path("input", "DIABIMMUNE", "fitted_results.rds")
-if(file.exists(saved_fn)) {
-  diabimmune <- readRDS(saved_fn)
-} else {
+#saved_fn <- file.path("input", "DIABIMMUNE", "fitted_results.rds")
+#if(file.exists(saved_fn)) {
+#  diabimmune <- readRDS(saved_fn)
+#} else {
   diabimmune <- fit_model(counts, host_columns, host_dates, "DIABIMMUNE", depth = 1)
   saveRDS(diabimmune, saved_fn)
-}
+#}
 pairs_diabimmune <- diabimmune$pairs
 diabimmune <- diabimmune$Sigmas[,,1]
 
@@ -481,6 +485,7 @@ for(i in 1:length(conditions)) {
 
 # Filter counts
 counts <- filter_taxa2(host_columns, counts)$counts
+print(dim(counts))
 
 # Stats
 study_stats <- rbind(study_stats,
@@ -490,13 +495,13 @@ study_stats <- rbind(study_stats,
                                 n_taxa = nrow(counts),
                                 tax_level = "unknown"))
 
-saved_fn <- file.path("input", "grossart_lakes", "fitted_results.rds")
-if(file.exists(saved_fn)) {
-  grossart <- readRDS(saved_fn)
-} else {
+#saved_fn <- file.path("input", "grossart_lakes", "fitted_results.rds")
+#if(file.exists(saved_fn)) {
+#  grossart <- readRDS(saved_fn)
+#} else {
   grossart <- fit_model(counts, host_columns, host_dates, "Grossart", depth = 1)
   saveRDS(grossart, saved_fn)
-}
+#}
 pairs_grossart <- grossart$pairs
 grossart <- grossart$Sigmas[,,1]
 scores <- apply(grossart, 2, function(x) calc_universality_score(x, return_pieces = TRUE))
@@ -597,7 +602,9 @@ for(i in 1:length(host_dates_H)) {
 
 # Filter counts
 counts_E <- filter_taxa2(host_columns_E, counts)$counts
+print(dim(counts))
 counts_H <- filter_taxa2(host_columns_H, counts)$counts
+print(dim(counts))
 
 # Stats
 study_stats <- rbind(study_stats,
@@ -607,17 +614,17 @@ study_stats <- rbind(study_stats,
                                 n_taxa = min(nrow(counts_E), nrow(counts_H)),
                                 tax_level = "unknown"))
 
-saved_fn <- file.path("input", "mcmahon_lakes", "fitted_results.rds")
-if(file.exists(saved_fn)) {
-  mcmahon <- readRDS(saved_fn)
-  mc_e <- mcmahon[[1]]
-  mc_h <- mcmahon[[2]]
-  rm(mcmahon)
-} else {
+#saved_fn <- file.path("input", "mcmahon_lakes", "fitted_results.rds")
+#if(file.exists(saved_fn)) {
+#  mcmahon <- readRDS(saved_fn)
+#  mc_e <- mcmahon[[1]]
+#  mc_h <- mcmahon[[2]]
+#  rm(mcmahon)
+#} else {
   mc_e <- fit_model(counts_E, host_columns_E, host_dates_E, "McMahon (epilimnion; shallow water)", depth = 1)
   mc_h <- fit_model(counts_H, host_columns_H, host_dates_H, "McMahon (hypolimnion; deep water)", depth = 1)
   saveRDS(list(mc_e, mc_h), saved_fn)
-}
+#}
 pairs_mce <- mc_e$pairs
 mc_e <- mc_e$Sigmas[,,1]
 pairs_mch <- mc_h$pairs
@@ -720,7 +727,8 @@ host_columns <- list(1:length(subj_A_days), (length(subj_A_days) + 1):ncol(count
 host_dates <- list(subj_A_days, subj_B_days)
 
 # Filter counts
-counts <- filter_taxa2(host_columns, counts)$counts
+counts <- filter_taxa2(host_columns, counts, min_relab = 1/1000)$counts
+print(dim(counts))
 
 # Stats
 study_stats <- rbind(study_stats,
@@ -730,13 +738,13 @@ study_stats <- rbind(study_stats,
                                 n_taxa = nrow(counts),
                                 tax_level = "ASV/OTU"))
 
-saved_fn <- file.path("input", "david2014", "fitted_results.rds")
-if(file.exists(saved_fn)) {
-  david <- readRDS(saved_fn)
-} else {
+#saved_fn <- file.path("input", "david2014", "fitted_results.rds")
+#if(file.exists(saved_fn)) {
+#  david <- readRDS(saved_fn)
+#} else {
   david <- fit_model(counts, host_columns, host_dates, "David et al.", depth = 1)
   saveRDS(david, saved_fn)
-}
+#}
 pairs_david <- david$pairs
 david <- david$Sigmas[,,1]
 scores <- apply(david, 2, function(x) calc_universality_score(x, return_pieces = TRUE))
@@ -781,7 +789,8 @@ for(i in 1:2) {
 }
 
 # Filter counts
-counts <- filter_taxa2(host_columns, counts)$counts
+counts <- filter_taxa2(host_columns, counts, min_relab = 1/1000)$counts
+print(dim(counts))
 
 # Stats
 study_stats <- rbind(study_stats,
@@ -791,13 +800,13 @@ study_stats <- rbind(study_stats,
                                 n_taxa = nrow(counts),
                                 tax_level = "unknown"))
 
-saved_fn <- file.path("input", "caporaso2011", "fitted_results.rds")
-if(file.exists(saved_fn)) {
-  caporaso <- readRDS(saved_fn)
-} else {
+#saved_fn <- file.path("input", "caporaso2011", "fitted_results.rds")
+#if(file.exists(saved_fn)) {
+#  caporaso <- readRDS(saved_fn)
+#} else {
   caporaso <- fit_model(counts[2:nrow(counts),], host_columns, host_dates, "Caporaso et al.", depth = 1)
   saveRDS(caporaso, saved_fn)
-}
+#}
 pairs_caporaso <- caporaso$pairs
 caporaso <- caporaso$Sigmas[,,1]
 scores <- apply(caporaso, 2, function(x) calc_universality_score(x, return_pieces = TRUE))
