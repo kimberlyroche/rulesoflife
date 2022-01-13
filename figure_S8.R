@@ -99,6 +99,29 @@ ggsave("output/figures/SF6b.png",
        width = 6.5)
 
 # ------------------------------------------------------------------------------
+#   Test for an association between phylogenetic distance and the sign of a
+#   given association
+# ------------------------------------------------------------------------------
+
+test_df <- plot_df %>%
+  filter(!is.na(sign))
+test_df$sign <- factor(test_df$sign, levels = c("positive", "negative"))
+levels(test_df$sign) <- c(0, 1)
+lr_fit <- glm(sign ~ d, data = test_df, family = binomial(link = "logit"))
+summary(lr_fit)
+
+lo <- unname(coef(lr_fit)[2]) # Log odds associated with phylogenetic distance
+exp(lo)
+exp(lo)/(1+exp(lo))
+
+cat(paste0("P-value for phylogenetic distance on sign: ",
+           round(coef(summary(lr_fit))[2,4], 8), "\n"))
+cat(paste0("Fold change in log odds of positive sign with unit increase in phylogenetic distance: ",
+           round(lo, 3), "\n"))
+cat(paste0("Odds of positive sign with unit increase in phylogenetic distance: ",
+           round(exp(lo)/(1+exp(lo)), 3), "\n"))
+
+# ------------------------------------------------------------------------------
 #   Label the phylogenetic distance vs. median association strength plot by the
 #   number of sequence mismatches
 # ------------------------------------------------------------------------------

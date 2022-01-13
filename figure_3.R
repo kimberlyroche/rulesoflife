@@ -20,24 +20,24 @@ library(igraph)
 
 source("thresholds.R")
 
-rug_phy <- summarize_Sigmas(output_dir = "phy_days90_diet25_scale1")
-rug_fam <- summarize_Sigmas(output_dir = "fam_days90_diet25_scale1")
-rug_asv <- summarize_Sigmas(output_dir = "asv_days90_diet25_scale1")
+rug_obj <- summarize_Sigmas(output_dir = "asv_days90_diet25_scale1")
+rug <- rug_obj$rug
 
 # ------------------------------------------------------------------------------
 #   "Hockey stick" plot
 # ------------------------------------------------------------------------------
 
-asv_scores_pieces <- apply(rug_asv$rug, 2, function(x) calc_universality_score(x, return_pieces = TRUE))
-score_df <- data.frame(x = asv_scores_pieces[1,], y = asv_scores_pieces[2,])
+scores_pieces <- apply(rug, 2, function(x) calc_universality_score(x, return_pieces = TRUE))
+scores <- apply(scores_pieces, 2, function(x) x[1]*x[2])
+score_df <- data.frame(x = scores_pieces[1,], y = scores_pieces[2,])
 
 # Additional labelings
 # 1) Consensus sign
-score_df$sign <- apply(rug_asv$rug, 2, calc_consensus_sign)
+score_df$sign <- apply(rug, 2, calc_consensus_sign)
 score_df$sign <- factor(score_df$sign, levels = c(1, -1))
 levels(score_df$sign) <- c("positive", "negative")
 # 2) Percent significant observations for this taxon pair
-score_df$signif <- apply(rug_asv$rug, 2, function(x) {
+score_df$signif <- apply(rug, 2, function(x) {
   sum(x < thresholds %>% filter(type == "ASV") %>% pull(lower) | x > thresholds %>% filter(type == "ASV") %>% pull(upper))/length(x)
 })
 
@@ -62,10 +62,9 @@ p1 <- ggplot(score_df %>% filter(sign != 0)) +
 #   ggridges stacked histograms of universality scores at the ASV level
 # ------------------------------------------------------------------------------
 
-plot_df <- data.frame(score = apply(rug_asv$rug, 2, calc_universality_score),
-                            type = "ASV")
+plot_df <- data.frame(score = scores, type = "ASV")
 
-p2 <- ggplot(data.frame(score = apply(rug_asv$rug, 2, calc_universality_score)),
+p2 <- ggplot(data.frame(score = apply(rug, 2, calc_universality_score)),
              aes(x = score, y = 1)) +
   geom_density_ridges(stat = "binline", bins = 20, scale = 0.9, draw_baseline = TRUE) +
   geom_segment(data = thresholds_scores %>% filter(type == "ASV"),
@@ -86,21 +85,21 @@ p2 <- ggplot(data.frame(score = apply(rug_asv$rug, 2, calc_universality_score)),
   theme(axis.text = element_text(size = 9),
         axis.title = element_text(size = 11))
 
-p1_padded <- plot_grid(p1, NULL, ncol = 1, rel_heights = c(1, 0.02))
-
-p <- plot_grid(p1_padded, p2, ncol = 2,
-               rel_widths = c(1.5, 1.25),
-               labels = c("A", "B"),
-               label_size = 18,
-               # label_x = -0.02,
-               scale = 0.95)
-
-ggsave("output/figures/3ab.png",
-       p,
-       dpi = 100,
-       units = "in",
-       height = 4,
-       width = 9)
+# p1_padded <- plot_grid(p1, NULL, ncol = 1, rel_heights = c(1, 0.02))
+#
+# p <- plot_grid(p1_padded, p2, ncol = 2,
+#                rel_widths = c(1.5, 1.25),
+#                labels = c("A", "B"),
+#                label_size = 18,
+#                # label_x = -0.02,
+#                scale = 0.95)
+#
+# ggsave("output/figures/3ab.png",
+#        p,
+#        dpi = 100,
+#        units = "in",
+#        height = 4,
+#        width = 9)
 
 # ------------------------------------------------------------------------------
 #   Enrichment bar plots
@@ -108,10 +107,7 @@ ggsave("output/figures/3ab.png",
 
 data <- load_data(tax_level = "ASV")
 
-# Note: I'm repeatedly calculating these. It would be much better to do this once
-# globally.
-scores <- apply(rug_asv$rug, 2, calc_universality_score)
-consensus_signs <- apply(rug_asv$rug, 2, calc_consensus_sign)
+consensus_signs <- apply(rug, 2, calc_consensus_sign)
 
 # Pull top k percent most universal associations
 percent <- 2.5
@@ -119,8 +115,8 @@ k <- round(length(scores)*(percent/100))
 top_pairs <- order(scores, decreasing = TRUE)[1:k]
 
 # Get the taxon indices of each partner in these top pairs
-pair_idx1 <- rug_asv$tax_idx1[top_pairs]
-pair_idx2 <- rug_asv$tax_idx2[top_pairs]
+pair_idx1 <- rug_obj$tax_idx1[top_pairs]
+pair_idx2 <- rug_obj$tax_idx2[top_pairs]
 
 # ------------------------------------------------------------------------------
 #   Family version
@@ -129,7 +125,7 @@ pair_idx2 <- rug_asv$tax_idx2[top_pairs]
 families_top <- c(data$taxonomy[pair_idx1,6], data$taxonomy[pair_idx2,6])
 families_top <- families_top[!is.na(families_top)]
 
-families_all <- c(data$taxonomy[rug_asv$tax_idx1,6], data$taxonomy[rug_asv$tax_idx2,6])
+families_all <- c(data$taxonomy[rug_obj$tax_idx1,6], data$taxonomy[rug_obj$tax_idx2,6])
 families_all <- families_all[!is.na(families_all)]
 
 frequencies_subset <- table(families_top)
@@ -153,7 +149,7 @@ for(fam in names(frequencies_subset)) {
   enrichment <- rbind(enrichment,
                       data.frame(name = fam,
                                  type = "family",
-                                 location = "2.5% most universal ASVs",
+                                 location = "top ASVs",
                                  pvalue = prob))
   if(prob < 0.05) {
     signif <- c(signif, fam)
@@ -161,18 +157,18 @@ for(fam in names(frequencies_subset)) {
   }
 }
 
-plot_enrichment(frequencies_subset1 = frequencies_subset,
-                frequencies_subset2 = NULL,
-                frequencies = frequencies,
-                significant_families1 = signif,
-                significant_families2 = NULL,
-                plot_height = 6,
-                plot_width = 5,
-                legend_topmargin = 100,
-                use_pairs = FALSE,
-                rel_widths = c(1, 0.35, 1, 0.3, 2),
-                labels = c("overall", "2.5% most universal ASVs"),
-                save_name = "F4-enrichment.png")
+p3 <- plot_enrichment(frequencies_subset1 = frequencies_subset,
+                      frequencies_subset2 = NULL,
+                      frequencies = frequencies,
+                      significant_families1 = signif,
+                      significant_families2 = NULL,
+                      plot_height = 6,
+                      plot_width = 5,
+                      legend_topmargin = 100,
+                      use_pairs = FALSE,
+                      rel_widths = c(1, 0.35, 1, 0.3, 2),
+                      labels = c("overall", "top ASVs"),
+                      save_name = NULL)
 
 # ------------------------------------------------------------------------------
 #   Family-family version
@@ -185,8 +181,8 @@ fam1 <- fam1[retain_idx]
 fam2 <- fam2[retain_idx]
 family_pairs_top <- paste0(fam1, " - ", fam2)
 
-fam1 <- data$taxonomy[rug_asv$tax_idx1,6]
-fam2 <- data$taxonomy[rug_asv$tax_idx2,6]
+fam1 <- data$taxonomy[rug_obj$tax_idx1,6]
+fam2 <- data$taxonomy[rug_obj$tax_idx2,6]
 retain_idx <- !is.na(fam1) & !is.na(fam2)
 fam1 <- fam1[retain_idx]
 fam2 <- fam2[retain_idx]
@@ -195,6 +191,14 @@ family_pairs_all <- paste0(fam1, " - ", fam2)
 
 frequencies_subset <- table(family_pairs_top)
 frequencies <- table(family_pairs_all)
+
+# Detour for Lachno-Lachno numbers
+cat(paste0("Expected number of Lachno-Lachno pairs (2.5% of all Lachno-Lachno pairs): ",
+           round(frequencies[names(frequencies) == "Lachnospiraceae - Lachnospiraceae"]*0.025, 1),
+           "\n"))
+cat(paste0("Observed number of Lachno-Lachno pairs (2.5% of all Lachno-Lachno pairs): ",
+           round(frequencies_subset[names(frequencies_subset) == "Lachnospiraceae - Lachnospiraceae"], 1),
+           "\n"))
 
 # Test for enrichment statistically
 signif <- c()
@@ -212,7 +216,7 @@ for(fam in names(frequencies_subset)) {
   enrichment <- rbind(enrichment,
                       data.frame(name = fam,
                                  type = "family-pair",
-                                 location = "2.5% most universal ASVs",
+                                 location = "top ASVs",
                                  pvalue = prob))
   if(prob < 0.05) {
     signif <- c(signif, fam)
@@ -220,19 +224,19 @@ for(fam in names(frequencies_subset)) {
   }
 }
 
-plot_enrichment(frequencies_subset1 = frequencies_subset,
-                frequencies_subset2 = NULL,
-                frequencies = frequencies,
-                significant_families1 = signif,
-                significant_families2 = NULL,
-                plot_height = 6,
-                plot_width = 6,
-                legend_topmargin = 100,
-                use_pairs = TRUE,
-                rel_widths = c(1, 0.35, 1, 0.3, 2.75),
-                labels = c("overall", "2.5% most universal ASVs"),
-                save_name = "F4-enrichment-pair.png")
-
+p5 <- plot_enrichment(frequencies_subset1 = frequencies_subset,
+                      frequencies_subset2 = NULL,
+                      frequencies = frequencies,
+                      significant_families1 = signif,
+                      significant_families2 = NULL,
+                      plot_height = 6,
+                      plot_width = 6,
+                      legend_topmargin = 100,
+                      use_pairs = TRUE,
+                      rel_widths = c(1, 0.35, 1, 0.3, 3.75),
+                      labels = c("overall", "top ASVs"),
+                      save_name = NULL)
+p5
 enrichment <- enrichment %>%
   arrange(type, name)
 colnames(enrichment) <- c("ASV family or pair name",
@@ -240,7 +244,7 @@ colnames(enrichment) <- c("ASV family or pair name",
                           "Enrichment evaluated in",
                           "P-value (Fisher's exact test)")
 write.table(enrichment,
-            file = file.path("output", "Fig4_table.tsv"),
+            file = file.path("output", "Fig3_table.tsv"),
             sep = "\t",
             quote = FALSE,
             row.names = FALSE)
@@ -286,22 +290,50 @@ fam_df <- fam_df %>%
 
 graph <- graph_from_data_frame(edge_df, node_df, directed = FALSE)
 
+family_palette <- readRDS(file.path("output", "family_palette.rds"))
+
 # Not specifying the layout - defaults to "auto"
 # fr and kk layouts are ok here
-p <- ggraph(graph, layout = "fr") +
+p4 <- ggraph(graph, layout = "fr") +
   geom_edge_link(aes(color = Sign), width = 2, alpha = 1) +
-  geom_node_point(aes(color = Family), size = 5) +
-  geom_node_label(aes(label = taxon_idx), size = 3, repel = TRUE) +
+  geom_node_point(aes(color = Family), size = 4) +
+  geom_node_label(aes(label = taxon_idx), size = 2.5, repel = TRUE) +
   scale_colour_manual(values = family_palette[order(names(family_palette))]) +
   scale_edge_colour_manual(values = c(negative = "gray", positive = "black")) +
   labs(x = "dimension 1",
        y = "dimension 2") +
   theme_bw() +
-  guides(edge_color = guide_legend(title = "Consensus\ncorrelation sign"))
+  guides(edge_color = "none")
 
-ggsave(file.path("output", "figures", "F5.svg"),
+p2_padded <- plot_grid(NULL, p2, NULL,
+                       ncol = 1,
+                       rel_heights = c(0.05, 1, -0.02))
+p3_padded <- plot_grid(NULL, p3,
+                       ncol = 2,
+                       rel_widths = c(0.05, 1))
+prow1 <- plot_grid(p1, p2_padded, p3_padded,
+                   ncol = 3,
+                   rel_widths = c(1, 0.5, 0.8),
+                   scale = 0.96,
+                   labels = c("A", "B", "C"),
+                   label_size = 18,
+                   label_x = -0.015)
+
+prow2 <- plot_grid(p4, NULL, p5,
+                   ncol = 3,
+                   rel_widths = c(1, 0.1, 1),
+                   scale = 0.96,
+                   labels = c("D", "", "E"),
+                   label_size = 18,
+                   label_x = -0.015)
+
+p <- plot_grid(prow1, NULL, prow2,
+               ncol = 1,
+               rel_heights = c(1, 0.1, 1))
+
+ggsave(file.path("output", "figures", "F3.png"),
        p,
        units = "in",
        dpi = 100,
-       height = 7,
-       width = 9)
+       height = 8,
+       width = 12)

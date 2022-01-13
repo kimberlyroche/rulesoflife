@@ -9,11 +9,14 @@ library(reshape2)
 library(lubridate)
 library(ggridges)
 library(RColorBrewer)
+library(cowplot)
+library(frechet)
 
 # ------------------------------------------------------------------------------
 #
-#   Figure 4 - Comparing results to those from other data sets, both host-
-#              associated and free-living bacterial communities
+#   Figure 4 - Comparing results to those from other data sets (Johnson et al.
+#              and DIABIMMUNE); the "titration" experiment to estimate population-
+#              versus host-level signal is performed at the end of this script
 #
 # ------------------------------------------------------------------------------
 
@@ -54,12 +57,9 @@ filter_taxa2 <- function(host_columns, counts, min_relab = 1/10000) {
 #   `counts` object
 # `host_dates` is a list (length = num. hosts) of host sample dates associated
 #   with the columns in `counts`
-# `depth` is the number of posterior samples to draw (depth = 1 is MAP
-#   estimation)
-fit_model <- function(counts, host_columns, host_dates, dataset_name, depth = 1) {
+fit_model <- function(counts, host_columns, host_dates, dataset_name) {
   D <- nrow(counts)
-  n_interactions <- (D^2 - D)/2
-  vectorized_Sigmas <- array(NA, dim = c(length(host_columns), n_interactions, depth))
+  matrix_Sigmas <- array(NA, dim = c(D, D, length(host_columns)))
 
   pair_indices <- NULL
   for(subject in 1:length(host_columns)) {
@@ -84,28 +84,29 @@ fit_model <- function(counts, host_columns, host_dates, dataset_name, depth = 1)
         SE(X, sigma = 1, rho = rho, jitter = 1e-08)
       }
 
-      if(depth == 1) {
-        n_samples <- 0
-        ret_mean <- TRUE
-      } else {
-        n_samples <- 20
-        ret_mean <- FALSE
-      }
-
       fit <- fido::basset(Y, X, taxa_covariance$upsilon, Theta, Gamma, taxa_covariance$Xi,
-                          n_samples = n_samples, ret_mean = ret_mean)
+                          n_samples = 0, ret_mean = TRUE)
 
       fit.clr <- to_clr(fit)
-      Sigmas <- fit.clr$Sigma
-      for(k in 1:depth) {
-        temp <- cov2cor(Sigmas[,,k])
-        if(is.null(pair_indices)) {
-          pair_indices <- combn(D:1, m = 2)[2:1,((D^2 - D)/2):1]
-        }
-        temp <- c(temp[upper.tri(temp, diag = F)])
-        vectorized_Sigmas[subject,,k] <- temp
-      }
+      matrix_Sigmas[,,subject] <- cov2cor(fit.clr$Sigma[,,1])
     }
+  }
+  matrix_Sigmas
+}
+
+vectorize_results <- function(matrix_Sigmas) {
+  hosts <- dim(matrix_Sigmas)[3]
+  D <- dim(matrix_Sigmas)[1]
+  n_interactions <- (D^2 - D)/2
+  pair_indices <- NULL
+  vectorized_Sigmas <- matrix(NA, hosts, n_interactions)
+  for(k in 1:hosts) {
+    temp <- matrix_Sigmas[,,k]
+    if(is.null(pair_indices)) {
+      pair_indices <- combn(D:1, m = 2)[2:1,((D^2 - D)/2):1]
+    }
+    temp <- c(temp[upper.tri(temp, diag = F)])
+    vectorized_Sigmas[k,] <- temp
   }
   list(Sigmas = vectorized_Sigmas, pairs = pair_indices)
 }
@@ -200,7 +201,6 @@ for(i in 1:length(subjects)) {
 
 # Filter counts
 counts <- filter_taxa2(host_columns, counts)$counts
-dim(counts)
 
 # Stats
 study_stats <- rbind(study_stats,
@@ -210,18 +210,20 @@ study_stats <- rbind(study_stats,
                                 n_taxa = nrow(counts),
                                 tax_level = "species"))
 
-#saved_fn <- file.path("input", "johnson2019", "fitted_results.rds")
-#if(file.exists(saved_fn)) {
-#  johnson <- readRDS(saved_fn)
-#} else {
-  johnson <- fit_model(counts, host_columns, host_dates, dataset_name = "Johnson et al.", depth = 1)
+saved_fn <- file.path("input", "johnson2019", "fitted_results.rds")
+if(file.exists(saved_fn)) {
+  johnson <- readRDS(saved_fn)
+  johnson_vec <- vectorize_results(johnson)
+} else {
+  johnson <- fit_model(counts, host_columns, host_dates, dataset_name = "Johnson et al.")
+  johnson_vec <- vectorize_results(johnson)
   saveRDS(johnson, saved_fn)
-#}
-pairs_johnson <- johnson$pairs
-johnson <- johnson$Sigmas[,,1]
+}
+pairs_johnson <- johnson_vec$pairs
+johnson_vec <- johnson_vec$Sigmas
 
 # Plot rug
-rug <- johnson[,order(colMeans(johnson))]
+rug <- johnson_vec[,order(colMeans(johnson_vec))]
 rug <- cbind(1:nrow(rug), rug)
 colnames(rug) <- c("host", paste0(1:(ncol(rug)-1)))
 rug <- pivot_longer(as.data.frame(rug), !host, names_to = "pair", values_to = "correlation")
@@ -250,8 +252,8 @@ ggsave(file.path("output", "figures", "Johnson_rug.png"),
        height = 4,
        width = 6)
 
-scores <- apply(johnson, 2, function(x) calc_universality_score(x, return_pieces = TRUE))
-consensus_sign <- apply(johnson, 2, calc_consensus_sign)
+scores <- apply(johnson_vec, 2, function(x) calc_universality_score(x, return_pieces = TRUE))
+consensus_sign <- apply(johnson_vec, 2, calc_consensus_sign)
 
 all_scores <- rbind(all_scores,
                     data.frame(X1 = scores[1,],
@@ -261,70 +263,6 @@ all_scores <- rbind(all_scores,
                                sign = consensus_sign,
                                dataset = "Johnson et al.",
                                n_subjects = length(subjects)))
-
-# ------------------------------------------------------------------------------
-#   Dethlefsen & Relman
-# ------------------------------------------------------------------------------
-
-# Read count table
-counts <- read.delim(file.path("input", "dethlefsen_relman2011", "sd01.txt"),
-                     sep = "\t")
-
-# Basic filtering
-# counts <- counts[filter_taxa(counts[,2:163]),]
-counts <- counts[,2:163]
-
-# Read the sampling schedule metadata
-metadata <- read.delim(file.path("input", "dethlefsen_relman2011", "sampling_schedule.txt"),
-                       header = FALSE,
-                       sep = "\t")
-colnames(metadata) <- c("sample", "date")
-metadata$date <- as.Date(mdy(metadata$date))
-
-host_columns <- list(unname(which(sapply(metadata$sample, function(x) str_detect(x, "^D") ))),
-                     unname(which(sapply(metadata$sample, function(x) str_detect(x, "^E") ))),
-                     unname(which(sapply(metadata$sample, function(x) str_detect(x, "^F") ))))
-
-host_dates <- list()
-for(i in 1:3) {
-  subject_dates <- metadata[host_columns[[i]],]$date
-  host_dates[[i]] <- sapply(subject_dates, function(x) {
-    difftime(x, subject_dates[1], units = "days")
-  })
-}
-
-# Filter counts
-counts <- filter_taxa2(host_columns, counts)$counts
-print(dim(counts))
-
-# Stats
-study_stats <- rbind(study_stats,
-                     data.frame(name = "Dethlefsen & Relman",
-                                n_subjects = 3,
-                                n_samples = ncol(counts),
-                                n_taxa = nrow(counts),
-                                tax_level = "unknown"))
-
-#saved_fn <- file.path("input", "dethlefsen_relman2011", "fitted_results.rds")
-#if(file.exists(saved_fn)) {
-#  dethlefsen_relman <- readRDS(saved_fn)
-#} else {
-  dethlefsen_relman <- fit_model(counts, host_columns, host_dates, "Dethlefsen & Relman", depth = 1)
-  saveRDS(dethlefsen_relman, saved_fn)
-#}
-pairs_df <- dethlefsen_relman$pairs
-dethlefsen_relman <- dethlefsen_relman$Sigmas[,,1]
-scores <- apply(dethlefsen_relman, 2, function(x) calc_universality_score(x, return_pieces = TRUE))
-consensus_sign <- apply(dethlefsen_relman, 2, calc_consensus_sign)
-
-all_scores <- rbind(all_scores,
-                    data.frame(X1 = scores[1,],
-                               X2 = scores[2,],
-                               idx1 = pairs_df[1,],
-                               idx2 = pairs_df[2,],
-                               sign = consensus_sign,
-                               dataset = "Dethlefsen & Relman",
-                               n_subjects = 3))
 
 # ------------------------------------------------------------------------------
 #   DIABIMMUNE
@@ -374,7 +312,6 @@ for(i in 1:length(host_dates)) {
 
 # Filter counts
 counts <- filter_taxa2(host_columns, counts)$counts
-print(dim(counts))
 
 # Stats
 study_stats <- rbind(study_stats,
@@ -384,18 +321,20 @@ study_stats <- rbind(study_stats,
                                 n_taxa = nrow(counts),
                                 tax_level = "unknown"))
 
-#saved_fn <- file.path("input", "DIABIMMUNE", "fitted_results.rds")
-#if(file.exists(saved_fn)) {
-#  diabimmune <- readRDS(saved_fn)
-#} else {
-  diabimmune <- fit_model(counts, host_columns, host_dates, "DIABIMMUNE", depth = 1)
+saved_fn <- file.path("input", "DIABIMMUNE", "fitted_results.rds")
+if(file.exists(saved_fn)) {
+  diabimmune <- readRDS(saved_fn)
+  diabimmune_vec <- vectorize_results(diabimmune)
+} else {
+  diabimmune <- fit_model(counts, host_columns, host_dates, "DIABIMMUNE")
+  diabimmune_vec <- vectorize_results(diabimmune)
   saveRDS(diabimmune, saved_fn)
-#}
-pairs_diabimmune <- diabimmune$pairs
-diabimmune <- diabimmune$Sigmas[,,1]
+}
+pairs_diabimmune <- diabimmune_vec$pairs
+diabimmune_vec <- diabimmune_vec$Sigmas
 
 # Plot rug
-rug <- diabimmune[,order(colMeans(diabimmune))]
+rug <- diabimmune_vec[,order(colMeans(diabimmune_vec))]
 rug <- cbind(1:nrow(rug), rug)
 colnames(rug) <- c("host", paste0(1:(ncol(rug)-1)))
 rug <- pivot_longer(as.data.frame(rug), !host, names_to = "pair", values_to = "correlation")
@@ -424,8 +363,8 @@ ggsave(file.path("output", "figures", "DIABIMMUNE_rug.png"),
        height = 4,
        width = 6)
 
-scores <- apply(diabimmune, 2, function(x) calc_universality_score(x, return_pieces = TRUE))
-consensus_sign <- apply(diabimmune, 2, calc_consensus_sign)
+scores <- apply(diabimmune_vec, 2, function(x) calc_universality_score(x, return_pieces = TRUE))
+consensus_sign <- apply(diabimmune_vec, 2, calc_consensus_sign)
 
 all_scores <- rbind(all_scores,
                     data.frame(X1 = scores[1,],
@@ -437,388 +376,454 @@ all_scores <- rbind(all_scores,
                                n_subjects = length(use_subjects)))
 
 # ------------------------------------------------------------------------------
-#   Grossart et al.
+#   Dethlefsen & Relman
+#
+#   Omitted due to small host number
 # ------------------------------------------------------------------------------
 
-# Read count table
-counts <- readRDS(file.path("input", "grossart_lakes", "data.rds"))
-counts <- otu_table(counts)@.Data
-
-# Filter data
-# counts <- counts[filter_taxa(counts),]
-
-metadata <- read.delim(file.path("input", "grossart_lakes", "945_20190102-074005.txt"),
-                       header = TRUE,
-                       sep = "\t")
-
-# Look at the sample numbers per unique combo of depth and filter poresize for
-# each lake. We'll hand pick similar conditions with large sample numbers!
-conditions <- list(c("freshwater metagenome, Lake Breiter Luzin", "0-5", "0.2micron"),
-                   c("freshwater metagenome, Lake Grosse Fuchskuhle", "0-2", "0.2micron"),
-                   c("freshwater metagenome, Lake Melzer", "0-1", "0.2micron"),
-                   c("freshwater metagenome, Lake Stechlin", "0-10", "0.2micron"),
-                   c("freshwater metagenome, Lake Tiefwaren", "0-10", "0.2micron"))
-
-# cycle through and collect the samples for all of these
-host_columns <- list()
-host_dates <- list()
-for(i in 1:length(conditions)) {
-  focal_md <- metadata[metadata$description == conditions[[i]][1] &
-                         metadata$depth == conditions[[i]][2] &
-                         metadata$filter_poresize == conditions[[i]][3],]
-  sample_names <- focal_md$sample_name
-  timestamps <- focal_md$collection_timestamp
-  reorder <- order(timestamps)
-  sample_names <- sample_names[reorder]
-  timestamps <- timestamps[reorder]
-
-  # it looks like some sample names aren't in the count table?
-  matched_sample_names <- sample_names %in% colnames(counts)
-  sample_names <- sample_names[matched_sample_names]
-  timestamps <- timestamps[matched_sample_names]
-
-  baseline_date <- timestamps[1]
-  days_vector <- unname(sapply(timestamps, function(x) difftime(as.Date(x), as.Date(baseline_date), units = "days")) + 1)
-  host_columns[[i]] <- which(colnames(counts) %in% sample_names)
-  host_dates[[i]] <- days_vector
-}
-
-# Filter counts
-counts <- filter_taxa2(host_columns, counts)$counts
-print(dim(counts))
-
-# Stats
-study_stats <- rbind(study_stats,
-                     data.frame(name = "Grossart et al.",
-                                n_subjects = length(conditions),
-                                n_samples = ncol(counts),
-                                n_taxa = nrow(counts),
-                                tax_level = "unknown"))
-
-#saved_fn <- file.path("input", "grossart_lakes", "fitted_results.rds")
-#if(file.exists(saved_fn)) {
-#  grossart <- readRDS(saved_fn)
-#} else {
-  grossart <- fit_model(counts, host_columns, host_dates, "Grossart", depth = 1)
-  saveRDS(grossart, saved_fn)
-#}
-pairs_grossart <- grossart$pairs
-grossart <- grossart$Sigmas[,,1]
-scores <- apply(grossart, 2, function(x) calc_universality_score(x, return_pieces = TRUE))
-consensus_sign <- apply(grossart, 2, calc_consensus_sign)
-
-all_scores <- rbind(all_scores,
-                    data.frame(X1 = scores[1,],
-                               X2 = scores[2,],
-                               idx1 = pairs_grossart[1,],
-                               idx2 = pairs_grossart[2,],
-                               sign = consensus_sign,
-                               dataset = "Grossart et al.",
-                               n_subjects = length(conditions)))
+# # Read count table
+# counts <- read.delim(file.path("input", "dethlefsen_relman2011", "sd01.txt"),
+#                      sep = "\t")
+#
+# # Basic filtering
+# # counts <- counts[filter_taxa(counts[,2:163]),]
+# counts <- counts[,2:163]
+#
+# # Read the sampling schedule metadata
+# metadata <- read.delim(file.path("input", "dethlefsen_relman2011", "sampling_schedule.txt"),
+#                        header = FALSE,
+#                        sep = "\t")
+# colnames(metadata) <- c("sample", "date")
+# metadata$date <- as.Date(mdy(metadata$date))
+#
+# host_columns <- list(unname(which(sapply(metadata$sample, function(x) str_detect(x, "^D") ))),
+#                      unname(which(sapply(metadata$sample, function(x) str_detect(x, "^E") ))),
+#                      unname(which(sapply(metadata$sample, function(x) str_detect(x, "^F") ))))
+#
+# host_dates <- list()
+# for(i in 1:3) {
+#   subject_dates <- metadata[host_columns[[i]],]$date
+#   host_dates[[i]] <- sapply(subject_dates, function(x) {
+#     difftime(x, subject_dates[1], units = "days")
+#   })
+# }
+#
+# # Filter counts
+# counts <- filter_taxa2(host_columns, counts, min_relab = 1/1000)$counts
+#
+# # Stats
+# study_stats <- rbind(study_stats,
+#                      data.frame(name = "Dethlefsen & Relman",
+#                                 n_subjects = 3,
+#                                 n_samples = ncol(counts),
+#                                 n_taxa = nrow(counts),
+#                                 tax_level = "unknown"))
+#
+# saved_fn <- file.path("input", "dethlefsen_relman2011", "fitted_results.rds")
+# if(file.exists(saved_fn)) {
+#   dethlefsen_relman <- readRDS(saved_fn)
+# } else {
+#   dethlefsen_relman <- fit_model(counts, host_columns, host_dates, "Dethlefsen & Relman")
+#   saveRDS(dethlefsen_relman, saved_fn)
+# }
+# pairs_df <- dethlefsen_relman$pairs
+# dethlefsen_relman <- dethlefsen_relman$Sigmas[,,1]
+# scores <- apply(dethlefsen_relman, 2, function(x) calc_universality_score(x, return_pieces = TRUE))
+# consensus_sign <- apply(dethlefsen_relman, 2, calc_consensus_sign)
+#
+# all_scores <- rbind(all_scores,
+#                     data.frame(X1 = scores[1,],
+#                                X2 = scores[2,],
+#                                idx1 = pairs_df[1,],
+#                                idx2 = pairs_df[2,],
+#                                sign = consensus_sign,
+#                                dataset = "Dethlefsen & Relman",
+#                                n_subjects = 3))
 
 # ------------------------------------------------------------------------------
-#   McMahon et al.
+#   Allgaier & Grossart lakes
+#
+#   Omitted
 # ------------------------------------------------------------------------------
 
-# Read count table
-counts <- readRDS(file.path("input", "mcmahon_lakes", "data.rds"))
-counts <- otu_table(counts)@.Data
+# # Read count table
+# counts <- readRDS(file.path("input", "grossart_lakes", "data.rds"))
+# counts <- otu_table(counts)@.Data
+#
+# # Filter data
+# # counts <- counts[filter_taxa(counts),]
+#
+# metadata <- read.delim(file.path("input", "grossart_lakes", "945_20190102-074005.txt"),
+#                        header = TRUE,
+#                        sep = "\t")
+#
+# # Look at the sample numbers per unique combo of depth and filter poresize for
+# # each lake. We'll hand pick similar conditions with large sample numbers!
+# conditions <- list(c("freshwater metagenome, Lake Breiter Luzin", "0-5", "0.2micron"),
+#                    c("freshwater metagenome, Lake Grosse Fuchskuhle", "0-2", "0.2micron"),
+#                    c("freshwater metagenome, Lake Melzer", "0-1", "0.2micron"),
+#                    c("freshwater metagenome, Lake Stechlin", "0-10", "0.2micron"),
+#                    c("freshwater metagenome, Lake Tiefwaren", "0-10", "0.2micron"))
+#
+# # cycle through and collect the samples for all of these
+# host_columns <- list()
+# host_dates <- list()
+# for(i in 1:length(conditions)) {
+#   focal_md <- metadata[metadata$description == conditions[[i]][1] &
+#                          metadata$depth == conditions[[i]][2] &
+#                          metadata$filter_poresize == conditions[[i]][3],]
+#   sample_names <- focal_md$sample_name
+#   timestamps <- focal_md$collection_timestamp
+#   reorder <- order(timestamps)
+#   sample_names <- sample_names[reorder]
+#   timestamps <- timestamps[reorder]
+#
+#   # it looks like some sample names aren't in the count table?
+#   matched_sample_names <- sample_names %in% colnames(counts)
+#   sample_names <- sample_names[matched_sample_names]
+#   timestamps <- timestamps[matched_sample_names]
+#
+#   baseline_date <- timestamps[1]
+#   days_vector <- unname(sapply(timestamps, function(x) difftime(as.Date(x), as.Date(baseline_date), units = "days")) + 1)
+#   host_columns[[i]] <- which(colnames(counts) %in% sample_names)
+#   host_dates[[i]] <- days_vector
+# }
+#
+# # Filter counts
+# counts <- filter_taxa2(host_columns, counts, min_relab = 1/1e5)$counts
+#
+# # Stats
+# study_stats <- rbind(study_stats,
+#                      data.frame(name = "Grossart et al.",
+#                                 n_subjects = length(conditions),
+#                                 n_samples = ncol(counts),
+#                                 n_taxa = nrow(counts),
+#                                 tax_level = "unknown"))
+#
+# saved_fn <- file.path("input", "grossart_lakes", "fitted_results.rds")
+# if(file.exists(saved_fn)) {
+#   grossart <- readRDS(saved_fn)
+# } else {
+#   grossart <- fit_model(counts, host_columns, host_dates, "Grossart")
+#   saveRDS(grossart, saved_fn)
+# }
+# pairs_grossart <- grossart$pairs
+# grossart <- grossart$Sigmas[,,1]
+# scores <- apply(grossart, 2, function(x) calc_universality_score(x, return_pieces = TRUE))
+# consensus_sign <- apply(grossart, 2, calc_consensus_sign)
+#
+# all_scores <- rbind(all_scores,
+#                     data.frame(X1 = scores[1,],
+#                                X2 = scores[2,],
+#                                idx1 = pairs_grossart[1,],
+#                                idx2 = pairs_grossart[2,],
+#                                sign = consensus_sign,
+#                                dataset = "Grossart et al.",
+#                                n_subjects = length(conditions)))
 
-# Filter data
-# counts <- counts[filter_taxa(counts),]
+# ------------------------------------------------------------------------------
+#   Linz et al. lakes
+#
+#   Omitted
+# ------------------------------------------------------------------------------
 
-metadata <- read.delim(file.path("input", "mcmahon_lakes", "1288_20180418-110149.txt"),
-                       header = TRUE,
-                       sep = "\t")
-
-# lake short name to list index lookup
-# lake_names <- c("MA", "TB", "CB", "NS", "WSB", "SSB", "HK", "NSB")
-metadata$lake <- NA
-metadata$layer <- NA
-# append more useful columns to the metadata
-for(i in 1:nrow(metadata)) {
-  matches <- str_match_all(metadata$description[i], regex("^freshwater metagenome (\\D+)(\\d+)(\\D+)(\\d+)"))
-  lake_name <- matches[[1]][1,2]
-  if(lake_name != "NSb") {
-    layer <- str_match_all(lake_name, regex("[H|E]$"))
-    if(nrow(layer[[1]]) > 0) {
-      if(layer[[1]][1,1] == "H") {
-        # hypolimnion; deep water
-        metadata$lake[i] <- substr(lake_name, 1, str_length(lake_name)-1)
-        metadata$layer[i] <- "H"
-      } else {
-        # epilimnion; shallow water
-        metadata$lake[i] <- substr(lake_name, 1, str_length(lake_name)-1)
-        metadata$layer[i] <- "E"
-      }
-    } else {
-      metadata$lake[i] <- lake_name
-    }
-  }
-}
-
-host_columns_E <- list()
-host_columns_H <- list()
-host_dates_E <- list()
-host_dates_H <- list()
-for(i in 1:ncol(counts)) {
-  sample_id <- colnames(counts)[i]
-  metadata_idx <- which(metadata$sample_name == sample_id)
-  lake_name <- metadata$lake[metadata_idx]
-  layer <- metadata$layer[metadata_idx]
-  if(!is.na(layer) & !is.na(lake_name)) { # "NSb", the singleton
-    sample_date <- as.Date(metadata$collection_timestamp[metadata_idx])
-    if(layer == "E") {
-      if(lake_name %in% names(host_columns_E)) {
-        host_columns_E[[lake_name]] <- c(host_columns_E[[lake_name]], i)
-        host_dates_E[[lake_name]] <- c(host_dates_E[[lake_name]], sample_date)
-      } else {
-        host_columns_E[[lake_name]] <- c(i)
-        host_dates_E[[lake_name]] <- sample_date
-      }
-    } else {
-      if(lake_name %in% names(host_columns_H)) {
-        host_columns_H[[lake_name]] <- c(host_columns_H[[lake_name]], i)
-        host_dates_H[[lake_name]] <- c(host_dates_H[[lake_name]], sample_date)
-      } else {
-        host_columns_H[[lake_name]] <- c(i)
-        host_dates_H[[lake_name]] <- sample_date
-      }
-    }
-  }
-}
-
-# convert dates to days
-for(i in 1:length(host_dates_E)) {
-  baseline_date <- min(host_dates_E[[i]])
-  sample_days <- sapply(host_dates_E[[i]], function(x) difftime(x, baseline_date, units = "days")) + 1
-  host_dates_E[[i]] <- sample_days
-}
-for(i in 1:length(host_dates_H)) {
-  baseline_date <- min(host_dates_H[[i]])
-  sample_days <- sapply(host_dates_H[[i]], function(x) difftime(x, baseline_date, units = "days")) + 1
-  host_dates_H[[i]] <- sample_days
-}
-
-# Filter counts
-counts_E <- filter_taxa2(host_columns_E, counts)$counts
-print(dim(counts))
-counts_H <- filter_taxa2(host_columns_H, counts)$counts
-print(dim(counts))
-
-# Stats
-study_stats <- rbind(study_stats,
-                     data.frame(name = "McMahon et al.",
-                                n_subjects = length(unique(metadata$lake)),
-                                n_samples = ncol(counts),
-                                n_taxa = min(nrow(counts_E), nrow(counts_H)),
-                                tax_level = "unknown"))
-
-#saved_fn <- file.path("input", "mcmahon_lakes", "fitted_results.rds")
-#if(file.exists(saved_fn)) {
-#  mcmahon <- readRDS(saved_fn)
-#  mc_e <- mcmahon[[1]]
-#  mc_h <- mcmahon[[2]]
-#  rm(mcmahon)
-#} else {
-  mc_e <- fit_model(counts_E, host_columns_E, host_dates_E, "McMahon (epilimnion; shallow water)", depth = 1)
-  mc_h <- fit_model(counts_H, host_columns_H, host_dates_H, "McMahon (hypolimnion; deep water)", depth = 1)
-  saveRDS(list(mc_e, mc_h), saved_fn)
-#}
-pairs_mce <- mc_e$pairs
-mc_e <- mc_e$Sigmas[,,1]
-pairs_mch <- mc_h$pairs
-mc_h <- mc_h$Sigmas[,,1]
-scores <- apply(mc_e, 2, function(x) calc_universality_score(x, return_pieces = TRUE))
-consensus_sign <- apply(mc_e, 2, calc_consensus_sign)
-all_scores <- rbind(all_scores,
-                    data.frame(X1 = scores[1,],
-                               X2 = scores[2,],
-                               idx1 = pairs_mce[1,],
-                               idx2 = pairs_mce[2,],
-                               sign = consensus_sign,
-                               dataset = "McMahon et al. (epilimnion)",
-                               n_subjects = length(unique(metadata$lake))))
-scores <- apply(mc_h, 2, function(x) calc_universality_score(x, return_pieces = TRUE))
-consensus_sign <- apply(mc_h, 2, calc_consensus_sign)
-all_scores <- rbind(all_scores,
-                    data.frame(X1 = scores[1,],
-                               X2 = scores[2,],
-                               idx1 = pairs_mch[1,],
-                               idx2 = pairs_mch[2,],
-                               sign = consensus_sign,
-                               dataset = "McMahon et al. (hypolimnion)",
-                               n_subjects = length(unique(metadata$lake))))
+# # Read count table
+# counts <- readRDS(file.path("input", "mcmahon_lakes", "data.rds"))
+# counts <- otu_table(counts)@.Data
+#
+# # Filter data
+# # counts <- counts[filter_taxa(counts),]
+#
+# metadata <- read.delim(file.path("input", "mcmahon_lakes", "1288_20180418-110149.txt"),
+#                        header = TRUE,
+#                        sep = "\t")
+#
+# # lake short name to list index lookup
+# # lake_names <- c("MA", "TB", "CB", "NS", "WSB", "SSB", "HK", "NSB")
+# metadata$lake <- NA
+# metadata$layer <- NA
+# # append more useful columns to the metadata
+# for(i in 1:nrow(metadata)) {
+#   matches <- str_match_all(metadata$description[i], regex("^freshwater metagenome (\\D+)(\\d+)(\\D+)(\\d+)"))
+#   lake_name <- matches[[1]][1,2]
+#   if(lake_name != "NSb") {
+#     layer <- str_match_all(lake_name, regex("[H|E]$"))
+#     if(nrow(layer[[1]]) > 0) {
+#       if(layer[[1]][1,1] == "H") {
+#         # hypolimnion; deep water
+#         metadata$lake[i] <- substr(lake_name, 1, str_length(lake_name)-1)
+#         metadata$layer[i] <- "H"
+#       } else {
+#         # epilimnion; shallow water
+#         metadata$lake[i] <- substr(lake_name, 1, str_length(lake_name)-1)
+#         metadata$layer[i] <- "E"
+#       }
+#     } else {
+#       metadata$lake[i] <- lake_name
+#     }
+#   }
+# }
+#
+# host_columns_E <- list()
+# host_columns_H <- list()
+# host_dates_E <- list()
+# host_dates_H <- list()
+# for(i in 1:ncol(counts)) {
+#   sample_id <- colnames(counts)[i]
+#   metadata_idx <- which(metadata$sample_name == sample_id)
+#   lake_name <- metadata$lake[metadata_idx]
+#   layer <- metadata$layer[metadata_idx]
+#   if(!is.na(layer) & !is.na(lake_name)) { # "NSb", the singleton
+#     sample_date <- as.Date(metadata$collection_timestamp[metadata_idx])
+#     if(layer == "E") {
+#       if(lake_name %in% names(host_columns_E)) {
+#         host_columns_E[[lake_name]] <- c(host_columns_E[[lake_name]], i)
+#         host_dates_E[[lake_name]] <- c(host_dates_E[[lake_name]], sample_date)
+#       } else {
+#         host_columns_E[[lake_name]] <- c(i)
+#         host_dates_E[[lake_name]] <- sample_date
+#       }
+#     } else {
+#       if(lake_name %in% names(host_columns_H)) {
+#         host_columns_H[[lake_name]] <- c(host_columns_H[[lake_name]], i)
+#         host_dates_H[[lake_name]] <- c(host_dates_H[[lake_name]], sample_date)
+#       } else {
+#         host_columns_H[[lake_name]] <- c(i)
+#         host_dates_H[[lake_name]] <- sample_date
+#       }
+#     }
+#   }
+# }
+#
+# # convert dates to days
+# for(i in 1:length(host_dates_E)) {
+#   baseline_date <- min(host_dates_E[[i]])
+#   sample_days <- sapply(host_dates_E[[i]], function(x) difftime(x, baseline_date, units = "days")) + 1
+#   host_dates_E[[i]] <- sample_days
+# }
+# for(i in 1:length(host_dates_H)) {
+#   baseline_date <- min(host_dates_H[[i]])
+#   sample_days <- sapply(host_dates_H[[i]], function(x) difftime(x, baseline_date, units = "days")) + 1
+#   host_dates_H[[i]] <- sample_days
+# }
+#
+# # Filter counts
+# counts_E <- filter_taxa2(host_columns_E, counts, min_relab = 1/1e5)$counts
+# counts_H <- filter_taxa2(host_columns_H, counts, min_relab = 1/1e5)$counts
+#
+# # Stats
+# study_stats <- rbind(study_stats,
+#                      data.frame(name = "McMahon et al.",
+#                                 n_subjects = length(unique(metadata$lake)),
+#                                 n_samples = ncol(counts),
+#                                 n_taxa = min(nrow(counts_E), nrow(counts_H)),
+#                                 tax_level = "unknown"))
+#
+# saved_fn <- file.path("input", "mcmahon_lakes", "fitted_results.rds")
+# if(file.exists(saved_fn)) {
+#   mcmahon <- readRDS(saved_fn)
+#   mc_e <- mcmahon[[1]]
+#   mc_h <- mcmahon[[2]]
+#   rm(mcmahon)
+# } else {
+#   mc_e <- fit_model(counts_E, host_columns_E, host_dates_E, "McMahon (epilimnion; shallow water)")
+#   mc_h <- fit_model(counts_H, host_columns_H, host_dates_H, "McMahon (hypolimnion; deep water)")
+#   saveRDS(list(mc_e, mc_h), saved_fn)
+# }
+# pairs_mce <- mc_e$pairs
+# mc_e <- mc_e$Sigmas[,,1]
+# pairs_mch <- mc_h$pairs
+# mc_h <- mc_h$Sigmas[,,1]
+# scores <- apply(mc_e, 2, function(x) calc_universality_score(x, return_pieces = TRUE))
+# consensus_sign <- apply(mc_e, 2, calc_consensus_sign)
+# all_scores <- rbind(all_scores,
+#                     data.frame(X1 = scores[1,],
+#                                X2 = scores[2,],
+#                                idx1 = pairs_mce[1,],
+#                                idx2 = pairs_mce[2,],
+#                                sign = consensus_sign,
+#                                dataset = "McMahon et al. (epilimnion)",
+#                                n_subjects = length(unique(metadata$lake))))
+# scores <- apply(mc_h, 2, function(x) calc_universality_score(x, return_pieces = TRUE))
+# consensus_sign <- apply(mc_h, 2, calc_consensus_sign)
+# all_scores <- rbind(all_scores,
+#                     data.frame(X1 = scores[1,],
+#                                X2 = scores[2,],
+#                                idx1 = pairs_mch[1,],
+#                                idx2 = pairs_mch[2,],
+#                                sign = consensus_sign,
+#                                dataset = "McMahon et al. (hypolimnion)",
+#                                n_subjects = length(unique(metadata$lake))))
 
 # ------------------------------------------------------------------------------
 #   David et al.
 #
-#   Note: This data set takes a long time to fit!
+#   Omitted due to small host number
 # ------------------------------------------------------------------------------
 
-# Parse counts
-counts <- read.delim(file.path("input", "david2014", "otu.table.ggref"),
-                     header = TRUE,
-                     sep = "\t")
-
-metadata <- read.table(file.path("input", "david2014", "13059_2013_3286_MOESM18_ESM.csv"),
-                       header = TRUE,
-                       sep = ",")
-
-sample_labels <- metadata$X
-subj_labels <- metadata$AGE # subject A is 26, subject B is 36
-day_labels <- metadata$COLLECTION_DAY
-subj_labels[subj_labels == 26] <- "A"
-subj_labels[subj_labels == 36] <- "B"
-
-# Strip character from the count column names
-sample_labels <- sapply(sample_labels, function(x) {
-  str_replace(x, "\\.\\d+", "")
-})
-sample_labels <- unname(sample_labels)
-
-# Remove saliva samples
-keep_idx <- which(!sapply(sample_labels, function(x) {
-  str_detect(x, "Saliva")
-}))
-subj_labels <- subj_labels[keep_idx]
-sample_labels <- sample_labels[keep_idx]
-day_labels <- day_labels[keep_idx]
-
-# Unclude columns in counts that are in sample_labels
-counts <- counts[,colnames(counts) %in% sample_labels]
-keep_idx <- sample_labels %in% colnames(counts)
-sample_labels <- sample_labels[keep_idx]
-subj_labels <- subj_labels[keep_idx]
-day_labels <- day_labels[keep_idx]
-
-subj_A_idx <- c()
-subj_A_days <- c()
-subj_B_idx <- c()
-subj_B_days <- c()
-for(i in 1:length(colnames(counts))) {
-  idx <- which(sample_labels == colnames(counts)[i])
-  if(subj_labels[idx] == "A") {
-    subj_A_idx <- c(subj_A_idx, i)
-    subj_A_days <- c(subj_A_days, day_labels[idx])
-  } else {
-    subj_B_idx <- c(subj_B_idx, i)
-    subj_B_days <- c(subj_B_days, day_labels[idx])
-  }
-}
-
-subj_A_counts <- counts[,subj_A_idx]
-subj_B_counts <- counts[,subj_B_idx]
-
-reorder <- order(subj_A_days)
-subj_A_days <- subj_A_days[reorder]
-subj_A_counts <- subj_A_counts[,reorder]
-
-reorder <- order(subj_B_days)
-subj_B_days <- subj_B_days[reorder]
-subj_B_counts <- subj_B_counts[,reorder]
-
-counts <- cbind(subj_A_counts, subj_B_counts)
-
-# Filter data
-# counts <- counts[filter_taxa(counts),]
-
-host_columns <- list(1:length(subj_A_days), (length(subj_A_days) + 1):ncol(counts)) # individuals 1, 2
-host_dates <- list(subj_A_days, subj_B_days)
-
-# Filter counts
-counts <- filter_taxa2(host_columns, counts, min_relab = 1/1000)$counts
-print(dim(counts))
-
-# Stats
-study_stats <- rbind(study_stats,
-                     data.frame(name = "David et al.",
-                                n_subjects = 2,
-                                n_samples = ncol(counts),
-                                n_taxa = nrow(counts),
-                                tax_level = "ASV/OTU"))
-
-#saved_fn <- file.path("input", "david2014", "fitted_results.rds")
-#if(file.exists(saved_fn)) {
-#  david <- readRDS(saved_fn)
-#} else {
-  david <- fit_model(counts, host_columns, host_dates, "David et al.", depth = 1)
-  saveRDS(david, saved_fn)
-#}
-pairs_david <- david$pairs
-david <- david$Sigmas[,,1]
-scores <- apply(david, 2, function(x) calc_universality_score(x, return_pieces = TRUE))
-consensus_sign <- apply(david, 2, calc_consensus_sign)
-all_scores <- rbind(all_scores,
-                    data.frame(X1 = scores[1,],
-                               X2 = scores[2,],
-                               idx1 = pairs_david[1,],
-                               idx2 = pairs_david[2,],
-                               sign = consensus_sign,
-                               dataset = "David et al.",
-                               n_subjects = 2))
+# # Parse counts
+# counts <- read.delim(file.path("input", "david2014", "otu.table.ggref"),
+#                      header = TRUE,
+#                      sep = "\t")
+#
+# metadata <- read.table(file.path("input", "david2014", "13059_2013_3286_MOESM18_ESM.csv"),
+#                        header = TRUE,
+#                        sep = ",")
+#
+# sample_labels <- metadata$X
+# subj_labels <- metadata$AGE # subject A is 26, subject B is 36
+# day_labels <- metadata$COLLECTION_DAY
+# subj_labels[subj_labels == 26] <- "A"
+# subj_labels[subj_labels == 36] <- "B"
+#
+# # Strip character from the count column names
+# sample_labels <- sapply(sample_labels, function(x) {
+#   str_replace(x, "\\.\\d+", "")
+# })
+# sample_labels <- unname(sample_labels)
+#
+# # Remove saliva samples
+# keep_idx <- which(!sapply(sample_labels, function(x) {
+#   str_detect(x, "Saliva")
+# }))
+# subj_labels <- subj_labels[keep_idx]
+# sample_labels <- sample_labels[keep_idx]
+# day_labels <- day_labels[keep_idx]
+#
+# # Unclude columns in counts that are in sample_labels
+# counts <- counts[,colnames(counts) %in% sample_labels]
+# keep_idx <- sample_labels %in% colnames(counts)
+# sample_labels <- sample_labels[keep_idx]
+# subj_labels <- subj_labels[keep_idx]
+# day_labels <- day_labels[keep_idx]
+#
+# subj_A_idx <- c()
+# subj_A_days <- c()
+# subj_B_idx <- c()
+# subj_B_days <- c()
+# for(i in 1:length(colnames(counts))) {
+#   idx <- which(sample_labels == colnames(counts)[i])
+#   if(subj_labels[idx] == "A") {
+#     subj_A_idx <- c(subj_A_idx, i)
+#     subj_A_days <- c(subj_A_days, day_labels[idx])
+#   } else {
+#     subj_B_idx <- c(subj_B_idx, i)
+#     subj_B_days <- c(subj_B_days, day_labels[idx])
+#   }
+# }
+#
+# subj_A_counts <- counts[,subj_A_idx]
+# subj_B_counts <- counts[,subj_B_idx]
+#
+# reorder <- order(subj_A_days)
+# subj_A_days <- subj_A_days[reorder]
+# subj_A_counts <- subj_A_counts[,reorder]
+#
+# reorder <- order(subj_B_days)
+# subj_B_days <- subj_B_days[reorder]
+# subj_B_counts <- subj_B_counts[,reorder]
+#
+# counts <- cbind(subj_A_counts, subj_B_counts)
+#
+# # Filter data
+# # counts <- counts[filter_taxa(counts),]
+#
+# host_columns <- list(1:length(subj_A_days), (length(subj_A_days) + 1):ncol(counts)) # individuals 1, 2
+# host_dates <- list(subj_A_days, subj_B_days)
+#
+# # Filter counts
+# counts <- filter_taxa2(host_columns, counts, min_relab = 1/1000)$counts
+#
+# # Stats
+# study_stats <- rbind(study_stats,
+#                      data.frame(name = "David et al.",
+#                                 n_subjects = 2,
+#                                 n_samples = ncol(counts),
+#                                 n_taxa = nrow(counts),
+#                                 tax_level = "ASV/OTU"))
+#
+# saved_fn <- file.path("input", "david2014", "fitted_results.rds")
+# if(file.exists(saved_fn)) {
+#   david <- readRDS(saved_fn)
+# } else {
+#   david <- fit_model(counts, host_columns, host_dates, "David et al.")
+#   saveRDS(david, saved_fn)
+# }
+# pairs_david <- david$pairs
+# david <- david$Sigmas[,,1]
+# scores <- apply(david, 2, function(x) calc_universality_score(x, return_pieces = TRUE))
+# consensus_sign <- apply(david, 2, calc_consensus_sign)
+# all_scores <- rbind(all_scores,
+#                     data.frame(X1 = scores[1,],
+#                                X2 = scores[2,],
+#                                idx1 = pairs_david[1,],
+#                                idx2 = pairs_david[2,],
+#                                sign = consensus_sign,
+#                                dataset = "David et al.",
+#                                n_subjects = 2))
 
 # ------------------------------------------------------------------------------
 #   Caporaso et al.
+#
+#   Omitted due to small host number
 # ------------------------------------------------------------------------------
 
-# Read count tables; OTUs all agree -- already checked
-counts_1 <- read.table(file.path("input", "caporaso2011", "F4_feces_L6.txt"),
-                       header = FALSE,
-                       sep = "\t")
-counts_1 <- counts_1[,2:ncol(counts_1)]
-
-counts_2 <- read.table(file.path("input", "caporaso2011", "M3_feces_L6.txt"),
-                       header = FALSE,
-                       sep = "\t")
-counts_2 <- counts_2[,2:ncol(counts_2)]
-
-counts <- cbind(counts_1, counts_2)
-
-# Filter low abundance taxa
-# The first row consists of sample day identifiers
-sample_days <- counts[1,]
-# counts <- counts[c(TRUE, filter_taxa(counts[2:nrow(counts),])),]
-counts <- counts[2:nrow(counts),]
-
-host_columns <- list(1:ncol(counts_1), (ncol(counts_1)+1):ncol(counts)) # individuals 1, 2
-host_dates <- list()
-for(i in 1:2) {
-  # host_dates[[i]] <- unname(unlist(counts[1,host_columns[[i]]]))
-  host_dates[[i]] <- unname(unlist(sample_days[host_columns[[i]]]))
-}
-
-# Filter counts
-counts <- filter_taxa2(host_columns, counts, min_relab = 1/1000)$counts
-print(dim(counts))
-
-# Stats
-study_stats <- rbind(study_stats,
-                     data.frame(name = "Caporaso et al.",
-                                n_subjects = 2,
-                                n_samples = ncol(counts),
-                                n_taxa = nrow(counts),
-                                tax_level = "unknown"))
-
-#saved_fn <- file.path("input", "caporaso2011", "fitted_results.rds")
-#if(file.exists(saved_fn)) {
-#  caporaso <- readRDS(saved_fn)
-#} else {
-  caporaso <- fit_model(counts[2:nrow(counts),], host_columns, host_dates, "Caporaso et al.", depth = 1)
-  saveRDS(caporaso, saved_fn)
-#}
-pairs_caporaso <- caporaso$pairs
-caporaso <- caporaso$Sigmas[,,1]
-scores <- apply(caporaso, 2, function(x) calc_universality_score(x, return_pieces = TRUE))
-consensus_sign <- apply(caporaso, 2, calc_consensus_sign)
-all_scores <- rbind(all_scores,
-                    data.frame(X1 = scores[1,],
-                               X2 = scores[2,],
-                               idx1 = pairs_caporaso[1,],
-                               idx2 = pairs_caporaso[2,],
-                               sign = consensus_sign,
-                               dataset = "Caporaso et al.",
-                               n_subjects = 2))
+# # Read count tables; OTUs all agree -- already checked
+# counts_1 <- read.table(file.path("input", "caporaso2011", "F4_feces_L6.txt"),
+#                        header = FALSE,
+#                        sep = "\t")
+# counts_1 <- counts_1[,2:ncol(counts_1)]
+#
+# counts_2 <- read.table(file.path("input", "caporaso2011", "M3_feces_L6.txt"),
+#                        header = FALSE,
+#                        sep = "\t")
+# counts_2 <- counts_2[,2:ncol(counts_2)]
+#
+# counts <- cbind(counts_1, counts_2)
+#
+# # Filter low abundance taxa
+# # The first row consists of sample day identifiers
+# sample_days <- counts[1,]
+# # counts <- counts[c(TRUE, filter_taxa(counts[2:nrow(counts),])),]
+# counts <- counts[2:nrow(counts),]
+#
+# host_columns <- list(1:ncol(counts_1), (ncol(counts_1)+1):ncol(counts)) # individuals 1, 2
+# host_dates <- list()
+# for(i in 1:2) {
+#   # host_dates[[i]] <- unname(unlist(counts[1,host_columns[[i]]]))
+#   host_dates[[i]] <- unname(unlist(sample_days[host_columns[[i]]]))
+# }
+#
+# # Filter counts
+# counts <- filter_taxa2(host_columns, counts, min_relab = 1/1000)$counts
+#
+# # Stats
+# study_stats <- rbind(study_stats,
+#                      data.frame(name = "Caporaso et al.",
+#                                 n_subjects = 2,
+#                                 n_samples = ncol(counts),
+#                                 n_taxa = nrow(counts),
+#                                 tax_level = "unknown"))
+#
+# saved_fn <- file.path("input", "caporaso2011", "fitted_results.rds")
+# if(file.exists(saved_fn)) {
+#   caporaso <- readRDS(saved_fn)
+# } else {
+#   caporaso <- fit_model(counts[2:nrow(counts),], host_columns, host_dates, "Caporaso et al.")
+#   saveRDS(caporaso, saved_fn)
+# }
+# pairs_caporaso <- caporaso$pairs
+# caporaso <- caporaso$Sigmas[,,1]
+# scores <- apply(caporaso, 2, function(x) calc_universality_score(x, return_pieces = TRUE))
+# consensus_sign <- apply(caporaso, 2, calc_consensus_sign)
+# all_scores <- rbind(all_scores,
+#                     data.frame(X1 = scores[1,],
+#                                X2 = scores[2,],
+#                                idx1 = pairs_caporaso[1,],
+#                                idx2 = pairs_caporaso[2,],
+#                                sign = consensus_sign,
+#                                dataset = "Caporaso et al.",
+#                                n_subjects = 2))
 
 # ------------------------------------------------------------------------------
 #   Amboseli baboons
@@ -842,16 +847,14 @@ all_scores <- rbind(all_scores,
 #               the most universal?
 # ------------------------------------------------------------------------------
 
-if(FALSE) {
-  for(this_dataset in c("Johnson et al.", "DIABIMMUNE", "Amboseli")) {
-    x <- all_scores[all_scores$dataset == this_dataset,]$X2
-    y <- all_scores[all_scores$dataset == this_dataset,]$X1
+for(this_dataset in c("Johnson et al.", "DIABIMMUNE", "Amboseli")) {
+  x <- all_scores[all_scores$dataset == this_dataset,]$X2
+  y <- all_scores[all_scores$dataset == this_dataset,]$X1
 
-    cat(paste0(toupper(this_dataset),
-               " Spearman cor. betw. % agreement and median assoc.: ",
-               round(cor(x, y, method = "spearman"), 3),
-               "\n"))
-  }
+  cat(paste0(toupper(this_dataset),
+             " Spearman cor. betw. % agreement and median assoc.: ",
+             round(cor(x, y, method = "spearman"), 3),
+             "\n"))
 }
 
 # ------------------------------------------------------------------------------
@@ -859,178 +862,177 @@ if(FALSE) {
 #               positive associations?
 # ------------------------------------------------------------------------------
 
-if(FALSE) {
-  for(this_dataset in c("Johnson et al.", "DIABIMMUNE", "Amboseli")) {
-    subset_scores <- all_scores %>%
-      filter(dataset == this_dataset) %>%
-      mutate(score = X1*X2) %>%
-      arrange(desc(score))
-    n_pairs <- nrow(subset_scores)
-    top_1 <- round(n_pairs * 0.01)
-    top_2p5 <- round(n_pairs * 0.025)
-    pn_tally_1 <- subset_scores %>%
-      slice(1:top_1) %>%
-      group_by(sign) %>%
-      tally()
-    ppos_1 <- pn_tally_1 %>%
-      mutate(n_all = sum(n)) %>%
-      filter(sign == 1) %>%
-      mutate(prop = n/n_all) %>%
-      pull(prop)
-    pn_tally_2p5 <- subset_scores %>%
-      slice(1:top_2p5) %>%
-      group_by(sign) %>%
-      tally()
-    ppos_2p5 <- pn_tally_2p5 %>%
-      mutate(n_all = sum(n)) %>%
-      filter(sign == 1) %>%
-      mutate(prop = n/n_all) %>%
-      pull(prop)
-    cat(paste0(toupper(this_dataset),
-               " proportion positive in top 1%: ",
-               round(ppos_1, 2),
-               " (of ", sum(pn_tally_1$n), " pairs)",
-               "\n"))
-    cat(paste0(toupper(this_dataset),
-               " proportion positive in top 2.5%: ",
-               round(ppos_2p5, 2),
-               " (of ", sum(pn_tally_2p5$n), " pairs)",
-               "\n"))
-  }
+for(this_dataset in c("Johnson et al.", "DIABIMMUNE", "Amboseli")) {
+  subset_scores <- all_scores %>%
+    filter(dataset == this_dataset) %>%
+    mutate(score = X1*X2) %>%
+    arrange(desc(score))
+  n_pairs <- nrow(subset_scores)
+  top_1 <- round(n_pairs * 0.01)
+  top_2p5 <- round(n_pairs * 0.025)
+  pn_tally_1 <- subset_scores %>%
+    slice(1:top_1) %>%
+    group_by(sign) %>%
+    tally()
+  ppos_1 <- pn_tally_1 %>%
+    mutate(n_all = sum(n)) %>%
+    filter(sign == 1) %>%
+    mutate(prop = n/n_all) %>%
+    pull(prop)
+  pn_tally_2p5 <- subset_scores %>%
+    slice(1:top_2p5) %>%
+    group_by(sign) %>%
+    tally()
+  ppos_2p5 <- pn_tally_2p5 %>%
+    mutate(n_all = sum(n)) %>%
+    filter(sign == 1) %>%
+    mutate(prop = n/n_all) %>%
+    pull(prop)
+  cat(paste0(toupper(this_dataset),
+             " proportion positive in top 1%: ",
+             round(ppos_1, 2),
+             " (of ", sum(pn_tally_1$n), " pairs)",
+             "\n"))
+  cat(paste0(toupper(this_dataset),
+             " proportion positive in top 2.5%: ",
+             round(ppos_2p5, 2),
+             " (of ", sum(pn_tally_2p5$n), " pairs)",
+             "\n"))
 }
 
 # ------------------------------------------------------------------------------
 #   QUESTION 3: Are the most universal pairs from the same families?
 # ------------------------------------------------------------------------------
 
-if(FALSE) {
-  tax_map <- list("Johnson et al." = tax_johnson,
-                  "DIABIMMUNE" = tax_diabimmune)
-  for(this_dataset in c("Johnson et al.", "DIABIMMUNE")) {
-    subset_scores <- all_scores %>%
-      filter(dataset == this_dataset) %>%
-      mutate(score = X1*X2) %>%
-      arrange(desc(score))
-
-    n_pairs <- nrow(subset_scores)
-    top_2p5 <- round(n_pairs * 0.025)
-    subset_scores$top <- c(rep(TRUE, top_2p5),
-                           rep(FALSE, n_pairs - top_2p5))
-    # Append families
-    if(this_dataset == "Johnson et al.") {
-      families <- unname(sapply(tax_johnson, function(x) {
-        str_replace(str_split(x, pattern = ";")[[1]][5], "f__", "")
-      }))
-    } else {
-      families <- unname(sapply(tax_diabimmune, function(x) {
-        pieces <- str_split(x, pattern = "\\|")[[1]]
-        if(length(pieces) < 5) {
-          ""
-        } else {
-          str_replace(pieces[5], "f__", "")
-        }
-      }))
-    }
-    families[families %in% c("", "NA")] <- ""
-    subset_scores$fam1 <- families[subset_scores$idx1]
-    subset_scores$fam2 <- families[subset_scores$idx2]
-
-    # Remove any with missing families
-    subset_scores <- subset_scores %>%
-      filter(fam1 != "" & fam2 != "")
-
-    subset_scores$taxpair <- paste0(subset_scores$fam1, " - ", subset_scores$fam2)
-
-    # ----------------------------------------------------------------------------
-    #   Enrichment of family pairs
-    # ----------------------------------------------------------------------------
-
-    frequencies <- table(subset_scores$taxpair)
-    frequencies_subset <- table(subset_scores %>% filter(top == TRUE) %>% pull(taxpair))
-
-    signif <- c()
-    for(fam in names(frequencies_subset)) {
-      fam_in_sample <- unname(unlist(frequencies_subset[fam]))
-      sample_size <- unname(unlist(sum(frequencies_subset)))
-      fam_in_bg <- unname(unlist(frequencies[fam]))
-      bg_size <- unname(unlist(sum(frequencies)))
-      ctab <- matrix(c(fam_in_sample,
-                       sample_size - fam_in_sample,
-                       fam_in_bg,
-                       bg_size - fam_in_bg),
-                     2, 2, byrow = TRUE)
-      prob <- fisher.test(ctab, alternative = "greater")$p.value
-      if(prob < 0.05) {
-        signif <- c(signif, fam)
-        cat(paste0("ASV family: ", fam, ", p-value: ", round(prob, 3), "\n"))
-      }
-    }
-
-    temp_palette <- generate_highcontrast_palette(length(signif))
-    names(temp_palette) <- signif
-
-    plot_enrichment(frequencies_subset1 = frequencies_subset,
-                    frequencies = frequencies,
-                    significant_families1 = signif,
-                    plot_height = 6,
-                    plot_width = 6,
-                    legend_topmargin = 100,
-                    use_pairs = TRUE,
-                    rel_widths = c(1, 0.35, 1, 0.25, 3),
-                    labels = c("overall", "top 2.5% pairs"),
-                    palette = temp_palette,
-                    save_name = paste0(this_dataset, "-enrichment-pair.png"))
-
-    # ----------------------------------------------------------------------------
-    #   Enrichment of families
-    # ----------------------------------------------------------------------------
-
-    frequencies <- table(c(subset_scores$fam1, subset_scores$fam2))
-    frequencies_subset <- table(c(subset_scores %>% filter(top == TRUE) %>% pull(fam1),
-                                  subset_scores %>% filter(top == TRUE) %>% pull(fam2)))
-
-    signif <- c()
-    for(fam in names(frequencies_subset)) {
-      fam_in_sample <- unname(unlist(frequencies_subset[fam]))
-      sample_size <- unname(unlist(sum(frequencies_subset)))
-      fam_in_bg <- unname(unlist(frequencies[fam]))
-      bg_size <- unname(unlist(sum(frequencies)))
-      ctab <- matrix(c(fam_in_sample,
-                       sample_size - fam_in_sample,
-                       fam_in_bg,
-                       bg_size - fam_in_bg),
-                     2, 2, byrow = TRUE)
-      prob <- fisher.test(ctab, alternative = "greater")$p.value
-      if(prob < 0.05) {
-        signif <- c(signif, fam)
-        cat(paste0("ASV family: ", fam, ", p-value: ", round(prob, 3), "\n"))
-      }
-    }
-
-    temp_palette <- generate_highcontrast_palette(length(signif))
-    names(temp_palette) <- signif
-
-    plot_enrichment(frequencies_subset1 = frequencies_subset,
-                    frequencies = frequencies,
-                    significant_families1 = signif,
-                    plot_height = 6,
-                    plot_width = 4.5,
-                    legend_topmargin = 100,
-                    use_pairs = FALSE,
-                    rel_widths = c(1, 0.35, 1, 0.1, 1.75),
-                    labels = c("overall", "top 2.5% pairs"),
-                    palette = temp_palette,
-                    save_name = paste0(this_dataset, "-enrichment.png"))
-  }
-}
+# tax_map <- list("Johnson et al." = tax_johnson,
+#                 "DIABIMMUNE" = tax_diabimmune)
+# for(this_dataset in c("Johnson et al.", "DIABIMMUNE")) {
+#   subset_scores <- all_scores %>%
+#     filter(dataset == this_dataset) %>%
+#     mutate(score = X1*X2) %>%
+#     arrange(desc(score))
+#
+#   n_pairs <- nrow(subset_scores)
+#   top_2p5 <- round(n_pairs * 0.025)
+#   subset_scores$top <- c(rep(TRUE, top_2p5),
+#                          rep(FALSE, n_pairs - top_2p5))
+#   # Append families
+#   if(this_dataset == "Johnson et al.") {
+#     families <- unname(sapply(tax_johnson, function(x) {
+#       str_replace(str_split(x, pattern = ";")[[1]][5], "f__", "")
+#     }))
+#   } else {
+#     families <- unname(sapply(tax_diabimmune, function(x) {
+#       pieces <- str_split(x, pattern = "\\|")[[1]]
+#       if(length(pieces) < 5) {
+#         ""
+#       } else {
+#         str_replace(pieces[5], "f__", "")
+#       }
+#     }))
+#   }
+#   families[families %in% c("", "NA")] <- ""
+#   subset_scores$fam1 <- families[subset_scores$idx1]
+#   subset_scores$fam2 <- families[subset_scores$idx2]
+#
+#   # Remove any with missing families
+#   subset_scores <- subset_scores %>%
+#     filter(fam1 != "" & fam2 != "")
+#
+#   subset_scores$taxpair <- paste0(subset_scores$fam1, " - ", subset_scores$fam2)
+#
+#   # ----------------------------------------------------------------------------
+#   #   Enrichment of family pairs
+#   # ----------------------------------------------------------------------------
+#
+#   frequencies <- table(subset_scores$taxpair)
+#   frequencies_subset <- table(subset_scores %>% filter(top == TRUE) %>% pull(taxpair))
+#
+#   signif <- c()
+#   for(fam in names(frequencies_subset)) {
+#     fam_in_sample <- unname(unlist(frequencies_subset[fam]))
+#     sample_size <- unname(unlist(sum(frequencies_subset)))
+#     fam_in_bg <- unname(unlist(frequencies[fam]))
+#     bg_size <- unname(unlist(sum(frequencies)))
+#     ctab <- matrix(c(fam_in_sample,
+#                      sample_size - fam_in_sample,
+#                      fam_in_bg,
+#                      bg_size - fam_in_bg),
+#                    2, 2, byrow = TRUE)
+#     prob <- fisher.test(ctab, alternative = "greater")$p.value
+#     if(prob < 0.05) {
+#       signif <- c(signif, fam)
+#       cat(paste0("ASV family: ", fam, ", p-value: ", round(prob, 3), "\n"))
+#     }
+#   }
+#
+#   temp_palette <- generate_highcontrast_palette(length(signif))
+#   names(temp_palette) <- signif
+#
+#   plot_enrichment(frequencies_subset1 = frequencies_subset,
+#                   frequencies = frequencies,
+#                   significant_families1 = signif,
+#                   plot_height = 6,
+#                   plot_width = 6,
+#                   legend_topmargin = 100,
+#                   use_pairs = TRUE,
+#                   rel_widths = c(1, 0.35, 1, 0.25, 3),
+#                   labels = c("overall", "top 2.5% pairs"),
+#                   palette = temp_palette,
+#                   save_name = paste0(this_dataset, "-enrichment-pair.png"))
+#
+#   # ----------------------------------------------------------------------------
+#   #   Enrichment of families
+#   # ----------------------------------------------------------------------------
+#
+#   frequencies <- table(c(subset_scores$fam1, subset_scores$fam2))
+#   frequencies_subset <- table(c(subset_scores %>% filter(top == TRUE) %>% pull(fam1),
+#                                 subset_scores %>% filter(top == TRUE) %>% pull(fam2)))
+#
+#   signif <- c()
+#   for(fam in names(frequencies_subset)) {
+#     fam_in_sample <- unname(unlist(frequencies_subset[fam]))
+#     sample_size <- unname(unlist(sum(frequencies_subset)))
+#     fam_in_bg <- unname(unlist(frequencies[fam]))
+#     bg_size <- unname(unlist(sum(frequencies)))
+#     ctab <- matrix(c(fam_in_sample,
+#                      sample_size - fam_in_sample,
+#                      fam_in_bg,
+#                      bg_size - fam_in_bg),
+#                    2, 2, byrow = TRUE)
+#     prob <- fisher.test(ctab, alternative = "greater")$p.value
+#     if(prob < 0.05) {
+#       signif <- c(signif, fam)
+#       cat(paste0("ASV family: ", fam, ", p-value: ", round(prob, 3), "\n"))
+#     }
+#   }
+#
+#   temp_palette <- generate_highcontrast_palette(length(signif))
+#   names(temp_palette) <- signif
+#
+#   plot_enrichment(frequencies_subset1 = frequencies_subset,
+#                   frequencies = frequencies,
+#                   significant_families1 = signif,
+#                   plot_height = 6,
+#                   plot_width = 4.5,
+#                   legend_topmargin = 100,
+#                   use_pairs = FALSE,
+#                   rel_widths = c(1, 0.35, 1, 0.1, 1.75),
+#                   labels = c("overall", "top 2.5% pairs"),
+#                   palette = temp_palette,
+#                   save_name = paste0(this_dataset, "-enrichment.png"))
+# }
 
 # ------------------------------------------------------------------------------
 #   VISUALIZATION VERSION 1: Plot densities together
 # ------------------------------------------------------------------------------
 
 # Define a color palette
-dataset_palette <- c(brewer.pal(9, "Spectral")[c(1:4,6:9)], "#aaaaaa")
-names(dataset_palette) <- sort(unique(all_scores$dataset))[c(2,1,3,4,6,8,5,7,9)]
+# dataset_palette <- c(brewer.pal(9, "Spectral")[c(1:4,6:9)], "#aaaaaa")
+# names(dataset_palette) <- sort(unique(all_scores$dataset))[c(2,1,3,4,6,8,5,7,9)]
+
+dataset_palette <- c(brewer.pal(9, "Spectral")[c(2,8,9)])
+names(dataset_palette) <- sort(unique(all_scores$dataset))[c(1,2,3)]
 
 # Density plot from:
 # https://stackoverflow.com/questions/23437000/how-to-plot-a-contour-line-showing-where-95-of-values-fall-within-in-r-and-in
@@ -1045,11 +1047,12 @@ dc_combined <- rbind(cbind(get_density_obj(all_scores %>% filter(dataset == "DIA
 
 dc_combined$type <- factor(dc_combined$type, levels = c("DIABIMMUNE", "Johnson et al.", "Amboseli"))
 
-p <- ggplot(data = dc_combined,
+p1 <- ggplot(data = dc_combined,
             aes(x = Var1, y = Var2, z = prob, fill = type, alpha = ..level..)) +
   geom_contour_filled(breaks = c(prob, 0)) +
   scale_alpha_discrete(range = c(0.4, 0.7)) +
-  scale_fill_manual(values = dataset_palette[c(2,7,8)]) +
+  # scale_fill_manual(values = dataset_palette[c(2,7,8)]) +
+  scale_fill_manual(values = dataset_palette) +
   theme_bw() +
   xlim(c(0.5, 1)) +
   ylim(c(0, 1)) +
@@ -1059,12 +1062,12 @@ p <- ggplot(data = dc_combined,
   guides(alpha = "none",
          color = "none")
 
-ggsave(file.path("output", "figures", "6-alt.png"),
-       p,
-       dpi = 100,
-       units = "in",
-       height = 5,
-       width = 6.5)
+# ggsave(file.path("output", "figures", "6-alt.png"),
+#        p,
+#        dpi = 100,
+#        units = "in",
+#        height = 5,
+#        width = 6.5)
 
 # ------------------------------------------------------------------------------
 #   VISUALIZATION VERSION 2: Stacked histograms
@@ -1073,13 +1076,13 @@ ggsave(file.path("output", "figures", "6-alt.png"),
 plot_scores <- all_scores %>%
   mutate(prop_subjects = n_subjects / max(n_subjects))
 
-p1 <- ggplot(plot_scores %>% filter(!(dataset %in% c("McMahon et al. (epilimnion)",
+p2 <- ggplot(plot_scores %>% filter(!(dataset %in% c("McMahon et al. (epilimnion)",
                                                     "McMahon et al. (hypolimnion)",
                                                     "Grossart et al."))),
              aes(x = X2, y = reorder(dataset, n_subjects), alpha = prop_subjects, fill = dataset)) +
   geom_density_ridges(stat = "binline", bins = 20, scale = 0.95, draw_baseline = TRUE) +
   theme_bw() +
-  # scale_alpha_continuous(range = c(0.1, 1.0)) +
+  scale_alpha_continuous(range = c(0.25, 1.0)) +
   scale_fill_manual(values = dataset_palette) +
   scale_y_discrete(expand = expansion(add = c(0.35, 0.75))) +
   coord_cartesian(clip = "off") +
@@ -1088,33 +1091,130 @@ p1 <- ggplot(plot_scores %>% filter(!(dataset %in% c("McMahon et al. (epilimnion
   labs(x = "universality scores",
        y = "")
 
-p2 <- ggplot(plot_scores %>% filter(dataset %in% c("McMahon et al. (epilimnion)",
-                                                   "McMahon et al. (hypolimnion)",
-                                                   "Grossart et al.")),
-             aes(x = X2, y = reorder(dataset, n_subjects), alpha = prop_subjects, fill = dataset)) +
-  geom_density_ridges(stat = "binline", bins = 20, scale = 0.5, draw_baseline = TRUE) +
-  theme_bw() +
-  scale_alpha_continuous(range = c(0.089, 0.161)) +
-  scale_fill_manual(values = dataset_palette) +
-  scale_y_discrete(expand = expansion(add = c(0.35, 0.75))) +
-  coord_cartesian(clip = "off") +
-  guides(fill = "none",
-         alpha = "none") +
-  labs(x = "universality scores",
-       y = "")
+# p2 <- ggplot(plot_scores %>% filter(dataset %in% c("McMahon et al. (epilimnion)",
+#                                                    "McMahon et al. (hypolimnion)",
+#                                                    "Grossart et al.")),
+#              aes(x = X2, y = reorder(dataset, n_subjects), alpha = prop_subjects, fill = dataset)) +
+#   geom_density_ridges(stat = "binline", bins = 20, scale = 0.5, draw_baseline = TRUE) +
+#   theme_bw() +
+#   scale_alpha_continuous(range = c(0.089, 0.161)) +
+#   scale_fill_manual(values = dataset_palette) +
+#   scale_y_discrete(expand = expansion(add = c(0.35, 0.75))) +
+#   coord_cartesian(clip = "off") +
+#   guides(fill = "none",
+#          alpha = "none") +
+#   labs(x = "universality scores",
+#        y = "")
 
-p3 <- plot_grid(NULL, p1,
-                ncol = 2,
-                rel_widths = c(0.07, 1))
+# p3 <- plot_grid(NULL, p1,
+#                 ncol = 2,
+#                 rel_widths = c(0.07, 1))
+#
+# p <- plot_grid(p3, NULL, p2,
+#                ncol = 1,
+#                rel_heights = c(1, 0.1, 0.55))
 
-p <- plot_grid(p3, NULL, p2,
-               ncol = 1,
-               rel_heights = c(1, 0.1, 0.55))
+p <- plot_grid(p2, NULL, p1,
+               ncol = 3,
+               rel_widths = c(1, 0.1, 1.2),
+               scale = 0.95,
+               labels = c("A", "B"),
+               label_size = 20)
 
 ggsave(file.path("output", "figures", "6.png"),
        p,
        dpi = 100,
        units = "in",
-       height = 7,
-       width = 6)
+       height = 3.5,
+       width = 10)
+
+# ------------------------------------------------------------------------------
+#
+#   "Titration"-type analyses
+#
+# ------------------------------------------------------------------------------
+
+output_dir_full <- check_dir(c("output", "model_fits", "asv_days90_diet25_scale1", "MAP"))
+file_list <- list.files(path = output_dir_full, pattern = "*.rds")
+if(length(file_list) == 0) {
+  output_dir_full <- check_dir(c("output", "model_fits", output_dir, "full_posterior"))
+  file_list <- list.files(path = output_dir_full, pattern = "*.rds")
+}
+# Get taxa number and posterior sample number
+fit <- readRDS(file.path(output_dir_full, file_list[1]))
+D <- fit$D
+amboseli <- array(NA, dim=c(D, D, length(file_list)))
+for(f in 1:length(file_list)) {
+  file <- file_list[f]
+  fit <- readRDS(file.path(output_dir_full, file))
+  # Convert to CLR
+  if(fit$coord_system != "clr") {
+    fit <- to_clr(fit)
+  }
+  amboseli[,,f] <- cov2cor(fit$Sigma[,,1])
+}
+
+datasets <- list("Amboseli" = amboseli,
+                 "DIABIMMUNE" = diabimmune,
+                 "Johnson et al." = johnson)
+mins <- NULL
+for(i in 1:length(datasets)) {
+  dataset <- datasets[[i]]
+  D <- dim(dataset)[1]
+  N <- dim(dataset)[3]
+  global_mean <- CovFMean(dataset)$Mout[[1]]
+  addend <- diag(D)*1e-06
+  mix <- seq(from = 0, to = 1, by = 0.05)
+  for(h in 1:N) {
+    host_obs <- dataset[,,h]
+    host_residual <- host_obs - global_mean
+    diag(host_residual) <- 1
+
+    for(j in 1:length(mix)) {
+      combined_dynamics <- (1-mix[j])*global_mean + mix[j]*host_residual
+      mins <- rbind(mins,
+                    data.frame(host = h,
+                               p = mix[j],
+                               dist = dist4cov(host_obs, combined_dynamics)$dist,
+                               dataset = names(datasets)[i]))
+    }
+  }
+}
+
+minimizing_proportions <- mins %>%
+  group_by(dataset, host) %>%
+  arrange(dist) %>%
+  slice(1) %>%
+  ungroup()
+
+minimizing_proportions$dataset <- factor(minimizing_proportions$dataset, levels = names(datasets)[3:1])
+
+p <- ggplot(minimizing_proportions, aes(x = p, y = dataset, fill = dataset)) +
+  geom_density_ridges(stat = "binline", binwidth = 0.05, scale = 0.95) +
+  theme_bw() +
+  scale_alpha_continuous(range = c(0.25, 1.0)) +
+  scale_fill_manual(values = dataset_palette) +
+  scale_y_discrete(expand = expansion(add = c(0.15, 1.05))) +
+  coord_cartesian(clip = "off") +
+  guides(fill = "none",
+         alpha = "none") +
+  labs(x = "universality scores",
+       y = "")
+
+show(p)
+
+ggsave(file.path("output", "figures", "4c.png"),
+       p,
+       dpi = 100,
+       units = "in",
+       height = 4,
+       width = 5)
+
+cat(paste0("Median host-level contribution (Amboseli): ",
+           round(median(minimizing_proportions %>% filter(dataset == "Amboseli") %>% pull(p)), 2), "\n"))
+cat(paste0("Median host-level contribution (DIABIMMUNE): ",
+           round(median(minimizing_proportions %>% filter(dataset == "DIABIMMUNE") %>% pull(p)), 2), "\n"))
+cat(paste0("Median host-level contribution (Johnson et al.): ",
+           round(median(minimizing_proportions %>% filter(dataset == "Johnson et al.") %>% pull(p)), 2), "\n"))
+
 

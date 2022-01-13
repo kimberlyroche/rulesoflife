@@ -384,7 +384,7 @@ groups <- unique(host_groups$grp)
 
 metadata <- load_data()$metadata
 host_sex <- metadata %>%
-  select(sname, sex) %>%
+  dplyr::select(sname, sex) %>%
   distinct() %>%
   filter(sname %in% hosts) %>%
   arrange(sname)
@@ -430,7 +430,11 @@ denominator <- within_sum / (N-K)
 
 ratio <- numerator / denominator
 
-cat(paste0("P-value for pseudo-ANOVA on GROUP: ", round(1 - pf(ratio, K-1, N-K), 3), "\n"))
+cat(paste0("P-value for pseudo-ANOVA on GROUP (F=",
+           round(ratio, 3),
+           "): ",
+           round(1 - pf(ratio, K-1, N-K), 3),
+           "\n"))
 
 # ------------------------------------------------------------------------------
 #   ANOVA on sex
@@ -460,4 +464,11 @@ denominator <- within_sum / (N-K)
 
 ratio <- numerator / denominator
 
-cat(paste0("P-value for pseudo-ANOVA on GROUP: ", round(1 - pf(ratio, K-1, N-K), 3), "\n"))
+cat(paste0("P-value for pseudo-ANOVA on SEX (F=",
+           round(ratio, 3),
+           "): ",
+           round(1 - pf(ratio, K-1, N-K), 3),
+           "\n"))
+
+
+
