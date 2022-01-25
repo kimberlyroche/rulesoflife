@@ -12,4 +12,5 @@ host_labels <- load_data()$metadata %>%
 
 write.table(host_labels %>% select(sname, host_label) %>% arrange(sname),
             file.path("output", "host_labels.tsv"),
-            row.names = FALSE)
+            row.names = FALSE,
+            sep = "\t")

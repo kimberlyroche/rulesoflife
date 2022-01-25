@@ -149,7 +149,8 @@ corr_distros <- rbind(corr_distros,
                                  type = "ASV",
                                  scheme = "observed"))
 
-corr_distros$type <- factor(corr_distros$type, levels = c("Phylum", "Family", "ASV"))
+corr_distros$type <- factor(corr_distros$type, levels = c("ASV", "Family", "Phylum"))
+levels(corr_distros$type) <- c("ASV", "Family/order/class", "Phylum")
 corr_distros$scheme <- factor(corr_distros$scheme, levels = c("observed", "permuted"))
 
 p1 <- ggplot(corr_distros, aes(x = x, fill = scheme)) +
@@ -228,7 +229,9 @@ score_distros <- rbind(score_distros,
 rug_asv <- summarize_Sigmas(output_dir = "asv_days90_diet25_scale1")
 permuted_scores_asv <- NULL
 for(i in 1:iterations) {
-  cat(paste0(i,"\n"))
+  if(i %% 10 == 0) {
+    cat(paste0("Processing permutation iteration ", i,"\n"))
+  }
   rug_scrambled <- rug_asv$rug
   for(j in 1:nrow(rug_asv$rug)) {
     rug_scrambled[j,] <- sample(rug_scrambled[j,])
@@ -251,7 +254,8 @@ score_distros <- rbind(score_distros,
                                   type = "ASV",
                                   scheme = "observed"))
 
-score_distros$type <- factor(score_distros$type, levels = c("Phylum", "Family", "ASV"))
+score_distros$type <- factor(score_distros$type, levels = c("ASV", "Family", "Phylum"))
+levels(score_distros$type) <- c("ASV", "Family/order/class", "Phylum")
 score_distros$scheme <- factor(score_distros$scheme, levels = c("observed", "permuted"))
 
 p2 <- ggplot(score_distros, aes(x = x, fill = scheme)) +
@@ -263,9 +267,14 @@ p2 <- ggplot(score_distros, aes(x = x, fill = scheme)) +
   labs(fill = "Source",
        x = "universality score")
 
-p <- plot_grid(p1, p2, ncol = 1, labels = c("a", "b"), label_y = 1.05, label_size = 16)
+p <- plot_grid(p1, p2,
+               ncol = 1,
+               labels = c("A", "B"),
+               label_y = 1.02,
+               label_size = 16,
+               scale = 0.95)
 
-ggsave("output/figures/SF2.svg",
+ggsave("output/figures/S4.png",
        p,
        dpi = 100,
        units = "in",

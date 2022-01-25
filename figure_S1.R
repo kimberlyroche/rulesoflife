@@ -4,10 +4,12 @@ library(tidyverse)
 library(rulesoflife)
 library(RColorBrewer)
 library(cowplot)
+library(magick)
 
 # ------------------------------------------------------------------------------
 #
-#   Figure 2 - overview of sampling scheme and timecourses for all baboon hosts
+#   Supplemental Figure 1 - overview of sampling scheme and timecourses for all
+#                           baboon hosts
 #
 # ------------------------------------------------------------------------------
 
@@ -26,17 +28,37 @@ for(i in 1:length(xticks)) {
   xlabs[i] <- as.character(as.Date(baseline_time) + xticks[i])
 }
 
-p <- ggplot(hosts_dates, aes(x = time, y = sname)) +
-  geom_point() +
+anon_labels <- read.delim(file.path("output", "host_labels.tsv"),
+                          header = TRUE,
+                          sep = "\t")
+
+hosts_dates <- hosts_dates %>%
+  left_join(anon_labels, by = "sname")
+hosts_dates$host_label <- factor(hosts_dates$host_label)
+levels(hosts_dates$host_label) <- rev(levels(hosts_dates$host_label))
+
+p1 <- ggplot(hosts_dates, aes(x = time, y = host_label)) +
+  geom_point(size = 1.5, shape = 21, fill = "#000000") +
   theme_bw() +
-  labs(x = "days from first sample",
-       y = "host short name") +
+  labs(x = "sample collection date",
+       y = "host") +
   scale_x_continuous(breaks = xticks, labels = xlabs) +
   theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1))
+p1_padded <- plot_grid(NULL, p1, NULL, ncol = 3, rel_widths = c(0.05, 1, 0.2))
 
-ggsave(file.path(plot_dir, "F2a.svg"),
+p2 <- ggdraw() +
+  draw_image("output/figures/social_group_ranges.png")
+p2_padded <- plot_grid(NULL, p2, NULL, ncol = 1, rel_heights = c(0.05, 1, 0.05))
+
+p <- plot_grid(p1_padded, p2_padded, ncol = 1,
+               labels = c("A", "B"),
+               label_size = 20,
+               label_x = 0,
+               scale = 0.95)
+
+ggsave(file.path("output", "figures", "S1.png"),
        p,
        units = "in",
        dpi = 100,
-       height = 7,
+       height = 12,
        width = 8)

@@ -153,26 +153,27 @@ draw_random_Rsq_ped <- function(g) {
 
 null_Rsq_ped <- sapply(1:p, function(pp) draw_random_Rsq_ped(56))
 
-p2_ped <- ggplot(data.frame(x = null_Rsq_ped), aes(x = x)) +
-  geom_histogram(color = "white") +
-  theme_bw() +
-  labs(x = "R-squared (random kinship dissimilarity x dynamics distance)")
-
-p3_ped <- plot_grid(p1_ped, p2_ped, ncol = 2,
-                    rel_widths = c(1,1), labels = c("a", "b"),
-                    scale = 0.9, label_size = 20)
-
-ggsave(file.path("output", "figures", "ANOVA_pedigree_dynamics.png"),
-       plot = p3_ped,
-       dpi = 100,
-       units = "in",
-       height = 4.5,
-       width = 10)
-
 # Calculate a pseudo pvalue from quantiles
 res2 <- sum(null_Rsq_ped > obs_Rsq_ped) / p
 cat(paste0("Observed R^2: ", round(obs_Rsq_ped, 3), "\n"))
 cat(paste0("P-value from random null test: ", round(res2, 3), "\n"))
+
+p2_ped <- ggplot() +
+  geom_density(data = data.frame(x = null_Rsq_ped),
+               mapping = aes(x = x)) +
+  geom_point(data = data.frame(x = obs_Rsq_ped, y = 1),
+             mapping = aes(x = x, y = y),
+             size = 4,
+             shape = 21,
+             fill = "#d99e57") +
+  theme_bw() +
+  labs(x = "R-squared (random kinship dissimilarity x dynamics distance)",
+       y = "density")
+
+p3_ped <- plot_grid(p1_ped, p2_ped, ncol = 2,
+                    rel_widths = c(1,1), labels = c("A", "B"),
+                    scale = 0.9,
+                    label_size = 18)
 
 # ------------------------------------------------------------------------------
 #
@@ -235,28 +236,36 @@ for(pp in 1:p) {
   null_Rsq_comp[pp] <- draw_random_Rsq_comp()
 }
 
-p2_comp <- ggplot(data.frame(x = null_Rsq_comp), aes(x = x)) +
-  geom_histogram(color = "white") +
-  theme_bw() +
-  labs(x = "R-squared (random baseline x dynamics distance)")
-
-p3_comp <- plot_grid(p1_comp, p2_comp, ncol = 2,
-                     rel_widths = c(1,1), labels = c("a", "b"),
-                     scale = 0.9, label_size = 20)
-
-show(p3_comp)
-
-ggsave(file.path("output", "figures", "ANOVA_baseline_dynamics.png"),
-       plot = p3_comp,
-       dpi = 100,
-       units = "in",
-       height = 4.5,
-       width = 10)
-
 # Calculate a pseudo pvalue from quantiles
 res2 <- sum(null_Rsq_comp > obs_Rsq_comp) / p
 cat(paste0("Observed R^2: ", round(obs_Rsq_comp, 3), "\n"))
 cat(paste0("P-value from random null test: ", round(res2, 3), "\n"))
+
+p2_comp <- ggplot() +
+  geom_density(data = data.frame(x = null_Rsq_comp),
+               mapping = aes(x = x)) +
+  geom_point(data = data.frame(x = obs_Rsq_comp, y = 1),
+             mapping = aes(x = x, y = y),
+             size = 4,
+             shape = 21,
+             fill = "#d99e57") +
+  theme_bw() +
+  labs(x = "R-squared (random baseline x dynamics distance)",
+       y = "density")
+
+p3_comp <- plot_grid(p1_comp, p2_comp, ncol = 2,
+                    rel_widths = c(1,1), labels = c("C", "D"),
+                    scale = 0.9,
+                    label_size = 18)
+
+p_all <- plot_grid(p3_ped, p3_comp, ncol = 1)
+
+ggsave(file.path("output", "figures", "S10.png"),
+       plot = p_all,
+       dpi = 100,
+       units = "in",
+       height = 9,
+       width = 10)
 
 # ------------------------------------------------------------------------------
 #
@@ -469,6 +478,3 @@ cat(paste0("P-value for pseudo-ANOVA on SEX (F=",
            "): ",
            round(1 - pf(ratio, K-1, N-K), 3),
            "\n"))
-
-
-

@@ -21,21 +21,28 @@ rugs <- list(ASV = summarize_Sigmas(output_dir = "asv_days90_diet25_scale1"),
 plots <- list()
 legend <- NULL
 for(rtype in names(rugs)) {
-  # Order rows by similarity of baseline composition
-  data <- load_data(tax_level = rtype)
-  md <- data$metadata
-  H <- length(unique(md$sname))
-  D <- nrow(data$counts)
-  baselines <- matrix(NA, H, D)
-  for(i in 1:length(hosts)) {
-    # Average of ALR samples for this host is their baseline
-    host_samples <- clr_array(data$counts[,which(md$sname == hosts[i])] + 0.5,
-                              parts = 1)
-    baselines[i,] <- apply(host_samples, 1, mean)
-  }
+  # save_fn <- file.path("output", paste0(rtype, "_host_row_order.tsv"))
+  # if(!file.exists(save_fn)) {
+    # Order rows by similarity of baseline composition
+    data <- load_data(tax_level = rtype)
+    md <- data$metadata
+    hosts <- unique(md$sname)
+    H <- length(hosts)
+    D <- nrow(data$counts)
+    baselines <- matrix(NA, H, D)
+    for(i in 1:length(hosts)) {
+      # Average of ALR samples for this host is their baseline
+      host_samples <- clr_array(data$counts[,which(md$sname == hosts[i])] + 0.5,
+                                parts = 1)
+      baselines[i,] <- apply(host_samples, 1, mean)
+    }
 
-  baseline_distances <- dist(baselines)
-  row_order <- hclust(baseline_distances)$order
+    baseline_distances <- dist(baselines)
+    row_order <- hclust(baseline_distances)$order
+  #   write.table(data.frame(order = row_order), save_fn, row.names = FALSE, quote = FALSE)
+  # } else {
+  #   row_order <- read.delim(save_fn)$order
+  # }
 
   # Compute column order
   rug <- rugs[[rtype]]$rug

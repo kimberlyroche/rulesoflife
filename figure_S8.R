@@ -7,6 +7,7 @@ library(cowplot)
 library(RColorBrewer)
 library(fido)
 library(ape)
+library(scales)
 
 # ------------------------------------------------------------------------------
 #
@@ -39,137 +40,48 @@ levels(plot_df$sign) <- c("positive", NA, "negative")
 phylo_neg_mean <- mean(phy_dist[signs < 0])
 phylo_pos_mean <- mean(phy_dist[signs > 0])
 
-p <- ggplot(plot_df %>% filter(!is.na(sign)), aes(x = d, y = score, fill = factor(sign))) +
-  geom_segment(aes(x = phylo_neg_mean, xend = phylo_neg_mean, y = 0.26, yend = 0.8),
-               color = "#34CCDE",
-               size = 2,
-               linetype = "dashed") +
-  geom_segment(aes(x = phylo_pos_mean, xend = phylo_pos_mean, y = 0.26, yend = 0.8),
-               color = "#F25250",
-               size = 2,
-               linetype = "dashed") +
-  geom_point(size = 2, shape = 21) +
-  scale_fill_manual(values = c("#F25250", "#34CCDE")) +
+p1 <- ggplot(plot_df %>% filter(sign == "positive"), aes(x = d, y = score)) +
+  # geom_segment(aes(x = phylo_neg_mean, xend = phylo_neg_mean, y = 0.26, yend = 0.8),
+  #              color = "#34CCDE",
+  #              size = 2,
+  #              linetype = "dashed") +
+  geom_point(size = 2, shape = 21, fill = "#888888") +
+  # geom_segment(aes(x = phylo_pos_mean, xend = phylo_pos_mean, y = 0.05, yend = 0.8),
+  #              # color = "#F25250",
+  #              color = "gray",
+  #              size = 2,
+  #              linetype = "dashed") +
+  # scale_fill_manual(values = c("#F25250", "#34CCDE")) +
+  # scale_fill_gradient2(low = "white", high = "red") +
   theme_bw() +
   labs(x = "phylogenetic distance",
        y = "universality score",
        fill = "Consensus\ncorrelation sign")
 
-overall <- lm(y ~ x, data.frame(x = plot_df$d, y = plot_df$score))
-cat(paste0("Overall trend: ", round(summary(overall)$coef[2,1], 3), ", p-value: ", round(summary(overall)$coef[2,4], 3), "\n"))
-
-pos <- plot_df %>%
-  filter(sign == "positive")
-pos <- lm(y ~ x, data.frame(x = pos$d, y = pos$score))
-cat(paste0("Positive trend: ", round(summary(pos)$coef[2,1], 3), ", p-value: ", round(summary(pos)$coef[2,4], 3), "\n"))
-
-neg <- plot_df %>%
-  filter(sign == "negative")
-neg <- lm(y ~ x, data.frame(x = neg$d, y = neg$score))
-cat(paste0("Negative trend: ", round(summary(neg)$coef[2,1], 3), ", p-value: ", round(summary(neg)$coef[2,4], 3), "\n"))
-
-ggsave("output/figures/SF6a.png",
-       p,
-       dpi = 100,
-       units = "in",
-       height = 5,
-       width = 6.5)
-
-p <- ggplot(plot_df %>% filter(!is.na(sign)), aes(x = d, y = mas, fill = factor(sign))) +
-  geom_segment(aes(x = phylo_neg_mean, xend = phylo_neg_mean, y = 0.29, yend = 0.8),
-               color = "#34CCDE",
-               size = 2,
-               linetype = "dashed") +
-  geom_segment(aes(x = phylo_pos_mean, xend = phylo_pos_mean, y = 0.29, yend = 0.8),
-               color = "#F25250",
-               size = 2,
-               linetype = "dashed") +
+p1 <- ggplot(plot_df %>% filter(sign == "positive"), aes(x = d, y = score, fill = score)) +
   geom_point(size = 2, shape = 21) +
-  scale_fill_manual(values = c("#F25250", "#34CCDE")) +
+  xlim(c(min(plot_df$d), max(plot_df$d))) +
+  ylim(c(min(plot_df$score), max(plot_df$score))) +
+  scale_fill_gradient2(low = "white", high = "red") +
   theme_bw() +
   labs(x = "phylogenetic distance",
-       y = "median association strength",
-       fill = "Consensus\ncorrelation sign")
+       y = "universality score",
+       fill = "Consensus\ncorrelation sign") +
+  theme(legend.position = "none")
 
-ggsave("output/figures/SF6b.png",
-       p,
-       dpi = 100,
-       units = "in",
-       height = 5,
-       width = 6.5)
-
-# ------------------------------------------------------------------------------
-#   Test for an association between phylogenetic distance and the sign of a
-#   given association
-# ------------------------------------------------------------------------------
-
-test_df <- plot_df %>%
-  filter(!is.na(sign))
-test_df$sign <- factor(test_df$sign, levels = c("positive", "negative"))
-levels(test_df$sign) <- c(0, 1)
-lr_fit <- glm(sign ~ d, data = test_df, family = binomial(link = "logit"))
-summary(lr_fit)
-
-lo <- unname(coef(lr_fit)[2]) # Log odds associated with phylogenetic distance
-exp(lo)
-exp(lo)/(1+exp(lo))
-
-cat(paste0("P-value for phylogenetic distance on sign: ",
-           round(coef(summary(lr_fit))[2,4], 8), "\n"))
-cat(paste0("Fold change in log odds of positive sign with unit increase in phylogenetic distance: ",
-           round(lo, 3), "\n"))
-cat(paste0("Odds of positive sign with unit increase in phylogenetic distance: ",
-           round(exp(lo)/(1+exp(lo)), 3), "\n"))
+p2 <- ggplot(plot_df %>% filter(sign == "negative"), aes(x = d, y = score, fill = score)) +
+  geom_point(size = 2, shape = 21) +
+  xlim(c(min(plot_df$d), max(plot_df$d))) +
+  ylim(c(min(plot_df$score), max(plot_df$score))) +
+  scale_fill_gradient2(low = "white", high = muted("navy")) +
+  theme_bw() +
+  labs(x = "phylogenetic distance",
+       y = "universality score",
+       fill = "Consensus\ncorrelation sign") +
+  theme(legend.position = "none")
 
 # ------------------------------------------------------------------------------
-#   Label the phylogenetic distance vs. median association strength plot by the
-#   number of sequence mismatches
-# ------------------------------------------------------------------------------
-
-if(FALSE) {
-  d <- sequence_distance(distance_type = "N")
-  plot_df$mismatches <- NA
-  for(i in 1:nrow(plot_df)) {
-    plot_df$mismatches[i] <- d[plot_df$tax_idx1[i],
-                               plot_df$tax_idx2[i]]
-  }
-
-  max_mismatches <- max(plot_df$mismatches)
-  plot_df$mismatch_factor <- as.factor(plot_df$mismatches)
-  levels(plot_df$mismatch_factor) <- c("1",
-                                       "2",
-                                       rep("3-5", 3),
-                                       rep("5-10", 6),
-                                       rep("10-20", 11),
-                                       rep(">20", sum(plot_df$mismatches > 20)))
-
-  p <- ggplot(plot_df,
-              aes(x = d, y = mas, fill = factor(mismatch_factor))) +
-    geom_point(size = 3, shape = 21) +
-    theme_bw() +
-    scale_fill_manual(values = c(brewer.pal(6, "Spectral")[1:5], "#dddddd")) +
-    labs(x = "phylogenetic distance",
-         y = "median association strength",
-         fill = "Sequence mismatches")
-
-  ggsave("output/figures/SF6a-mismatches.png",
-         p,
-         dpi = 100,
-         units = "in",
-         height = 5,
-         width = 8)
-
-  # plot_df$fam1 <- sapply(plot_df$tax_idx1, function(x) data$taxonomy[x,6])
-  # plot_df$fam2 <- sapply(plot_df$tax_idx2, function(x) data$taxonomy[x,6])
-  #
-  # plot_df %>%
-  #   filter(mismatches < 10) %>%
-  #   arrange(mismatches) %>%
-  #   select(mismatches, fam1, fam2)
-}
-
-# ------------------------------------------------------------------------------
-#   Enrichment of top left-hand pairs
+#   Enrichment of closely related, strongly universal pairs
 # ------------------------------------------------------------------------------
 
 topleft_pairs <- which(phy_dist < 0.2 & median_assoc_strength > 0.5)
@@ -233,18 +145,18 @@ for(fam in names(frequencies_subset)) {
   }
 }
 
-plot_enrichment(frequencies_subset1 = frequencies_subset,
-                frequencies_subset2 = NULL,
-                frequencies = frequencies,
-                significant_families1 = signif,
-                significant_families2 = NULL,
-                plot_height = 6,
-                plot_width = 5,
-                legend_topmargin = 100,
-                use_pairs = FALSE,
-                rel_widths = c(1, 0.35, 1, 0.3, 2),
-                labels = c("overall", "top left"),
-                save_name = "SF8-enrichment.png")
+p3 <- plot_enrichment(frequencies_subset1 = frequencies_subset,
+                      frequencies_subset2 = NULL,
+                      frequencies = frequencies,
+                      significant_families1 = signif,
+                      significant_families2 = NULL,
+                      plot_height = 6,
+                      plot_width = 3,
+                      legend_topmargin = 100,
+                      use_pairs = FALSE,
+                      rel_widths = c(1, 0.35, 1, 0.3, 2),
+                      labels = c("overall\n", "low distance\nhigh univ."),
+                      save_name = NULL)
 
 # ------------------------------------------------------------------------------
 #   Family-pair enrichment
@@ -277,18 +189,49 @@ for(fam in names(frequencies_subset)) {
   }
 }
 
-plot_enrichment(frequencies_subset1 = frequencies_subset,
-                frequencies_subset2 = NULL,
-                frequencies = frequencies,
-                significant_families1 = signif,
-                significant_families2 = NULL,
-                plot_height = 6,
-                plot_width = 6,
-                legend_topmargin = 100,
-                use_pairs = TRUE,
-                rel_widths = c(1, 0.35, 1, 0.3, 3),
-                labels = c("overall", "top left"),
-                save_name = "SF8-enrichment-pair.png")
+p4 <- plot_enrichment(frequencies_subset1 = frequencies_subset,
+                      frequencies_subset2 = NULL,
+                      frequencies = frequencies,
+                      significant_families1 = signif,
+                      significant_families2 = NULL,
+                      plot_height = 6,
+                      plot_width = 6,
+                      legend_topmargin = 100,
+                      use_pairs = TRUE,
+                      rel_widths = c(1, 0.3, 1, 1, 2.8),
+                      labels = c("overall\n", "low distance\nhigh univ."),
+                      save_name = NULL)
+
+# ------------------------------------------------------------------------------
+#   Plot all panels
+# ------------------------------------------------------------------------------
+
+common_scale <- 0.9
+
+prow1 <- plot_grid(p1, p2, ncol = 2,
+               labels = c("A", "B"),
+               label_size = 18,
+               scale = common_scale,
+               rel_widths = c(1, 1))
+prow2 <- plot_grid(NULL, p3, NULL, p4, NULL, ncol = 5,
+               labels = c("", "C", "", "D", ""),
+               label_size = 18,
+               label_x = -0.02,
+               label_y = 1.01,
+               scale = common_scale,
+               rel_widths = c(0.3, 0.9, 0.1, 1.1, 0.3))
+p <- plot_grid(prow1, prow2, ncol = 1,
+               rel_heights = c(1, 0.8))
+ggsave(file.path("output", "figures", "S8.png"),
+       p,
+       dpi = 100,
+       units = "in",
+       height = 9,
+       width = 11)
+
+# ------------------------------------------------------------------------------
+#   Write out enrichment results
+# ------------------------------------------------------------------------------
 
 enrichment <- enrichment %>%
   arrange(location, type, name)
@@ -301,3 +244,55 @@ write.table(enrichment,
             sep = "\t",
             quote = FALSE,
             row.names = FALSE)
+
+# ------------------------------------------------------------------------------
+#   Evaluate trends: phylogenetic distance x universality score
+# ------------------------------------------------------------------------------
+
+overall <- lm(y ~ x, data.frame(x = plot_df$d, y = plot_df$score))
+cat(paste0("Overall trend: ",
+           round(summary(overall)$coef[2,1], 3),
+           ", p-value: ",
+           round(summary(overall)$coef[2,4], 3),
+           "\n"))
+
+pos <- plot_df %>%
+  filter(sign == "positive")
+pos <- lm(y ~ x, data.frame(x = pos$d, y = pos$score))
+cat(paste0("Positive trend: ",
+           round(summary(pos)$coef[2,1], 3),
+           ", p-value: ",
+           round(summary(pos)$coef[2,4], 3),
+           "\n"))
+
+neg <- plot_df %>%
+  filter(sign == "negative")
+neg <- lm(y ~ x, data.frame(x = neg$d, y = neg$score))
+cat(paste0("Negative trend: ",
+           round(summary(neg)$coef[2,1], 3),
+           ", p-value: ",
+           round(summary(neg)$coef[2,4], 3),
+           "\n"))
+
+# ------------------------------------------------------------------------------
+#   Estimate effect sizes
+# ------------------------------------------------------------------------------
+
+test_df <- plot_df %>%
+  filter(!is.na(sign))
+test_df$sign <- factor(test_df$sign, levels = c("positive", "negative"))
+levels(test_df$sign) <- c(0, 1)
+lr_fit <- glm(sign ~ d, data = test_df, family = binomial(link = "logit"))
+summary(lr_fit)
+
+lo <- unname(coef(lr_fit)[2]) # Log odds associated with phylogenetic distance
+exp(lo)
+exp(lo)/(1+exp(lo))
+
+cat(paste0("P-value for phylogenetic distance on sign: ",
+           round(coef(summary(lr_fit))[2,4], 8), "\n"))
+cat(paste0("Fold change in log odds of positive sign with unit increase in phylogenetic distance: ",
+           round(lo, 3), "\n"))
+cat(paste0("Odds of positive sign with unit increase in phylogenetic distance: ",
+           round(exp(lo)/(1+exp(lo)), 3), "\n"))
+

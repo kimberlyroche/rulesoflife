@@ -41,30 +41,50 @@ for(i in 1:length(retain_taxa)) {
 }
 labels <- c(labels, "rare phyla")
 
-palette_fn <- file.path("output", "timecourse_palette.rds")
-# palette_fn <- file.path("output", "family_palette.rds")
-if(file.exists(palette_fn)) {
-  palette <- readRDS(palette_fn)
-} else {
-  # Random palette
-  getPalette <- colorRampPalette(brewer.pal(9, "Set1"))
-  palette <- sample(getPalette(nrow(trimmed_relab)))
-  saveRDS(palette, palette_fn)
-}
+# palette_fn <- file.path("output", "timecourse_palette.rds")
+palette_fn <- file.path("output", "family_palette.rds")
+palette <- readRDS(palette_fn)
+
+# Supplement this palette with a few Orders, odds and ends
+palette2 <- palette[names(palette) %in% c("Bifidobacteriaceae",
+                                          "Clostridiaceae 1",
+                                          "Lachnospiraceae",
+                                          "Prevotellaceae",
+                                          "Ruminococcaceae",
+                                          "Unknown",
+                                          "Veillonellaceae")]
+names(palette2)[2] <- "Clostridiales"
+names(palette2)[6] <- "Other taxa"
+palette2[["Rikenellaceae"]] <- "#F0B2EB"
+palette2[["WCHB1-41"]] <- "#70CDC5"
+# palette2[["Other taxa"]] <- "#A68DC8"
+
+palette2 <- palette2[c(1:5,7:9,6)]
+
+# Map taxon names to values in the family-level palette
+mapping <- data.frame(taxon = c("domain Bacteria",
+                                "family Bifidobacteriaceae",
+                                "family Lachnospiraceae",
+                                "family Prevotellaceae",
+                                "family Rikenellaceae",
+                                "family Ruminococcaceae",
+                                "family Veillonellaceae",
+                                "order Clostridiales",
+                                "order WCHB1-41",
+                                "rare phyla"),
+                      palette_value = c("Unknown",
+                                        "Bifidobacteriaceae",
+                                        "Lachnospiraceae",
+                                        "Prevotellaceae",
+                                        "Rikenellaceae",
+                                        "Ruminococcaceae",
+                                        "Veillonellaceae",
+                                        "Clostridiales",
+                                        "WCHB1-41",
+                                        "Other taxa"))
 
 # Get all hosts
 ref_hosts <- unique(data$metadata$sname)
-
-# Get the top 20 best-sampled hosts
-# ref_hosts <- sort(data$metadata %>%
-#   group_by(sname) %>%
-#   tally() %>%
-#   arrange(desc(n)) %>%
-#   slice(1:20) %>%
-#   pull(sname))
-
-# Get the best represented in the primary social groups
-# ref_hosts <- c("DUI", "DUX", "LIW", "PEB", "VET")
 
 plots <- list()
 legend <- NULL
@@ -87,10 +107,30 @@ for(host in ref_hosts) {
     left_join(data.frame(taxon = levels(plot_df$taxon), name = labels), by = "taxon")
   plot_df$taxon <- plot_df$name
 
-  p <- ggplot(plot_df, aes(x = sample, y = relative_abundance, fill = taxon)) +
+  # Combine 'domain Bacteria' and 'rare phyla' for the sake of labeling
+  temp <- plot_df %>%
+    filter(!(taxon %in% c("domain Bacteria", "rare phyla")))
+  temp2 <- plot_df %>%
+    filter(taxon %in% c("domain Bacteria", "rare phyla")) %>%
+    group_by(sample) %>%
+    mutate(combined_ra = sum(relative_abundance)) %>%
+    filter(taxon != "domain Bacteria") %>%
+    ungroup() %>%
+    select(-c(relative_abundance)) %>%
+    mutate(relative_abundance = combined_ra) %>%
+    select(-c(combined_ra))
+  plot_df <- rbind(temp, temp2)
+
+  plot_df <- plot_df %>%
+    left_join(mapping, by = "taxon")
+
+  plot_df$palette_value <- factor(plot_df$palette_value, levels = names(palette2))
+
+  p <- ggplot(plot_df, aes(x = sample, y = relative_abundance, fill = palette_value)) +
     geom_area() +
-    scale_fill_manual(values = palette) +
-    theme(legend.position = "bottom")
+    scale_fill_manual(values = palette2) +
+    theme(legend.position = "bottom") +
+    labs(fill = "")
   if(is.null(legend)) {
     legend <- get_legend(p)
   }
@@ -100,26 +140,26 @@ for(host in ref_hosts) {
     scale_x_continuous(expand = c(0, 0)) +
     scale_y_continuous(expand = c(0, 0)) +
     theme(plot.margin = margin(t = 10, r = , b = 0, l = 1))
+
   plots[[length(plots) + 1]] <- p
 }
 
-p <- plot_grid(plotlist = plots,
-               # ncol = length(plots),
+anon_labels <- read.delim(file.path("output", "host_labels.tsv"),
+                          header = TRUE,
+                          sep = "\t")
+labels2 <- data.frame(sname = ref_hosts) %>%
+  left_join(anon_labels, by = "sname")
+
+# Rearrange by labels
+p <- plot_grid(plotlist = plots[order(labels2$host_label)],
                nrow = 4,
-               # labels = letters[1:length(plots)],
-               labels = ref_hosts,
+               labels = labels2$host_label[order(labels2$host_label)],
                scale = 0.95,
                label_x = -0.1,
                label_y = 1,
                label_size = 8)
-pl <- plot_grid(p, legend, ncol = 1, rel_heights = c(1, 0.15))
-ggsave(file.path(plot_dir, "F2b.svg"),
-       pl,
-       units = "in",
-       dpi = 100,
-       # height = 2,
-       height = 6,
-       width = 10)
+
+p1 <- plot_grid(p, legend, ncol = 1, rel_heights = c(1, 0.15))
 
 # ------------------------------------------------------------------------------
 #   PCA plots
@@ -159,7 +199,7 @@ plot_df <- data.frame(x = PCA$x[,1],
                       year = years)
 plot_df <- plot_df[plot_df$year %in% year_range,]
 
-p <- ggplot(plot_df) +
+p2 <- ggplot(plot_df) +
   geom_point(data = plot_df[plot_df$label == "other",], mapping = aes(x = x, y = y),
              size = 2,
              shape = 21,
@@ -176,9 +216,19 @@ p <- ggplot(plot_df) +
        y = paste0("PC2 (", round(PoV[2], 3)*100 ,"% variance expl.)")) +
   theme_bw()
 
-ggsave("output/figures/S2.svg",
-       plot = p,
+p1_padded <- plot_grid(p1, scale = 0.9)
+p <- plot_grid(p1_padded, NULL, p2,
+               ncol = 1,
+               rel_heights = c(1, 0.05, 1),
+               labels = c("A", "B"),
+               label_size = 18,
+               label_x = 0,
+               label_y = 1,
+               scale = 0.95)
+
+ggsave(file.path("output", "figures", "S2.png"),
+       p,
        units = "in",
        dpi = 100,
-       height = 6,
-       width = 10)
+       height = 10,
+       width = 8)

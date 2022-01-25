@@ -3,6 +3,7 @@ source("path_fix.R")
 library(tidyverse)
 library(rulesoflife)
 library(driver)
+library(ggridges)
 library(cowplot)
 
 # ------------------------------------------------------------------------------
@@ -43,10 +44,10 @@ phy_score_df$signif <- apply(rug_phy$rug, 2, function(x) {
   sum(x < thresholds %>% filter(type == "ASV") %>% pull(lower) | x > thresholds %>% filter(type == "ASV") %>% pull(upper))/length(x)
 })
 
-score_df <- rbind(cbind(fam_score_df, type = "Family"),
+score_df <- rbind(cbind(fam_score_df, type = "Family/order/class"),
                   cbind(phy_score_df, type = "Phylum"))
 
-p <- ggplot(score_df %>% filter(sign != 0)) +
+p1 <- ggplot(score_df %>% filter(sign != 0)) +
   geom_point(mapping = aes(x = x, y = y, fill = signif, color = sign),
              size = 2,
              shape = 21,
@@ -64,31 +65,16 @@ p <- ggplot(score_df %>% filter(sign != 0)) +
        fill = "Proportion\nsignificant\nobservations",
        color = "Consensus\ncorrelation sign")
 
-ggsave("output/figures/S5.svg",
-       p,
-       dpi = 100,
-       units = "in",
-       height = 4,
-       width = 8)
-
 # ------------------------------------------------------------------------------
-#   ggridges stacked histograms of universality scores at the ASV level
-# ------------------------------------------------------------------------------
-
-# rug_asv <- summarize_Sigmas(output_dir = "asv_days90_diet25_scale1")
-
-# ------------------------------------------------------------------------------
-#   ggridges stacked histograms of universality scores at the ASV level
+#   ggridges stacked histograms of universality scores at the levels higher
+#   than ASV
 # ------------------------------------------------------------------------------
 
 plot_df <- data.frame(score = apply(rug_phy$rug, 2, calc_universality_score),
                       type = "Phylum")
 plot_df <- rbind(plot_df,
                  data.frame(score = apply(rug_fam$rug, 2, calc_universality_score),
-                            type = "Family"))
-# plot_df <- rbind(plot_df,
-#                  data.frame(score = apply(rug_asv$rug, 2, calc_universality_score),
-#                             type = "ASV"))
+                            type = "Family/order/class"))
 
 plot_df2 <- thresholds_scores %>%
   filter(type != "ASV")
@@ -109,21 +95,24 @@ p2 <- ggplot(plot_df, aes(x = score, y = type, fill = type)) +
   coord_cartesian(clip = "off") +
   theme_ridges(grid = FALSE, center_axis_labels = TRUE) +
   theme(legend.position = "none") +
-  xlim(c(-0.05, 0.65)) +
   scale_fill_brewer(palette = "Blues")
 
-p <- plot_grid(p1, p2, ncol = 2,
-               rel_widths = c(1.5, 1),
-               labels = c("a", "b"),
+p2_padded <- plot_grid(NULL, p2, ncol = 2,
+                       rel_widths = c(0.03, 1),
+                       labels = c("", "B"),
+                       label_size = 18,
+                       label_x = 0.05)
+
+p <- plot_grid(p1, NULL, p2_padded, ncol = 3,
+               rel_widths = c(2, -0.15, 1.25),
+               labels = c("A", "", ""),
                label_size = 18,
                # label_x = -0.02,
                scale = 0.95)
 
-ggsave("output/figures/SFb.svg",
+ggsave("output/figures/S5.png",
        p,
        dpi = 100,
        units = "in",
        height = 4,
-       width = 9)
-
-
+       width = 12)

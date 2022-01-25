@@ -1,5 +1,6 @@
 source("path_fix.R")
 
+library(fido)
 library(tidyverse)
 library(rulesoflife)
 library(RColorBrewer)
@@ -25,7 +26,10 @@ for(j in 1:length(fits)) {
   rug[j,] <- Sigma[upper.tri(Sigma)]
 }
 
-rug <- cbind(1:nrow(rug), rug)
+# Reorder rug by mean correlation across taxa
+col_order <- order(colMeans(rug))
+
+rug <- cbind(1:nrow(rug), rug[,col_order])
 colnames(rug) <- c("host", paste0(1:(ncol(rug)-1)))
 rug <- pivot_longer(as.data.frame(rug), !host, names_to = "pair", values_to = "correlation")
 rug$pair <- as.numeric(rug$pair)
@@ -37,8 +41,9 @@ p <- ggplot(rug, aes(x = pair, y = host)) +
                                               ticks.colour = "black")) +
   scale_x_continuous(expand = c(0, 0)) +
   labs(fill = "Correlation",
-       x = "ASV-ASV pairs",
-       y = "hosts") +
+       x = "ASV pairs",
+       y = "hosts",
+       title = "ASVs") +
   scale_y_continuous(expand = c(0, 0)) +
   theme(axis.text.y = element_blank(),
         axis.text = element_text(size = 10),
@@ -51,7 +56,7 @@ p <- ggplot(rug, aes(x = pair, y = host)) +
         axis.ticks.x = element_blank(),
         axis.ticks.y = element_blank())
 
-ggsave(file.path("output", "figures", "S3_ASV.png"),
+ggsave(file.path("output", "figures", "S3.png"),
        p,
        dpi = 100,
        units = "in",
