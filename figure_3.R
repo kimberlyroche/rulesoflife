@@ -236,7 +236,7 @@ p5 <- plot_enrichment(frequencies_subset1 = frequencies_subset,
                       rel_widths = c(1, 0.35, 1, 0.3, 3.75),
                       labels = c("overall", "top ASVs"),
                       save_name = NULL)
-p5
+
 enrichment <- enrichment %>%
   arrange(type, name)
 colnames(enrichment) <- c("ASV family or pair name",
@@ -295,8 +295,8 @@ family_palette <- readRDS(file.path("output", "family_palette.rds"))
 # Not specifying the layout - defaults to "auto"
 # fr and kk layouts are ok here
 p4 <- ggraph(graph, layout = "fr") +
-  geom_edge_link(aes(color = Sign), width = 2, alpha = 1) +
-  geom_node_point(aes(color = Family), size = 4) +
+  geom_edge_link(aes(color = Sign), width = 1.5, alpha = 1) +
+  geom_node_point(aes(color = Family), size = 3) +
   geom_node_label(aes(label = taxon_idx), size = 2.5, repel = TRUE) +
   scale_colour_manual(values = family_palette[order(names(family_palette))]) +
   scale_edge_colour_manual(values = c(negative = "gray", positive = "black")) +
@@ -331,7 +331,7 @@ p <- plot_grid(prow1, NULL, prow2,
                ncol = 1,
                rel_heights = c(1, 0.1, 1))
 
-ggsave(file.path("output", "figures", "F3.png"),
+ggsave(file.path("output", "figures", "F3.svg"),
        p,
        units = "in",
        dpi = 100,

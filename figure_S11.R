@@ -14,7 +14,7 @@ library(cowplot)
 
 # ------------------------------------------------------------------------------
 #
-#   Supplemental Figure S10 - R^2 and ANOVA (no plots) analyses for factors
+#   Supplemental Figure S11 - R^2 and ANOVA (no plots) analyses for factors
 #                             associated with dynamics distances
 #
 # ------------------------------------------------------------------------------
@@ -260,7 +260,7 @@ p3_comp <- plot_grid(p1_comp, p2_comp, ncol = 2,
 
 p_all <- plot_grid(p3_ped, p3_comp, ncol = 1)
 
-ggsave(file.path("output", "figures", "S10.png"),
+ggsave(file.path("output", "figures", "S11.png"),
        plot = p_all,
        dpi = 100,
        units = "in",

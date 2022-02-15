@@ -265,6 +265,9 @@ cat(paste0("Positive trend: ",
            round(summary(pos)$coef[2,4], 3),
            "\n"))
 
+# For positive pairs, we would expect a decrease in phylogenetic distance of
+# 0.1 to increase universality by
+
 neg <- plot_df %>%
   filter(sign == "negative")
 neg <- lm(y ~ x, data.frame(x = neg$d, y = neg$score))

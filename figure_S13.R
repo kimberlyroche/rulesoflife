@@ -1,9 +1,11 @@
 source("path_fix.R")
 
-library(rulesoflife)
+library(matrixsampling)
+library(Rcpp)
+library(driver)
 library(fido)
-library(tidyverse)
-library(dplyr)
+library(rulesoflife)
+library(LaplacesDemon)
 
 # ------------------------------------------------------------------------------
 #
@@ -12,83 +14,75 @@ library(dplyr)
 #
 # ------------------------------------------------------------------------------
 
-save_fn <- file.path("output", "alr_sanity_check.rds")
+save_fn <- file.path("output", "downsampling_experiment.rds")
 if(!file.exists(save_fn)) {
-  data <- readRDS(file.path("input", "processed_ASV_1_20.rds"))
-  data_alr <- readRDS(file.path("input", "processed_ASV_1_20_ALRmedian.rds"))
-  map <- left_join(data.frame(tax = 1:nrow(data$taxonomy),
-                              OTU = data$taxonomy$OTU),
-                   data.frame(tax_alr = 1:nrow(data_alr$taxonomy),
-                              OTU = data_alr$taxonomy$OTU),
-                   by = "OTU")
-  map <- map %>%
-    select(tax, tax_alr)
+  T <- 1000
+  D <- 135
 
-  output_dir <- "asv_days90_diet25_scale1"
-  output_dir_alr <- "asv_days90_diet25_scale1_ALRmedian"
+  prop_agree <- NULL
+  for(i in 1:1) {
+    global_baseline <- LaplacesDemon::rdirichlet(1, rep(100/D, D))
+    taxon_dynamics <- cov2cor(matrixsampling::rinvwishart(1, D + 2, diag(D))[,,1])
+    taxon_dynamics_alr <- clrvar2alrvar(taxon_dynamics, D)
 
-  # Pull the averaged estimated correlation across CLR taxa for a random host and
-  # plot estimates made using ALR reference #1 ("other" category) to estimates of
-  # the same pair made using ALR reference #2 (median CoV taxon).
-  metadata <- load_data()$metadata
-  hosts <- unique(metadata$sname)
-  x = c()
-  y = c()
-  for(host in hosts) {
-    cat(paste0("Parsing data for host ", host, "\n"))
-    fit <- readRDS(file.path("output",
-                             "model_fits",
-                             output_dir,
-                             "full_posterior",
-                             paste0(host, ".rds")))
-    fit <- to_clr(fit)
-    fit_alr <- readRDS(file.path("output",
-                                 "model_fits",
-                                 output_dir_alr,
-                                 "full_posterior",
-                                 paste0(host, ".rds")))
-    fit_alr <- to_clr(fit_alr)
+    X <- matrix(1:T, 1, T)
 
-    # Convert estimated covariance to correlation and average over posterior
-    # samples.
-    Sigma <- fit$Sigma
-    Sigma_alr <- fit_alr$Sigma
-    for(i in 1:fit$iter) {
-      Sigma[,,i] <- cov2cor(Sigma[,,i])
-      Sigma_alr[,,i] <- cov2cor(Sigma_alr[,,i])
+    # Simulate from model using these combined dynamics
+    rho <- calc_se_decay(min_correlation = 0.1,
+                         days_to_min_autocorrelation = 90)
+    Gamma <- function(X) {
+      jitter <- 1e-08
+      SE(X[1,,drop=F], sigma = 1, rho = rho, jitter = jitter)
     }
-    Sigma <- apply(Sigma, c(1,2), mean)
-    Sigma_alr <- apply(Sigma_alr, c(1,2), mean)
 
-    # For this host, grab 100 randomly sampled pairs of CLR taxa and pull
-    # estimates from both model paramterizations.
-    for(i in 1:100) {
-      idx <- sample(1:nrow(map), size = 2)
-      map1 <- map[idx[1],]
-      map2 <- map[idx[2],]
-      x <- c(x, Sigma[map1$tax,map2$tax])
-      y <- c(y, Sigma_alr[map1$tax_alr,map2$tax_alr])
+    # Sample a random composition, transform to ALR
+    Theta <- function(X) matrix(alr(global_baseline), D-1, ncol(X))
+
+    Lambda <- rmatrixnormal(1, Theta(X), taxon_dynamics_alr, Gamma(X))[,,1]
+    Eta <- rmatrixnormal(1, Lambda, taxon_dynamics_alr, diag(T))[,,1]
+    proportions <- alrInv_array(Eta, d = D, coords = 1)
+    # Eta.clr <- clr_array(proportions, parts = 1)
+    Y <- apply(proportions, 2, function(p) {
+      rmultinom(1, p, size = rpois(1, 10000))
+    })
+
+    for(j in c(10, 20, 30, 40, 50, 75, 100, 200)) {
+      # Downsample
+      X2 <- matrix(sort(sample(1:ncol(Y), size = j)), 1, j)
+      Y2 <- Y[,c(X2)]
+
+      prior_cov_taxa <- get_Xi(D, total_variance = 1)
+
+      fit <- fido::basset(Y = Y2, X = X2, upsilon = prior_cov_taxa$upsilon,
+                          Xi = prior_cov_taxa$Xi, Theta, Gamma,
+                          n_samples = 0, ret_mean = TRUE)
+
+      fit.clr <- to_clr(fit)
+      est_Sigma <- cov2cor(fit.clr$Sigma[,,1])
+
+      Z1 <- sign(taxon_dynamics[upper.tri(taxon_dynamics, diag = FALSE)])
+      Z2 <- sign(est_Sigma[upper.tri(est_Sigma, diag = FALSE)])
+
+      prop_agree <- rbind(NULL,
+                          data.frame(prop = sum(Z1 == Z2) / length(Z1),
+                                     n = T,
+                                     n_subset = j))
     }
   }
-  saveRDS(list(alr_other = x, alr_median = y), save_fn)
-} else {
-  save_obj <- readRDS(save_fn)
-  alr_other <- save_obj$alr_other
-  alr_median <- save_obj$alr_median
+  saveRDS(prop_agree, save_fn)
 }
 
-plot_df <- data.frame(x = alr_other, y = alr_median)
-p <- ggplot(plot_df, aes(x = x, y = y)) +
-  geom_point(size = 2, shape = 21, fill = "#888888") +
-  xlab("CLR correlation (ALR ref. 'other')") +
-  ylab("CLR correlation (ALR ref. median)") +
-  theme_bw()
+prop_agree <- readRDS(save_fn)
+
+p <- ggplot(prop_agree, aes(x = factor(n_subset), y = prop)) +
+  geom_boxplot() +
+  theme_bw() +
+  labs(x = "sample number",
+       y = "proportion matched CLR correlation sign")
 
 ggsave(file.path("output", "figures", "S13.png"),
-       p,
+       plot = p,
+       dpi = 100,
        units = "in",
        height = 4,
-       width = 4)
-
-cat("Correlation of estimates:", round(cor(x, y), 3), "\n")
-cat("R^2:", round(summary(lm(y ~ x, data = plot_df))$r.squared, 3), "\n")
+       width = 5)

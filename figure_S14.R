@@ -1,146 +1,94 @@
 source("path_fix.R")
 
-library(fido)
-library(driver)
 library(rulesoflife)
+library(fido)
+library(tidyverse)
 library(dplyr)
-library(ggplot2)
-library(cowplot)
 
 # ------------------------------------------------------------------------------
 #
-#   Supplemental Figure S14 - COAT estimates versus basset estimates
+#   Supplemental Figure S14 - reproducibility of estimates using two different
+#                             ALR references
 #
 # ------------------------------------------------------------------------------
 
-# Code from: https://github.com/yuanpeicao/COAT
-# Paper: https://arxiv.org/pdf/1601.04397.pdf
-source("COAT.R")
+save_fn <- file.path("output", "alr_sanity_check.rds")
+if(!file.exists(save_fn)) {
+  data <- readRDS(file.path("input", "processed_ASV_1_20.rds"))
+  data_alr <- readRDS(file.path("input", "processed_ASV_1_20_ALRmedian.rds"))
+  map <- left_join(data.frame(tax = 1:nrow(data$taxonomy),
+                              OTU = data$taxonomy$OTU),
+                   data.frame(tax_alr = 1:nrow(data_alr$taxonomy),
+                              OTU = data_alr$taxonomy$OTU),
+                   by = "OTU")
+  map <- map %>%
+    select(tax, tax_alr)
 
-data <- load_data()
-hosts <- unique(data$metadata$sname)
-rug_basset <- matrix(NA, length(hosts), 8911)
-rug_coat <- matrix(NA, length(hosts), 8911)
-saved_matrix_basset <- NULL
-saved_matrix_coat <- NULL
-for(h in 1:length(hosts)) {
-  sname <- hosts[h]
-  cat(paste0("Processing host: ", sname, "\n"))
-  # Pull cached basset parameter estimates
-  basset_estimate <- readRDS(file.path("output",
-                                       "model_fits",
-                                       "asv_days90_diet25_scale1",
-                                       "MAP",
-                                       paste0(sname, ".rds")))
-  # Convert to CLR
-  basset_estimate <- to_clr(basset_estimate)
-  # Pull covariance matrix
-  basset_estimate <- basset_estimate$Sigma[,,1]
-  # Scale to correlation
-  basset_estimate <- cov2cor(basset_estimate)
+  output_dir <- "asv_days90_diet25_scale1"
+  output_dir_alr <- "asv_days90_diet25_scale1_ALRmedian"
 
-  # Pull corresponding raw data for COAT
-  data <- load_data(tax_level = "ASV")
-  md <- data$metadata
-  data <- data$counts
-  data <- data[,which(md$sname == sname)]
+  # Pull the averaged estimated correlation across CLR taxa for a random host and
+  # plot estimates made using ALR reference #1 ("other" category) to estimates of
+  # the same pair made using ALR reference #2 (median CoV taxon).
+  metadata <- load_data()$metadata
+  hosts <- unique(metadata$sname)
+  x = c()
+  y = c()
+  for(host in hosts) {
+    cat(paste0("Parsing data for host ", host, "\n"))
+    fit <- readRDS(file.path("output",
+                             "model_fits",
+                             output_dir,
+                             "full_posterior",
+                             paste0(host, ".rds")))
+    fit <- to_clr(fit)
+    fit_alr <- readRDS(file.path("output",
+                                 "model_fits",
+                                 output_dir_alr,
+                                 "full_posterior",
+                                 paste0(host, ".rds")))
+    fit_alr <- to_clr(fit_alr)
 
-  # Get estimate from COAT
-  coat_estimate <- coat(t(data + 0.5), soft = 1)$corr
+    # Convert estimated covariance to correlation and average over posterior
+    # samples.
+    Sigma <- fit$Sigma
+    Sigma_alr <- fit_alr$Sigma
+    for(i in 1:fit$iter) {
+      Sigma[,,i] <- cov2cor(Sigma[,,i])
+      Sigma_alr[,,i] <- cov2cor(Sigma_alr[,,i])
+    }
+    Sigma <- apply(Sigma, c(1,2), mean)
+    Sigma_alr <- apply(Sigma_alr, c(1,2), mean)
 
-  saved_matrix_basset <- basset_estimate
-  saved_matrix_coat <- coat_estimate
-
-  # Exclude "other"
-  basset_estimate <- basset_estimate[1:134,1:134]
-  coat_estimate <- coat_estimate[1:134,1:134]
-
-  x <- basset_estimate[upper.tri(basset_estimate, diag = FALSE)]
-  y <- coat_estimate[upper.tri(coat_estimate, diag = FALSE)]
-
-  ggplot(data.frame(x = x, y = y),
-         aes(x = x, y = y)) +
-    geom_point(size = 1, shape = 21, fill = "#aaaaaa") +
-    theme_bw() +
-    labs(x = "CLR correlation, original model",
-         y = "CLR correlation, COAT")
-
-  rug_basset[h,] <- x
-  rug_coat[h,] <- y
+    # For this host, grab 100 randomly sampled pairs of CLR taxa and pull
+    # estimates from both model paramterizations.
+    for(i in 1:100) {
+      idx <- sample(1:nrow(map), size = 2)
+      map1 <- map[idx[1],]
+      map2 <- map[idx[2],]
+      x <- c(x, Sigma[map1$tax,map2$tax])
+      y <- c(y, Sigma_alr[map1$tax_alr,map2$tax_alr])
+    }
+  }
+  saveRDS(list(alr_other = x, alr_median = y), save_fn)
+} else {
+  save_obj <- readRDS(save_fn)
+  alr_other <- save_obj$alr_other
+  alr_median <- save_obj$alr_median
 }
 
-p1 <- plot_kernel_or_cov_matrix(saved_matrix_basset) +
-  theme(legend.position = "none") +
-  labs(x = "ASV 1",
-       y = "ASV 2") +
-  scale_x_continuous(expand = c(0, 0)) +
-  scale_y_continuous(expand = c(0, 0)) +
-  theme(axis.text.x = element_blank(),
-        axis.text.y = element_blank(),
-        axis.ticks.x = element_blank(),
-        axis.ticks.y = element_blank())
-
-p2 <- plot_kernel_or_cov_matrix(saved_matrix_coat) +
-  labs(x = "ASV 1",
-       y = "ASV 2") +
-  scale_x_continuous(expand = c(0, 0)) +
-  scale_y_continuous(expand = c(0, 0)) +
-  theme(axis.text.x = element_blank(),
-        axis.text.y = element_blank(),
-        axis.ticks.x = element_blank(),
-        axis.ticks.y = element_blank()) +
-  labs(fill = "Correlation")
-
-# Plot subset of almost 500K points
-x <- c(rug_basset)
-y <- c(rug_coat)
-subset_idx <- sample(1:length(x), size = 1e5)
-p3 <- ggplot(data.frame(x = x[subset_idx], y = y[subset_idx]),
-       aes(x = x, y = y)) +
-  # geom_point(size = 1, shape = 21, fill = "#aaaaaa") +
-  geom_point(size = 1, alpha = 0.1) +
-  theme_bw() +
-  labs(y = "CLR correlation (COAT)",
-       x = "CLR correlation (basset)")
-
-p4 <- ggplot(data.frame(x = c(x, y),
-                        Model = c(rep("basset", length(x)),
-                                 rep("COAT", length(y)))),
-             aes(x = x, fill = Model)) +
-  geom_density(alpha = 0.5) +
-  theme_bw() +
-  scale_fill_manual(values = c("#59AAD7", "#aaaaaa")) +
-  labs(x = "estimated taxon-taxon correlation")
-
-p1_padded <- plot_grid(NULL, p1, ncol = 2,
-                       rel_widths = c(0.05, 1))
-
-p2_padded <- plot_grid(NULL, p2, ncol = 2,
-                       rel_widths = c(0.03, 1))
-
-prow1 <- plot_grid(p1_padded, p2_padded, ncol = 2,
-                   rel_widths = c(1, 1.2),
-                   labels = c("A", "B"),
-                   label_size = 18,
-                   scale = 0.95)
-
-prow2 <- plot_grid(p3, p4, ncol = 2,
-               rel_widths = c(1, 1.2),
-               labels = c("C", "D"),
-               label_size = 18,
-               scale = 0.95)
-
-p <- plot_grid(prow1, prow2, ncol = 1,
-               rel_heights = c(1, 1))
+plot_df <- data.frame(x = alr_other, y = alr_median)
+p <- ggplot(plot_df, aes(x = x, y = y)) +
+  geom_point(size = 2, shape = 21, fill = "#888888") +
+  xlab("CLR correlation (ALR ref. 'other')") +
+  ylab("CLR correlation (ALR ref. median)") +
+  theme_bw()
 
 ggsave(file.path("output", "figures", "S14.png"),
-       plot = p,
-       dpi = 100,
+       p,
        units = "in",
-       height = 8,
-       width = 9)
+       height = 4,
+       width = 4)
 
-# Calculate correlation
-cat(paste0("Correlation of basset, COAT estimates: ",
-           round(cor(x, y)**2, 3),
-           "\n"))
+cat("Correlation of estimates:", round(cor(x, y), 3), "\n")
+cat("R^2:", round(summary(lm(y ~ x, data = plot_df))$r.squared, 3), "\n")

@@ -18,7 +18,7 @@ library(frechet)
 #              and DIABIMMUNE); the "titration" experiment to estimate population-
 #              versus host-level signal is performed at the end of this script
 #
-#   Supplemental Figure S11 - "rug" heat maps and estimated proportions of host-
+#   Supplemental Figure S12 - "rug" heat maps and estimated proportions of host-
 #                             vs. population-level signal for the human data sets
 #
 # ------------------------------------------------------------------------------
@@ -235,7 +235,9 @@ rug$pair <- as.numeric(rug$pair)
 s1 <-  ggplot(rug, aes(x = pair, y = host)) +
   geom_raster(aes(fill = correlation)) +
   scale_fill_gradient2(low = "navy", mid = "white", high = "red",
-                       midpoint = 0) +
+                       midpoint = 0,
+                       guide = guide_colorbar(frame.colour = "black",
+                                              ticks.colour = "black")) +
   labs(y = "host") +
   scale_x_continuous(expand = c(0, 0)) +
   scale_y_continuous(expand = c(0, 0)) +
@@ -339,7 +341,9 @@ rug$pair <- as.numeric(rug$pair)
 s2 <- ggplot(rug, aes(x = pair, y = host)) +
   geom_raster(aes(fill = correlation)) +
   scale_fill_gradient2(low = "navy", mid = "white", high = "red",
-                       midpoint = 0) +
+                       midpoint = 0,
+                       guide = guide_colorbar(frame.colour = "black",
+                                              ticks.colour = "black")) +
   labs(y = "host") +
   scale_x_continuous(expand = c(0, 0)) +
   scale_y_continuous(expand = c(0, 0)) +
@@ -449,7 +453,7 @@ ggsave(file.path("output", "figures", "F4.png"),
        width = 12)
 
 # ------------------------------------------------------------------------------
-#   Supplemental Figure 11 panels
+#   Supplemental Figure 12 panels
 # ------------------------------------------------------------------------------
 
 # ------------------------------------------------------------------------------
@@ -458,82 +462,96 @@ ggsave(file.path("output", "figures", "F4.png"),
 #
 # ------------------------------------------------------------------------------
 
-output_dir_full <- check_dir(c("output", "model_fits", "asv_days90_diet25_scale1", "MAP"))
-file_list <- list.files(path = output_dir_full, pattern = "*.rds")
-if(length(file_list) == 0) {
-  output_dir_full <- check_dir(c("output", "model_fits", output_dir, "full_posterior"))
-  file_list <- list.files(path = output_dir_full, pattern = "*.rds")
-}
-# Get taxa number and posterior sample number
-fit <- readRDS(file.path(output_dir_full, file_list[1]))
-D <- fit$D
-amboseli <- array(NA, dim=c(D, D, length(file_list)))
-for(f in 1:length(file_list)) {
-  file <- file_list[f]
-  fit <- readRDS(file.path(output_dir_full, file))
-  # Convert to CLR
-  if(fit$coord_system != "clr") {
-    fit <- to_clr(fit)
-  }
-  amboseli[,,f] <- cov2cor(fit$Sigma[,,1])
-}
+# output_dir_full <- check_dir(c("output", "model_fits", "asv_days90_diet25_scale1", "MAP"))
+# file_list <- list.files(path = output_dir_full, pattern = "*.rds")
+# if(length(file_list) == 0) {
+#   output_dir_full <- check_dir(c("output", "model_fits", output_dir, "full_posterior"))
+#   file_list <- list.files(path = output_dir_full, pattern = "*.rds")
+# }
+# # Get taxa number and posterior sample number
+# fit <- readRDS(file.path(output_dir_full, file_list[1]))
+# D <- fit$D
+# amboseli <- array(NA, dim=c(D, D, length(file_list)))
+# for(f in 1:length(file_list)) {
+#   file <- file_list[f]
+#   fit <- readRDS(file.path(output_dir_full, file))
+#   # Convert to CLR
+#   if(fit$coord_system != "clr") {
+#     fit <- to_clr(fit)
+#   }
+#   amboseli[,,f] <- cov2cor(fit$Sigma[,,1])
+# }
+#
+# datasets <- list("Amboseli" = amboseli,
+#                  "DIABIMMUNE" = diabimmune,
+#                  "Johnson et al." = johnson)
+# mins <- NULL
+# for(i in 1:length(datasets)) {
+#   dataset <- datasets[[i]]
+#   D <- dim(dataset)[1]
+#   N <- dim(dataset)[3]
+#   global_mean <- CovFMean(dataset)$Mout[[1]]
+#   addend <- diag(D)*1e-06
+#   mix <- seq(from = 0, to = 1, by = 0.05)
+#   for(h in 1:N) {
+#     host_obs <- dataset[,,h]
+#     host_residual <- host_obs - global_mean
+#     diag(host_residual) <- 1
+#
+#     for(j in 1:length(mix)) {
+#       combined_dynamics <- (1-mix[j])*global_mean + mix[j]*host_residual
+#       mins <- rbind(mins,
+#                     data.frame(host = h,
+#                                p = mix[j],
+#                                dist = dist4cov(host_obs, combined_dynamics)$dist,
+#                                dataset = names(datasets)[i]))
+#     }
+#   }
+# }
+#
+# minimizing_proportions <- mins %>%
+#   group_by(dataset, host) %>%
+#   arrange(dist) %>%
+#   slice(1) %>%
+#   ungroup()
+#
+# minimizing_proportions$dataset <- factor(minimizing_proportions$dataset, levels = names(datasets)[3:1])
+#
+# s3 <- ggplot(minimizing_proportions, aes(x = p, y = dataset, fill = dataset)) +
+#   geom_density_ridges(stat = "binline", binwidth = 0.05, scale = 0.95) +
+#   theme_bw() +
+#   scale_alpha_continuous(range = c(0.25, 1.0)) +
+#   scale_fill_manual(values = dataset_palette) +
+#   scale_y_discrete(expand = expansion(add = c(0.15, 1.05))) +
+#   coord_cartesian(clip = "off") +
+#   guides(fill = "none",
+#          alpha = "none") +
+#   labs(x = "host-level proportion",
+#        y = "")
+#
+# p <- plot_grid(s1, s2, NULL, s3, ncol = 4,
+#                rel_widths = c(1, 1, -0.05, 0.8),
+#                labels = c("A", "B", "", "C"),
+#                label_size = 18,
+#                label_y = 1.01,
+#                label_x = -0.01,
+#                scale = 0.95)
 
-datasets <- list("Amboseli" = amboseli,
-                 "DIABIMMUNE" = diabimmune,
-                 "Johnson et al." = johnson)
-mins <- NULL
-for(i in 1:length(datasets)) {
-  dataset <- datasets[[i]]
-  D <- dim(dataset)[1]
-  N <- dim(dataset)[3]
-  global_mean <- CovFMean(dataset)$Mout[[1]]
-  addend <- diag(D)*1e-06
-  mix <- seq(from = 0, to = 1, by = 0.05)
-  for(h in 1:N) {
-    host_obs <- dataset[,,h]
-    host_residual <- host_obs - global_mean
-    diag(host_residual) <- 1
+legend <- get_legend(s1)
+s1 <- s1 +
+  theme(legend.position = "none")
+s2 <- s2 +
+  theme(legend.position = "none")
 
-    for(j in 1:length(mix)) {
-      combined_dynamics <- (1-mix[j])*global_mean + mix[j]*host_residual
-      mins <- rbind(mins,
-                    data.frame(host = h,
-                               p = mix[j],
-                               dist = dist4cov(host_obs, combined_dynamics)$dist,
-                               dataset = names(datasets)[i]))
-    }
-  }
-}
-
-minimizing_proportions <- mins %>%
-  group_by(dataset, host) %>%
-  arrange(dist) %>%
-  slice(1) %>%
-  ungroup()
-
-minimizing_proportions$dataset <- factor(minimizing_proportions$dataset, levels = names(datasets)[3:1])
-
-s3 <- ggplot(minimizing_proportions, aes(x = p, y = dataset, fill = dataset)) +
-  geom_density_ridges(stat = "binline", binwidth = 0.05, scale = 0.95) +
-  theme_bw() +
-  scale_alpha_continuous(range = c(0.25, 1.0)) +
-  scale_fill_manual(values = dataset_palette) +
-  scale_y_discrete(expand = expansion(add = c(0.15, 1.05))) +
-  coord_cartesian(clip = "off") +
-  guides(fill = "none",
-         alpha = "none") +
-  labs(x = "host-level proportion",
-       y = "")
-
-p <- plot_grid(s1, s2, NULL, s3, ncol = 4,
-               rel_widths = c(1, 1, -0.05, 0.8),
-               labels = c("A", "B", "", "C"),
+p <- plot_grid(s1, s2, legend, ncol = 3,
+               rel_widths = c(1, 1, 0.25),
+               labels = c("A", "B", ""),
                label_size = 18,
                label_y = 1.01,
                label_x = -0.01,
                scale = 0.95)
 
-ggsave(file.path("output", "figures", "S11.png"),
+ggsave(file.path("output", "figures", "S12.png"),
        p,
        dpi = 100,
        units = "in",

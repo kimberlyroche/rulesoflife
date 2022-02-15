@@ -152,7 +152,7 @@ for(h in 1:N) {
   }
 }
 
-p2 <- ggplot(mins, aes(x = p, y = dist, color = factor(host))) +
+p2_alt <- ggplot(mins, aes(x = p, y = dist, color = factor(host))) +
   geom_line() +
   theme_bw() +
   scale_color_manual(values = generate_highcontrast_palette(N)) +
@@ -160,16 +160,37 @@ p2 <- ggplot(mins, aes(x = p, y = dist, color = factor(host))) +
   labs(x = "proportion host-level effect",
        y = "distance of composite\ndynamics from observed")
 
-p1_padded <- plot_grid(NULL, p1, NULL, ncol = 1,
-                       rel_heights = c(0.18, 1, 0.18))
+p2 <- ggplot(data.frame(x = mins %>%
+                          group_by(host) %>%
+                          arrange(dist) %>%
+                          slice(1) %>%
+                          pull(p)), aes(x = x)) +
+  # geom_density_ridges(stat = "binline", binwidth = 0.05, scale = 0.95) +
+  geom_histogram(color = "white", binwidth = 0.05) +
+  theme_bw() +
+  scale_alpha_continuous(range = c(0.25, 1.0)) +
+  # scale_y_discrete(expand = expansion(add = c(0.15, 1.05))) +
+  coord_cartesian(clip = "off") +
+  guides(fill = "none",
+         alpha = "none") +
+  labs(x = "host-level proportion",
+       y = "count")
 
-p_all <- plot_grid(p1_padded, NULL, p2, ncol = 3,
-                   rel_widths = c(1, 0.03, 0.5),
+# p1_padded <- plot_grid(NULL, p1, NULL, ncol = 1,
+#                        rel_heights = c(0.18, 1, 0.18))
+
+p1_padded <- plot_grid(NULL, p1, NULL, ncol = 1,
+                       rel_heights = c(0.1, 1, 0.18))
+
+p2_padded <- plot_grid(p2, scale = 0.9)
+
+p_all <- plot_grid(p1_padded, NULL, p2_padded, ncol = 3,
+                   rel_widths = c(1.2, 0.03, 0.5),
                    labels = c("A", "", "B"),
                    label_size = 18,
                    scale = 0.95)
 
-ggsave(file.path("output", "figures", "S6.png"),
+ggsave(file.path("output", "figures", "S6.svg"),
        p_all,
        dpi = 100,
        units = "in",

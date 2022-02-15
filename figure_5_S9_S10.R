@@ -310,8 +310,8 @@ for(synchronous_idx in bottom_synchronous) {
 #
 # ------------------------------------------------------------------------------
 
-plot_df <- data.frame(synchrony = c(),
-                      universality = c())
+plot_df <- NULL
+plot_df_permuted <- NULL
 for(i in 1:length(rug_asv$tax_idx1)) {
   t1 <- rug_asv$tax_idx1[i]
   t2 <- rug_asv$tax_idx2[i]
@@ -319,11 +319,38 @@ for(i in 1:length(rug_asv$tax_idx1)) {
                    data.frame(synchrony = mean(c(correlations[t1], correlations[t2])),
                               universality = scores[i],
                               sign = consensus_signs[i]))
+  if(null_case) {
+    plot_df_permuted <- rbind(plot_df_permuted,
+                              data.frame(synchrony = mean(c(correlations_permuted[t1], correlations_permuted[t2])),
+                                         universality = scores[i],
+                                         sign = consensus_signs[i]))
+  }
 }
 plot_df$sign <- factor(plot_df$sign, levels = c(1, -1))
 levels(plot_df$sign) <- c("positive", "negative")
+plot_df_permuted$sign <- factor(plot_df_permuted$sign, levels = c(1, -1))
+levels(plot_df_permuted$sign) <- c("positive", "negative")
+
+# Include these labels to visually confirm the enrichment of Atobobiaceae and
+# Eggerthellaceae in the high universality/low synchrony cohort and Lachnospiraceae
+# pairs in the high universality/high synchrony cohort
+
+# library(ggrepel)
+# tax <- data$taxonomy
+# labels <- character(nrow(plot_df))
+# for(i in 1:length(labels)) {
+#   t1 <- rug_asv$tax_idx1[i]
+#   t2 <- rug_asv$tax_idx2[i]
+#   f1 <- tax$family[t1]
+#   f2 <- tax$family[t2]
+#   labels[i] <- paste0(substr(f1, 1, 6), "-", substr(f2, 1, 6))
+# }
+# plot_df$label <- labels
 
 p1 <- ggplot() +
+  # geom_point(data = plot_df %>% filter(!is.na(sign)) %>% filter(synchrony > 0.3 & universality > 0.4),
+  #            mapping = aes(x = synchrony, y = universality, fill = sign),
+  #            size = 2, shape = 21) +
   geom_point(data = plot_df %>% filter(!is.na(sign)),
              mapping = aes(x = synchrony, y = universality, fill = sign),
              size = 2, shape = 21) +
@@ -347,6 +374,8 @@ p1 <- ggplot() +
             size = 5,
             hjust = 1,
             color = "black") +
+  # geom_text_repel(data = plot_df %>% filter(!is.na(sign)) %>% filter(synchrony > 0.3 & universality > 0.4),
+  #                 mapping = aes(x = synchrony, y = universality, label = label)) +
   scale_fill_manual(values = c("#F25250", "#34CCDE")) +
   theme_bw() +
   labs(fill = "Consensus\ncorrelation sign",
@@ -354,6 +383,53 @@ p1 <- ggplot() +
        y = "universality score")
 
 cat(paste0("R^2: ", round(cor(plot_df$synchrony, plot_df$universality)^2, 3), "\n"))
+
+if(null_case) {
+  p1p <- ggplot() +
+    geom_point(data = plot_df_permuted %>% filter(!is.na(sign)),
+               mapping = aes(x = synchrony, y = universality, fill = sign),
+               size = 2, shape = 21) +
+    scale_fill_manual(values = c("#F25250", "#34CCDE")) +
+    theme_bw() +
+    labs(fill = "Consensus\ncorrelation sign",
+         x = "synchrony score",
+         y = "universality score")
+
+  cat(paste0("R^2: ", round(cor(plot_df_permuted$synchrony, plot_df_permuted$universality)^2, 3), "\n"))
+
+  ggsave(file.path("output", "figures", "S10.png"),
+         p1p,
+         dpi = 100,
+         units = "in",
+         height = 6,
+         width = 9)
+}
+
+# ------------------------------------------------------------------------------
+#   Synchrony not greater than expected by chance
+# ------------------------------------------------------------------------------
+
+cat(paste0("Synchrony: median = ", round(median(correlations), 3), ", min = ", round(min(correlations), 3), ", max = ", round(max(correlations), 3), "\n"))
+
+idx <- which(correlations < max(correlations_permuted))
+cat(paste0("Percent of taxa with 'significant' synchrony: ", round((1 - length(idx) / length(correlations))*100, 1),
+           " (", length(idx), " of 134)\n"))
+
+tax_syn <- cbind(idx = 1:134, data$taxonomy[1:134,2:ncol(data$taxonomy)], syn = correlations)
+
+# Most synchronous
+View(tax_syn %>% filter(syn > 0.4) %>% arrange(family))
+
+# Lease synchronous
+View(tax_syn %>% arrange(syn, family) %>% slice(1:5))
+
+# Output Supplemental Table S6
+out_df <- data.frame(Synchrony = correlations,
+                     Significant = correlations > max(correlations_permuted),
+                     ASV = 1:134,
+                     Taxonomy = apply(data$taxonomy[1:134,2:ncol(data$taxonomy)], 1, function(x) paste0(x, collapse = " / ")))
+write.csv(out_df %>% arrange(desc(Synchrony)),
+          file.path("output", "Table_S6.csv"))
 
 # ------------------------------------------------------------------------------
 #   Enrichment of top center and top right-hand parts
