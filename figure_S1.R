@@ -16,7 +16,7 @@ library(magick)
 data <- load_data(tax_level = "family")
 
 hosts_dates <- data$metadata %>%
-  select(sname, collection_date)
+  dplyr::select(sname, collection_date)
 hosts_dates$sname <- factor(hosts_dates$sname,
                             levels = sort(unique(hosts_dates$sname), decreasing = TRUE))
 baseline_time <- min(hosts_dates$collection_date)
@@ -56,7 +56,7 @@ p <- plot_grid(p1_padded, p2_padded, ncol = 1,
                label_x = 0,
                scale = 0.95)
 
-ggsave(file.path("output", "figures", "S1.png"),
+ggsave(file.path("output", "figures", "S1.svg"),
        p,
        units = "in",
        dpi = 100,

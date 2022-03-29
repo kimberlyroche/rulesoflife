@@ -116,9 +116,9 @@ for(host in ref_hosts) {
     mutate(combined_ra = sum(relative_abundance)) %>%
     filter(taxon != "domain Bacteria") %>%
     ungroup() %>%
-    select(-c(relative_abundance)) %>%
+    dplyr::select(-c(relative_abundance)) %>%
     mutate(relative_abundance = combined_ra) %>%
-    select(-c(combined_ra))
+    dplyr::select(-c(combined_ra))
   plot_df <- rbind(temp, temp2)
 
   plot_df <- plot_df %>%
@@ -189,7 +189,7 @@ labels_years <- data$metadata %>%
   mutate(label = ifelse(sname %in% ref_hosts & year %in% year_range,
                         sname,
                         "other")) %>%
-  select(label, year)
+  dplyr::select(label, year)
 labels <- factor(labels_years$label, levels = c(ref_hosts, "other"))
 years <- as.numeric(labels_years$year)
 
@@ -226,7 +226,7 @@ p <- plot_grid(p1_padded, NULL, p2,
                label_y = 1,
                scale = 0.95)
 
-ggsave(file.path("output", "figures", "S2.png"),
+ggsave(file.path("output", "figures", "S2.svg"),
        p,
        units = "in",
        dpi = 100,

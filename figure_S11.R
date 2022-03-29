@@ -260,7 +260,7 @@ p3_comp <- plot_grid(p1_comp, p2_comp, ncol = 2,
 
 p_all <- plot_grid(p3_ped, p3_comp, ncol = 1)
 
-ggsave(file.path("output", "figures", "S11.png"),
+ggsave(file.path("output", "figures", "S11.svg"),
        plot = p_all,
        dpi = 100,
        units = "in",
@@ -357,7 +357,7 @@ heatmap_cov <- function(K, label) {
          fill = "Covariance")
   show(p)
   output_dir <- check_dir(c("output", "figures"))
-  ggsave(file.path(output_dir, paste0(label, ".png")),
+  ggsave(file.path(output_dir, paste0(label, ".svg")),
          plot = p,
          units = "in",
          dpi = 100,

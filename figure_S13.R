@@ -80,7 +80,7 @@ p <- ggplot(prop_agree, aes(x = factor(n_subset), y = prop)) +
   labs(x = "sample number",
        y = "proportion matched CLR correlation sign")
 
-ggsave(file.path("output", "figures", "S13.png"),
+ggsave(file.path("output", "figures", "S13.svg"),
        plot = p,
        dpi = 100,
        units = "in",

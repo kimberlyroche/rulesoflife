@@ -793,6 +793,7 @@ plot_enrichment <- function(frequencies_subset1, frequencies_subset2 = NULL, fre
   } else {
     fam_palette_colored <- palette
   }
+
   all_families <- sort(unique(c(names(frequencies))))
   fam_palette <- sample(c("#dddddd", "#d5d5d5", "#cccccc", "#c5c5c5"), replace = TRUE, size = length(all_families))
   names(fam_palette) <- all_families

@@ -1,339 +1,312 @@
 source("path_fix.R")
 
+library(driver)
+library(fido)
 library(tidyverse)
 library(rulesoflife)
 library(RColorBrewer)
 library(cowplot)
-library(grid)
-library(ggridges)
-library(ggraph)
-library(igraph)
 
 # ------------------------------------------------------------------------------
 #
-#   Figure 3 - "hockey stick" plot of universality scores, histograms of
-#              universality scores, barplot enrichment visualizations of
-#              family-family pairs in the top 2.5% of universal pairs, and
-#              network of top 2.5% most universal pairs
+#   Figure 3 - permuted and observed "rug" plots for ASVs plus breakout plots
+#              of negatively and positively correlated highly "universal" taxa
+#              over three hosts
 #
-# ------------------------------------------------------------------------------
-
-source("thresholds.R")
-
-rug_obj <- summarize_Sigmas(output_dir = "asv_days90_diet25_scale1")
-rug <- rug_obj$rug
-
-# ------------------------------------------------------------------------------
-#   "Hockey stick" plot
-# ------------------------------------------------------------------------------
-
-scores_pieces <- apply(rug, 2, function(x) calc_universality_score(x, return_pieces = TRUE))
-scores <- apply(scores_pieces, 2, function(x) x[1]*x[2])
-score_df <- data.frame(x = scores_pieces[1,], y = scores_pieces[2,])
-
-# Additional labelings
-# 1) Consensus sign
-score_df$sign <- apply(rug, 2, calc_consensus_sign)
-score_df$sign <- factor(score_df$sign, levels = c(1, -1))
-levels(score_df$sign) <- c("positive", "negative")
-# 2) Percent significant observations for this taxon pair
-score_df$signif <- apply(rug, 2, function(x) {
-  sum(x < thresholds %>% filter(type == "ASV") %>% pull(lower) | x > thresholds %>% filter(type == "ASV") %>% pull(upper))/length(x)
-})
-
-p1 <- ggplot(score_df %>% filter(sign != 0)) +
-  geom_point(mapping = aes(x = x, y = y, fill = signif, color = sign),
-             size = 2,
-             shape = 21,
-             stroke = 1) +
-  scale_fill_distiller(palette = "PuRd", direction = 1,
-                       guide = guide_colorbar(frame.colour = "black",
-                                              ticks.colour = "black")) +
-  scale_color_manual(values = c("#000000", "#888888")) +
-  theme_bw() +
-  ylim(c(0,1)) +
-  theme(legend.title = element_text(margin = margin(b = 5))) +
-  labs(x = "proportion shared sign",
-       y = "median association strength",
-       fill = "Proportion\nsignificant\nobservations",
-       color = "Consensus\ncorrelation sign")
-
-# ------------------------------------------------------------------------------
-#   ggridges stacked histograms of universality scores at the ASV level
-# ------------------------------------------------------------------------------
-
-plot_df <- data.frame(score = scores, type = "ASV")
-
-p2 <- ggplot(data.frame(score = apply(rug, 2, calc_universality_score)),
-             aes(x = score, y = 1)) +
-  geom_density_ridges(stat = "binline", bins = 20, scale = 0.9, draw_baseline = TRUE) +
-  geom_segment(data = thresholds_scores %>% filter(type == "ASV"),
-               aes(x = x0, xend = x0, y = as.numeric(type), yend = 6),
-               color = "black",
-               size = 1,
-               linetype = "dashed") +
-  theme_bw() +
-  labs(x = "universality score",
-       y = "") +
-  scale_x_continuous(expand = c(0, 0)) +
-  scale_y_discrete(expand = c(0, 0)) +
-  coord_cartesian(clip = "off") +
-  theme_ridges(grid = FALSE, center_axis_labels = TRUE) +
-  theme(legend.position = "none") +
-  xlim(c(-0.05, 0.65)) +
-  scale_fill_brewer(palette = "Blues") +
-  theme(axis.text = element_text(size = 9),
-        axis.title = element_text(size = 11))
-
-# p1_padded <- plot_grid(p1, NULL, ncol = 1, rel_heights = c(1, 0.02))
-#
-# p <- plot_grid(p1_padded, p2, ncol = 2,
-#                rel_widths = c(1.5, 1.25),
-#                labels = c("A", "B"),
-#                label_size = 18,
-#                # label_x = -0.02,
-#                scale = 0.95)
-#
-# ggsave("output/figures/3ab.png",
-#        p,
-#        dpi = 100,
-#        units = "in",
-#        height = 4,
-#        width = 9)
-
-# ------------------------------------------------------------------------------
-#   Enrichment bar plots
 # ------------------------------------------------------------------------------
 
 data <- load_data(tax_level = "ASV")
+md <- data$metadata
+hosts <- unique(md$sname)
+host_shortlist <- c("DUI", "DUX", "LIW", "PEB", "VET")
 
-consensus_signs <- apply(rug, 2, calc_consensus_sign)
+host_labels <- read.delim(file.path("output", "host_labels.tsv"),
+                          header = TRUE)
+host_order <- c(2,1,4,5,3)
 
-# Pull top k percent most universal associations
-percent <- 2.5
-k <- round(length(scores)*(percent/100))
-top_pairs <- order(scores, decreasing = TRUE)[1:k]
-
-# Get the taxon indices of each partner in these top pairs
-pair_idx1 <- rug_obj$tax_idx1[top_pairs]
-pair_idx2 <- rug_obj$tax_idx2[top_pairs]
-
-# ------------------------------------------------------------------------------
-#   Family version
-# ------------------------------------------------------------------------------
-
-families_top <- c(data$taxonomy[pair_idx1,6], data$taxonomy[pair_idx2,6])
-families_top <- families_top[!is.na(families_top)]
-
-families_all <- c(data$taxonomy[rug_obj$tax_idx1,6], data$taxonomy[rug_obj$tax_idx2,6])
-families_all <- families_all[!is.na(families_all)]
-
-frequencies_subset <- table(families_top)
-frequencies <- table(families_all)
-
-enrichment <- NULL
-
-# Test for enrichment statistically
-signif <- c()
-for(fam in names(frequencies_subset)) {
-  fam_in_sample <- unname(unlist(frequencies_subset[fam]))
-  sample_size <- unname(unlist(sum(frequencies_subset)))
-  fam_in_bg <- unname(unlist(frequencies[fam]))
-  bg_size <- unname(unlist(sum(frequencies)))
-  ctab <- matrix(c(fam_in_sample,
-                   sample_size - fam_in_sample,
-                   fam_in_bg,
-                   bg_size - fam_in_bg),
-                 2, 2, byrow = TRUE)
-  prob <- fisher.test(ctab, alternative = "greater")$p.value
-  enrichment <- rbind(enrichment,
-                      data.frame(name = fam,
-                                 type = "family",
-                                 location = "top ASVs",
-                                 pvalue = prob))
-  if(prob < 0.05) {
-    signif <- c(signif, fam)
-    cat(paste0("ASV family: ", fam, ", p-value: ", round(prob, 3), "\n"))
-  }
+# These will be in the order DUX, DUI, PEB, VET, LIW
+use_labels <- c()
+for(this_host in host_shortlist[host_order]) {
+  use_labels <- c(use_labels,
+                  host_labels %>% filter(sname == this_host) %>% pull(host_label))
 }
 
-p3 <- plot_enrichment(frequencies_subset1 = frequencies_subset,
-                      frequencies_subset2 = NULL,
-                      frequencies = frequencies,
-                      significant_families1 = signif,
-                      significant_families2 = NULL,
-                      plot_height = 6,
-                      plot_width = 5,
-                      legend_topmargin = 100,
-                      use_pairs = FALSE,
-                      rel_widths = c(1, 0.35, 1, 0.3, 2),
-                      labels = c("overall", "top ASVs"),
-                      save_name = NULL)
-
 # ------------------------------------------------------------------------------
-#   Family-family version
+#   Observed ASV-level "rug"
 # ------------------------------------------------------------------------------
 
-fam1 <- data$taxonomy[pair_idx1,6]
-fam2 <- data$taxonomy[pair_idx2,6]
-retain_idx <- !is.na(fam1) & !is.na(fam2)
-fam1 <- fam1[retain_idx]
-fam2 <- fam2[retain_idx]
-family_pairs_top <- paste0(fam1, " - ", fam2)
+rug_obj <- summarize_Sigmas(output_dir = "asv_days90_diet25_scale1")
 
-fam1 <- data$taxonomy[rug_obj$tax_idx1,6]
-fam2 <- data$taxonomy[rug_obj$tax_idx2,6]
-retain_idx <- !is.na(fam1) & !is.na(fam2)
-fam1 <- fam1[retain_idx]
-fam2 <- fam2[retain_idx]
+# ------------------------------------------------------------------------------
+#   Enrichment statistics for sign
+# ------------------------------------------------------------------------------
 
-family_pairs_all <- paste0(fam1, " - ", fam2)
+# ASV
+# ASV_sign <- sign(c(rug_obj$rug))
+# binom.test(table(ASV_sign)[2], length(ASV_sign), 0.5)
 
-frequencies_subset <- table(family_pairs_top)
-frequencies <- table(family_pairs_all)
+asv_column_order <- NULL
+legend <- NULL
 
-# Detour for Lachno-Lachno numbers
-cat(paste0("Expected number of Lachno-Lachno pairs (2.5% of all Lachno-Lachno pairs): ",
-           round(frequencies[names(frequencies) == "Lachnospiraceae - Lachnospiraceae"]*0.025, 1),
-           "\n"))
-cat(paste0("Observed number of Lachno-Lachno pairs (2.5% of all Lachno-Lachno pairs): ",
-           round(frequencies_subset[names(frequencies_subset) == "Lachnospiraceae - Lachnospiraceae"], 1),
-           "\n"))
-
-# Test for enrichment statistically
-signif <- c()
-for(fam in names(frequencies_subset)) {
-  fam_in_sample <- unname(unlist(frequencies_subset[fam]))
-  sample_size <- unname(unlist(sum(frequencies_subset)))
-  fam_in_bg <- unname(unlist(frequencies[fam]))
-  bg_size <- unname(unlist(sum(frequencies)))
-  ctab <- matrix(c(fam_in_sample,
-                   sample_size - fam_in_sample,
-                   fam_in_bg,
-                   bg_size - fam_in_bg),
-                 2, 2, byrow = TRUE)
-  prob <- fisher.test(ctab, alternative = "greater")$p.value
-  enrichment <- rbind(enrichment,
-                      data.frame(name = fam,
-                                 type = "family-pair",
-                                 location = "top ASVs",
-                                 pvalue = prob))
-  if(prob < 0.05) {
-    signif <- c(signif, fam)
-    cat(paste0("ASV family: ", fam, ", p-value: ", round(prob, 3), "\n"))
-  }
+H <- length(hosts)
+D <- nrow(data$counts)
+baselines <- matrix(NA, H, D)
+for(i in 1:length(hosts)) {
+  # Average of ALR samples for this host is their baseline
+  host_samples <- clr_array(data$counts[,which(md$sname == hosts[i])] + 0.5,
+                            parts = 1)
+  baselines[i,] <- apply(host_samples, 1, mean)
 }
 
-p5 <- plot_enrichment(frequencies_subset1 = frequencies_subset,
-                      frequencies_subset2 = NULL,
-                      frequencies = frequencies,
-                      significant_families1 = signif,
-                      significant_families2 = NULL,
-                      plot_height = 6,
-                      plot_width = 6,
-                      legend_topmargin = 100,
-                      use_pairs = TRUE,
-                      rel_widths = c(1, 0.35, 1, 0.3, 3.75),
-                      labels = c("overall", "top ASVs"),
-                      save_name = NULL)
+baseline_distances <- dist(baselines)
+row_order <- hclust(baseline_distances)$order
 
-enrichment <- enrichment %>%
-  arrange(type, name)
-colnames(enrichment) <- c("ASV family or pair name",
-                          "Type",
-                          "Enrichment evaluated in",
-                          "P-value (Fisher's exact test)")
-write.table(enrichment,
-            file = file.path("output", "Fig3_table.tsv"),
-            sep = "\t",
-            quote = FALSE,
-            row.names = FALSE)
+# Compute column order
+rug <- rug_obj$rug
+canonical_col_order <- order(colMeans(rug))
+canonical_row_order <- row_order
+rug <- rug[canonical_row_order,canonical_col_order]
+asv_column_order <- canonical_col_order
+
+rug <- cbind(1:nrow(rug), rug)
+colnames(rug) <- c("host", paste0(1:(ncol(rug)-1)))
+rug <- cbind(host_name = host_labels$host_label, rug)
+rug <- pivot_longer(as.data.frame(rug), !c(host_name, host), names_to = "pair", values_to = "correlation")
+rug$pair <- as.numeric(rug$pair)
+rug$correlation <- as.numeric(rug$correlation)
+
+temp <- rug %>%
+  dplyr::select(host, host_name) %>%
+  distinct() %>%
+  arrange(host_name)
+name_map <- unlist(temp$host_name)
+names(name_map) <- temp$host
+
+# Mute host names not in the shortlist
+name_map <- name_map[name_map %in% use_labels]
+plot_breaks <- names(name_map)
+
+p2 <- ggplot(rug, aes(x = pair, y = host)) +
+  geom_raster(aes(fill = correlation)) +
+  # scale_fill_gradient2(low = "navy", mid = "white", high = "red", midpoint = 0,
+  #                      guide = guide_colorbar(frame.colour = "black",
+  #                                             ticks.colour = "black")) +
+  scale_fill_gradientn(limits = c(-1,1), colors = c("navy", "white", "red"),
+                       guide = guide_colorbar(frame.colour = "black",
+                                              ticks.colour = "black")) +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_discrete(labels = name_map, breaks = plot_breaks) +
+  labs(fill = "Correlation",
+       x = "ASV pairs",
+       y = "hosts",
+       title = "ASVs") +
+  # scale_y_continuous(expand = c(0, 0)) +
+  theme(axis.text.x = element_blank(),
+        # axis.text.y = element_blank(),
+        axis.ticks.x = element_blank(),
+        # axis.ticks.y = element_blank(),
+        axis.title = element_text(size = 12, face = "plain"),
+        plot.title = element_blank(),
+        plot.margin = margin(t = 20, r = 10, b = 10, l = 10))
+
+legend <- get_legend(p2)
+p2 <- p2 +
+  theme(legend.position = "none")
 
 # ------------------------------------------------------------------------------
-#   Network plot
+#   Scrambled/permuted "rug"
 # ------------------------------------------------------------------------------
 
-# Build a mapping of taxon indices to new labels 1..n
-map_df <- data.frame(taxon_idx = unique(c(pair_idx1, pair_idx2)))
-map_df$name <- 1:nrow(map_df)
+D_combos <- NULL
+i <- 1 # permuted sample to use
+pdir <- paste0("asv_days90_diet25_scale1_scramble-sample-", sprintf("%02d", i))
+fits <- list.files(file.path("output", "model_fits", pdir, "MAP"), full.names = TRUE)
+for(j in 1:length(fits)) {
+  Sigma <- cov2cor(to_clr(readRDS(fits[j]))$Sigma[,,1])
+  if(is.null(D_combos)) {
+    D <- nrow(Sigma)
+    D_combos <- (D^2 - D)/2
+    rug <- matrix(NA, length(fits), D_combos)
+  }
+  rug[j,] <- Sigma[upper.tri(Sigma)]
+}
 
-# Build a node data.frame with columns name (index 1..n) and family
-node_df <- map_df
-node_df$Family <- sapply(node_df$taxon_idx, function(x) {
-  highest_tax_level <- max(which(!is.na(data$taxonomy[x,])))
-  if(highest_tax_level >= 6) {
-    data$taxonomy[x,6]
+rug <- cbind(1:nrow(rug), rug[,asv_column_order])
+colnames(rug) <- c("host", paste0(1:(ncol(rug)-1)))
+rug <- cbind(host_name = host_labels$host_label, rug)
+rug <- pivot_longer(as.data.frame(rug), !c(host_name, host), names_to = "pair", values_to = "correlation")
+rug$pair <- as.numeric(rug$pair)
+rug$correlation <- as.numeric(rug$correlation)
+
+# temp <- rug %>%
+#   dplyr::select(host, host_name) %>%
+#   distinct() %>%
+#   arrange(host_name)
+# name_map <- unlist(temp$host_name)
+# names(name_map) <- temp$host
+#
+# # Mute host names not in the shortlist
+# name_map <- name_map[name_map %in% use_labels]
+# plot_breaks <- names(name_map)
+
+p1 <- ggplot(rug, aes(x = pair, y = host)) +
+  geom_raster(aes(fill = correlation)) +
+  # scale_fill_gradient2(low = "navy", mid = "white", high = "red", midpoint = 0,
+  #                      guide = guide_colorbar(frame.colour = "black",
+  #                                             ticks.colour = "black")) +
+  scale_fill_gradientn(limits = c(-1,1), colors = c("navy", "white", "red"),
+                       guide = guide_colorbar(frame.colour = "black",
+                                              ticks.colour = "black")) +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_discrete(labels = name_map, breaks = plot_breaks) +
+  labs(fill = "Correlation",
+       x = "ASV pairs",
+       y = "hosts",
+       title = "ASVs") +
+  # scale_y_continuous(expand = c(0, 0)) +
+  theme(axis.text.x = element_blank(),
+        # axis.text.y = element_blank(),
+        axis.ticks.x = element_blank(),
+        # axis.ticks.y = element_blank(),
+        axis.title = element_text(size = 12, face = "plain"),
+        plot.title = element_blank(),
+        plot.margin = margin(t = 20, r = 10, b = 10, l = 10),
+        legend.position = "none")
+
+# Plot rugs
+p <- plot_grid(p1, NULL, p2, ncol = 3,
+               rel_widths = c(1, 0.05, 1),
+               labels = c("A", "", "B"),
+               label_size = 18,
+               label_x = -0.015)
+
+# Append legend to the row
+prow1 <- plot_grid(p, legend, ncol = 2, rel_widths = c(1, 0.13))
+
+# ------------------------------------------------------------------------------
+#   Breakout plots of positively and negative correlated taxa
+# ------------------------------------------------------------------------------
+
+alpha <- 0.6
+# hosts <- c("DUI", "DUX", "LIW", "PEB", "VET")
+
+# Find common baseline
+pred_objs <- NULL
+min_date <- NULL
+max_date <- NULL
+for(host in host_shortlist[host_order]) {
+  pred_obj <- get_predictions_host_list(host_list = host,
+                                        output_dir = "asv_days90_diet25_scale1",
+                                        metadata = data$metadata)
+  if(is.null(min_date)) {
+    min_date <- min(pred_obj$dates[[host]])
+    max_date <- max(pred_obj$dates[[host]])
   } else {
-    "Unknown"
+    min_date <- min(min_date, min(pred_obj$dates[[host]]))
+    max_date <- max(max_date, max(pred_obj$dates[[host]]))
   }
-})
-node_df <- node_df[,c(2:3,1)]
+  pred_objs[[host]] <- pred_obj
+}
 
-# Build an edge data.frame with columns from, to, sign, and score
-edge1 <- data.frame(taxon_idx = pair_idx1)
-edge1 <- left_join(edge1, map_df, by = "taxon_idx")$name
-edge2 <- data.frame(taxon_idx = pair_idx2)
-edge2 <- left_join(edge2, map_df, by = "taxon_idx")$name
+render_trajectories <- function(tax_indices, host_shortlist, host_labels, host_y_offset = 5) {
+  plot_df <- NULL
+  for(tax_idx in tax_indices) {
+    y_offset_counter <- 0
+    for(h in 1:length(host_shortlist)) {
+      host <- host_shortlist[h]
+      label <- host_labels[h]
+      pred_obj <- pred_objs[[host]]
+      pred_df <- suppressMessages(gather_array(pred_obj$predictions[[host]]$Eta,
+                                               val,
+                                               coord,
+                                               sample,
+                                               iteration) %>%
+                                    filter(coord == tax_idx) %>%
+                                    group_by(coord, sample) %>%
+                                    summarize(p25 = quantile(val, probs = c(0.25)),
+                                              mean = mean(val),
+                                              p75 = quantile(val, probs = c(0.75))))
+      pred_df$host <- label
 
-edge_df <- data.frame(from = edge1,
-                      to = edge2,
-                      Sign = factor(consensus_signs[top_pairs], levels = c("1", "-1")),
-                      score = scores[top_pairs])
-levels(edge_df$Sign) <- c("positive", "negative")
+      # Calculate day from (shared) baseline
+      addend <- as.numeric(difftime(min(pred_obj$dates[[host]]), min_date, units = "day"))
 
-fam_df <- edge_df %>%
-  left_join(node_df, by = c("from" = "name")) %>%
-  select(to, Family1 = Family)
-fam_df <- fam_df %>%
-  left_join(node_df, by = c("to" = "name")) %>%
-  select(Family1, Family2 = Family)
+      day_span <- pred_obj$predictions[[host]]$span
+      pred_df <- pred_df %>%
+        left_join(data.frame(sample = 1:length(day_span), day = day_span), by = "sample")
 
-graph <- graph_from_data_frame(edge_df, node_df, directed = FALSE)
+      pred_df$day <- pred_df$day + addend
 
-family_palette <- readRDS(file.path("output", "family_palette.rds"))
+      if(y_offset_counter > 0) {
+        pred_df$p25 <- pred_df$p25 + host_y_offset*y_offset_counter
+        pred_df$mean <- pred_df$mean + host_y_offset*y_offset_counter
+        pred_df$p75 <- pred_df$p75 + host_y_offset*y_offset_counter
+      }
+      y_offset_counter <- y_offset_counter + 1
 
-# Not specifying the layout - defaults to "auto"
-# fr and kk layouts are ok here
-p4 <- ggraph(graph, layout = "fr") +
-  geom_edge_link(aes(color = Sign), width = 1.5, alpha = 1) +
-  geom_node_point(aes(color = Family), size = 3) +
-  geom_node_label(aes(label = taxon_idx), size = 2.5, repel = TRUE) +
-  scale_colour_manual(values = family_palette[order(names(family_palette))]) +
-  scale_edge_colour_manual(values = c(negative = "gray", positive = "black")) +
-  labs(x = "dimension 1",
-       y = "dimension 2") +
-  theme_bw() +
-  guides(edge_color = "none")
+      plot_df <- rbind(plot_df, pred_df)
+    }
+  }
 
-p2_padded <- plot_grid(NULL, p2, NULL,
-                       ncol = 1,
-                       rel_heights = c(0.05, 1, -0.02))
-p3_padded <- plot_grid(NULL, p3,
-                       ncol = 2,
-                       rel_widths = c(0.05, 1))
-prow1 <- plot_grid(p1, p2_padded, p3_padded,
-                   ncol = 3,
-                   rel_widths = c(1, 0.5, 0.8),
-                   scale = 0.96,
-                   labels = c("A", "B", "C"),
+  p3 <- ggplot()
+  swap_color <- FALSE
+  for(tax_idx in tax_indices) {
+    for(this_host in host_labels) {
+      p3 <- p3 +
+        geom_ribbon(data = plot_df %>% filter(host == this_host & coord == tax_idx),
+                    mapping = aes(x = day, ymin = p25, ymax = p75),
+                    fill = ifelse(swap_color, "#a6cee3", "#fdbf6f"),
+                    alpha = alpha) +
+        geom_line(data = plot_df %>% filter(host == this_host & coord == tax_idx),
+                  mapping = aes(x = day, y = mean),
+                  color = ifelse(swap_color, "#1f78b4", "#ff7f00"),
+                  size = 1,
+                  alpha = alpha)
+    }
+    swap_color <- TRUE
+  }
+
+  breaks <- plot_df %>%
+    group_by(host) %>%
+    summarize(y_mean = mean(mean))
+  name_map <- unlist(breaks$host)
+  names(name_map) <- round(unlist(breaks$y_mean))
+
+  p3 <- p3 +
+    theme_bw() +
+    labs(x = paste0("days from first sample (", min_date, ")"),
+         y = "") +
+    scale_x_continuous(expand = c(0.01, 0.01)) +
+    scale_y_continuous(breaks = unlist(breaks$y_mean), labels = name_map) +
+    # scale_y_continuous(expand = c(0.01, 0.01)) +
+    theme(panel.grid.major = element_blank(),
+          # axis.text.y = element_blank(),
+          # axis.ticks.y = element_blank(),
+          panel.grid.minor = element_blank())
+
+  p3
+}
+
+# Order to match the "rug" row order
+p3 <- render_trajectories(c(2,3), host_shortlist[c(2,3,4,5,1)], use_labels[c(1,5,3,4,2)], host_y_offset = 5)
+p4 <- render_trajectories(c(31,114), host_shortlist[c(2,3,4,5,1)], use_labels[c(1,5,3,4,2)], host_y_offset = 10)
+
+prow2 <- plot_grid(p3, NULL, p4, NULL, ncol = 4,
+                   labels = c("C", "", "D", ""),
+                   rel_widths = c(1, 0.05, 1, 0.27),
                    label_size = 18,
-                   label_x = -0.015)
+                   label_x = -0.015,
+                   scale = 0.98)
 
-prow2 <- plot_grid(p4, NULL, p5,
-                   ncol = 3,
-                   rel_widths = c(1, 0.1, 1),
-                   scale = 0.96,
-                   labels = c("D", "", "E"),
-                   label_size = 18,
-                   label_x = -0.015)
+p_out <- plot_grid(prow1, prow2, ncol = 1,
+                   rel_heights = c(1, 0.75))
 
-p <- plot_grid(prow1, NULL, prow2,
-               ncol = 1,
-               rel_heights = c(1, 0.1, 1))
-
-ggsave(file.path("output", "figures", "F3.svg"),
-       p,
+ggsave(file.path("output", "figures", "draft_F3.svg"),
+       p_out,
+       dpi = 50,
        units = "in",
-       dpi = 100,
-       height = 8,
+       height = 9,
        width = 12)
+
+
+

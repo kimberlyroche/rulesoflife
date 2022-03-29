@@ -133,7 +133,7 @@ prow2 <- plot_grid(p3, p4, ncol = 2,
 p <- plot_grid(prow1, prow2, ncol = 1,
                rel_heights = c(1, 1))
 
-ggsave(file.path("output", "figures", "S15.png"),
+ggsave(file.path("output", "figures", "S15.svg"),
        plot = p,
        dpi = 100,
        units = "in",

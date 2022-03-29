@@ -122,15 +122,19 @@ all_pairs_noNA_tl <- all_pairs_noNA %>%
   filter(topleft == TRUE)
 frequencies_subset <- table(c(all_pairs_noNA_tl$tax1, all_pairs_noNA_tl$tax2))
 
-signif <- c()
 for(fam in names(frequencies_subset)) {
   fam_in_sample <- unname(unlist(frequencies_subset[fam]))
   sample_size <- unname(unlist(sum(frequencies_subset)))
   fam_in_bg <- unname(unlist(frequencies[fam]))
   bg_size <- unname(unlist(sum(frequencies)))
+  # ctab <- matrix(c(fam_in_sample,
+  #                  sample_size - fam_in_sample,
+  #                  fam_in_bg,
+  #                  bg_size - fam_in_bg),
+  #                2, 2, byrow = TRUE)
   ctab <- matrix(c(fam_in_sample,
+                   fam_in_bg - fam_in_sample,
                    sample_size - fam_in_sample,
-                   fam_in_bg,
                    bg_size - fam_in_bg),
                  2, 2, byrow = TRUE)
   prob <- fisher.test(ctab, alternative = "greater")$p.value
@@ -138,10 +142,20 @@ for(fam in names(frequencies_subset)) {
                       data.frame(name = fam,
                                  type = "family",
                                  location = "Low phylogenetic distance, high median association strength",
-                                 pvalue = prob))
-  if(prob < 0.05) {
-    signif <- c(signif, fam)
-    cat(paste0("ASV family: ", fam, ", p-value: ", round(prob, 3), "\n"))
+                                 pvalue = prob,
+                                 qvalue = NA))
+}
+
+# Multiple test correction
+sel_idx <- which(enrichment$type == "family" & enrichment$location == "Low phylogenetic distance, high median association strength")
+enrichment$qvalue[sel_idx] <- p.adjust(enrichment$pvalue[sel_idx], method = "BH")
+
+signif <- c()
+for(i in sel_idx) {
+  q <- enrichment$qvalue[i]
+  if(q < 0.05) {
+    signif <- c(signif, enrichment$name[i])
+    cat(paste0("ASV family: ", enrichment$name[i], ", adj. p-value: ", round(q, 3), "\n"))
   }
 }
 
@@ -166,15 +180,19 @@ frequencies <- table(all_pairs_noNA$taxpair)
 
 frequencies_subset <- table(all_pairs_noNA$taxpair[all_pairs_noNA$topleft == TRUE])
 
-signif <- c()
 for(fam in names(frequencies_subset)) {
   fam_in_sample <- unname(unlist(frequencies_subset[fam]))
   sample_size <- unname(unlist(sum(frequencies_subset)))
   fam_in_bg <- unname(unlist(frequencies[fam]))
   bg_size <- unname(unlist(sum(frequencies)))
+  # ctab <- matrix(c(fam_in_sample,
+  #                  sample_size - fam_in_sample,
+  #                  fam_in_bg,
+  #                  bg_size - fam_in_bg),
+  #                2, 2, byrow = TRUE)
   ctab <- matrix(c(fam_in_sample,
+                   fam_in_bg - fam_in_sample,
                    sample_size - fam_in_sample,
-                   fam_in_bg,
                    bg_size - fam_in_bg),
                  2, 2, byrow = TRUE)
   prob <- fisher.test(ctab, alternative = "greater")$p.value
@@ -182,10 +200,20 @@ for(fam in names(frequencies_subset)) {
                       data.frame(name = fam,
                                  type = "family-pair",
                                  location = "Low phylogenetic distance, high median association strength",
-                                 pvalue = prob))
-  if(prob < 0.05) {
-    signif <- c(signif, fam)
-    cat(paste0("ASV family: ", fam, ", p-value: ", round(prob, 3), "\n"))
+                                 pvalue = prob,
+                                 qvalue = NA))
+}
+
+# Multiple test correction
+sel_idx <- which(enrichment$type == "family-pair" & enrichment$location == "Low phylogenetic distance, high median association strength")
+enrichment$qvalue[sel_idx] <- p.adjust(enrichment$pvalue[sel_idx], method = "BH")
+
+signif <- c()
+for(i in sel_idx) {
+  q <- enrichment$qvalue[i]
+  if(q < 0.05) {
+    signif <- c(signif, enrichment$name[i])
+    cat(paste0("ASV family: ", enrichment$name[i], ", adj. p-value: ", round(q, 3), "\n"))
   }
 }
 
@@ -208,7 +236,9 @@ p4 <- plot_enrichment(frequencies_subset1 = frequencies_subset,
 
 common_scale <- 0.9
 
-prow1 <- plot_grid(p1, p2, ncol = 2,
+prow1 <- plot_grid(p1 + ggtitle("Consensus positively associated ASVs"),
+                   p2 + ggtitle("Consensus negatively associated ASVs"),
+                   ncol = 2,
                labels = c("A", "B"),
                label_size = 18,
                scale = common_scale,
@@ -222,7 +252,8 @@ prow2 <- plot_grid(NULL, p3, NULL, p4, NULL, ncol = 5,
                rel_widths = c(0.3, 0.9, 0.1, 1.1, 0.3))
 p <- plot_grid(prow1, prow2, ncol = 1,
                rel_heights = c(1, 0.8))
-ggsave(file.path("output", "figures", "S8.png"),
+
+ggsave(file.path("output", "figures", "S8.svg"),
        p,
        dpi = 100,
        units = "in",
@@ -238,7 +269,8 @@ enrichment <- enrichment %>%
 colnames(enrichment) <- c("ASV family or pair name",
                           "Type",
                           "Enrichment evaluated in",
-                          "P-value (Fisher's exact test)")
+                          "P-value (Fisher's exact test)",
+                          "Adj. p-value (Benjamini-Hochberg)")
 write.table(enrichment,
             file = file.path("output", "FigS8_table.tsv"),
             sep = "\t",

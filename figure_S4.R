@@ -274,7 +274,7 @@ p <- plot_grid(p1, p2,
                label_size = 16,
                scale = 0.95)
 
-ggsave("output/figures/S4.png",
+ggsave("output/figures/S4.svg",
        p,
        dpi = 100,
        units = "in",
@@ -350,6 +350,8 @@ if(FALSE) {
 #
 #   Note: these thresholds have been hard-coded into `thresholds.R`
 # ------------------------------------------------------------------------------
+
+corr_distros <- corr_distros[complete.ca]
 
 # Define cutoffs at <0.025 percentile and >97.5 percentile
 phy_thresholds <- quantile(corr_distros %>% filter(type == "Phylum" & scheme == "permuted") %>% pull(x),
@@ -472,3 +474,44 @@ cat(paste0("Upper 95% threshold for ASV: ",
 cat(paste0("Observed values exceeding these thresholds for ASV: ",
            round(sum(obs_scores_asv > asv_thresholds[1])/length(c(obs_scores_asv)), 3),
            "\n"))
+
+# ------------------------------------------------------------------------------
+#
+#   False discovery-adjusted thresholds from BH correction
+#
+# ------------------------------------------------------------------------------
+
+# ------------------------------------------------------------------------------
+#   Correlation
+# ------------------------------------------------------------------------------
+
+for(ttype in unique(corr_distros$type)) {
+  f <- ecdf(corr_distros %>% filter(type == ttype & scheme == "permuted") %>% pull(x))
+
+  pvalues <- sapply(corr_distros %>% filter(type == ttype & scheme == "observed") %>% pull(x), function(x) {
+    2*min(f(x), 1-f(x))
+  })
+
+  pvalues_adj <- p.adjust(pvalues, method = "BH")
+
+  prop <- sum(pvalues_adj < 0.05) / length(pvalues_adj)
+  cat(paste0("Significant after FDR (", ttype, "): ", round(prop, 3), "\n"))
+}
+
+# ------------------------------------------------------------------------------
+#   "Universality"; I'm using a one-sided test here
+# ------------------------------------------------------------------------------
+
+for(ttype in unique(score_distros$type)) {
+  f <- ecdf(score_distros %>% filter(type == ttype & scheme == "permuted") %>% pull(x))
+
+  pvalues <- sapply(score_distros %>% filter(type == ttype & scheme == "observed") %>% pull(x), function(x) {
+    1-f(x)
+  })
+
+  pvalues_adj <- p.adjust(pvalues, method = "BH")
+
+  prop <- sum(pvalues_adj < 0.05) / length(pvalues_adj)
+  cat(paste0("Significant after FDR (", ttype, "): ", round(prop, 3), "\n"))
+}
+

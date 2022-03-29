@@ -98,7 +98,7 @@ N <- dim(F1$Sigmas)[3]
 global_mean <- F1$mean
 mix <- seq(from = 0, to = 1, by = 0.05)
 mins <- NULL
-p1 <- NULL
+p1_real <- NULL
 legend <- NULL
 for(h in 1:N) {
   host_obs <- F1$Sigmas[,,h]
@@ -140,7 +140,7 @@ for(h in 1:N) {
             plot.title = element_text(size = 10, hjust = 0.5)) +
       scale_x_continuous(expand = c(0, 0)) +
       scale_y_continuous(expand = c(0, 0))
-    p1 <- plot_grid(p1a, p1b, p1c, ncol = 3)
+    p1_real <- plot_grid(p1a, p1b, p1c, ncol = 3)
   }
 
   for(j in 1:length(mix)) {

@@ -14,7 +14,7 @@ library(frechet)
 
 # ------------------------------------------------------------------------------
 #
-#   Figure 4 - Comparing results to those from other data sets (Johnson et al.
+#   Figure 5 - Comparing results to those from other data sets (Johnson et al.
 #              and DIABIMMUNE); the "titration" experiment to estimate population-
 #              versus host-level signal is performed at the end of this script
 #
@@ -40,7 +40,7 @@ filter_taxa <- function(counts) {
 # This version of filtering matches the Amboseli analyses
 # Retain taxa observed at at least a single count in 20% of each subject's
 # samples
-filter_taxa2 <- function(host_columns, counts, min_relab = 1/10000) {
+filter_taxa2 <- function(host_columns, counts, min_relab = 1/10000, tax = NULL) {
   relab <- apply(counts, 2, function(x) x/sum(x))
   retain_tax <- rep(TRUE, nrow(counts))
   for(h in 1:length(host_columns)) {
@@ -52,7 +52,10 @@ filter_taxa2 <- function(host_columns, counts, min_relab = 1/10000) {
   agglom_tax <- colSums(as.matrix(counts[!retain_tax,]))
   counts <- rbind(counts[retain_tax,],
                   agglom_tax)
-  return(list(counts = counts, filter_vec = retain_tax))
+  if(!is.null(tax)) {
+    tax <- c(tax[retain_tax], "Other")
+  t}
+  return(list(counts = counts, filter_vec = retain_tax, tax = tax))
 }
 
 # `counts` is taxa x samples
@@ -309,7 +312,9 @@ for(i in 1:length(host_dates)) {
 }
 
 # Filter counts
-counts <- filter_taxa2(host_columns, counts)$counts
+filtered_obj <- filter_taxa2(host_columns, counts, tax = tax_diabimmune)
+counts <- filtered_obj$counts
+tax_diabimmune <- filtered_obj$tax
 
 # Stats
 study_stats <- rbind(study_stats,
@@ -386,71 +391,185 @@ all_scores <- rbind(all_scores,
                                n_subjects = 56))
 
 # ------------------------------------------------------------------------------
-#   Figure 4 panels
+#   Figure 5 panels
 # ------------------------------------------------------------------------------
 
 dataset_palette <- c(brewer.pal(9, "Spectral")[c(2,8,9)])
 names(dataset_palette) <- sort(unique(all_scores$dataset))[c(1,2,3)]
 
-plot_scores <- all_scores %>%
-  mutate(prop_subjects = n_subjects / max(n_subjects))
+# ------------------------------------------------------------------------------
+#   Previous version - densities
+# ------------------------------------------------------------------------------
 
-p1 <- ggplot(plot_scores %>% filter(!(dataset %in% c("McMahon et al. (epilimnion)",
-                                                    "McMahon et al. (hypolimnion)",
-                                                    "Grossart et al."))),
-             aes(x = X2, y = reorder(dataset, n_subjects), alpha = prop_subjects, fill = dataset)) +
-  geom_density_ridges(stat = "binline", bins = 20, scale = 0.95, draw_baseline = TRUE) +
+# plot_scores <- all_scores %>%
+#   mutate(prop_subjects = n_subjects / max(n_subjects))
+#
+# p1 <- ggplot(plot_scores %>% filter(!(dataset %in% c("McMahon et al. (epilimnion)",
+#                                                      "McMahon et al. (hypolimnion)",
+#                                                      "Grossart et al."))),
+#              aes(x = X2, y = reorder(dataset, n_subjects), fill = dataset)) +
+#   geom_density_ridges(stat = "binline", bins = 20, scale = 0.95, draw_baseline = TRUE) +
+#   theme_bw() +
+#   # scale_alpha_continuous(range = c(0.25, 1.0)) +
+#   scale_fill_manual(values = dataset_palette) +
+#   scale_y_discrete(expand = expansion(add = c(0.35, 0.75))) +
+#   coord_cartesian(clip = "off") +
+#   guides(fill = "none",
+#          alpha = "none") +
+#   labs(x = "universality scores",
+#        y = "")
+#
+# # Density plot from:
+# # https://stackoverflow.com/questions/23437000/how-to-plot-a-contour-line-showing-where-95-of-values-fall-within-in-r-and-in
+#
+# # Specify desired contour levels
+# prob <- c(0.95, 0.5)
+#
+# # I'm just using the studies with 5+ subjects
+# dc_combined <- rbind(cbind(get_density_obj(all_scores %>% filter(dataset == "DIABIMMUNE") %>% dplyr::select(X1, X2)), type = "DIABIMMUNE"),
+#                      cbind(get_density_obj(all_scores %>% filter(dataset == "Amboseli") %>% dplyr::select(X1, X2)), type = "Amboseli"),
+#                      cbind(get_density_obj(all_scores %>% filter(dataset == "Johnson et al.") %>% dplyr::select(X1, X2)), type = "Johnson et al."))
+#
+# dc_combined$type <- factor(dc_combined$type, levels = c("DIABIMMUNE", "Johnson et al.", "Amboseli"))
+#
+# p2 <- ggplot(data = dc_combined,
+#              aes(x = Var1, y = Var2, z = prob, fill = type, alpha = ..level..)) +
+#   geom_contour_filled(breaks = c(prob, 0)) +
+#   scale_alpha_discrete(range = c(0.4, 0.7)) +
+#   # scale_fill_manual(values = dataset_palette[c(2,7,8)]) +
+#   scale_fill_manual(values = dataset_palette) +
+#   theme_bw() +
+#   xlim(c(0.5, 1)) +
+#   ylim(c(0, 1)) +
+#   labs(x = "proportion shared sign",
+#        y = "median association strength",
+#        fill = "Data set") +
+#   guides(alpha = "none",
+#          color = "none")
+#
+# p <- plot_grid(p1, NULL, p2,
+#                ncol = 3,
+#                rel_widths = c(1, 0.1, 1.2),
+#                scale = 0.95,
+#                labels = c("A", "B"),
+#                label_size = 20)
+#
+# ggsave(file.path("output", "figures", "F4.svg"),
+#        p,
+#        dpi = 100,
+#        units = "in",
+#        height = 4.5,
+#        width = 12)
+
+p2 <- ggplot(data = all_scores,
+             aes(x = X1, y = X2)) +
+  # geom_contour_filled(breaks = c(prob, 0)) +
+  geom_point(size = 2) +
+  # scale_alpha_discrete(range = c(0.4, 0.7)) +
+  # scale_fill_manual(values = dataset_palette) +
+  facet_wrap(. ~ dataset) +
   theme_bw() +
-  scale_alpha_continuous(range = c(0.25, 1.0)) +
-  scale_fill_manual(values = dataset_palette) +
-  scale_y_discrete(expand = expansion(add = c(0.35, 0.75))) +
-  coord_cartesian(clip = "off") +
-  guides(fill = "none",
-         alpha = "none") +
-  labs(x = "universality scores",
-       y = "")
-
-# Density plot from:
-# https://stackoverflow.com/questions/23437000/how-to-plot-a-contour-line-showing-where-95-of-values-fall-within-in-r-and-in
-
-# Specify desired contour levels
-prob <- c(0.95, 0.5)
-
-# I'm just using the studies with 5+ subjects
-dc_combined <- rbind(cbind(get_density_obj(all_scores %>% filter(dataset == "DIABIMMUNE") %>% dplyr::select(X1, X2)), type = "DIABIMMUNE"),
-                     cbind(get_density_obj(all_scores %>% filter(dataset == "Amboseli") %>% dplyr::select(X1, X2)), type = "Amboseli"),
-                     cbind(get_density_obj(all_scores %>% filter(dataset == "Johnson et al.") %>% dplyr::select(X1, X2)), type = "Johnson et al."))
-
-dc_combined$type <- factor(dc_combined$type, levels = c("DIABIMMUNE", "Johnson et al.", "Amboseli"))
-
-p2 <- ggplot(data = dc_combined,
-             aes(x = Var1, y = Var2, z = prob, fill = type, alpha = ..level..)) +
-  geom_contour_filled(breaks = c(prob, 0)) +
-  scale_alpha_discrete(range = c(0.4, 0.7)) +
-  # scale_fill_manual(values = dataset_palette[c(2,7,8)]) +
-  scale_fill_manual(values = dataset_palette) +
-  theme_bw() +
-  xlim(c(0.5, 1)) +
-  ylim(c(0, 1)) +
+  # xlim(c(0.5, 1)) +
+  # ylim(c(0, 1)) +
   labs(x = "proportion shared sign",
        y = "median association strength",
        fill = "Data set") +
   guides(alpha = "none",
          color = "none")
 
-p <- plot_grid(p1, NULL, p2,
-               ncol = 3,
-               rel_widths = c(1, 0.1, 1.2),
-               scale = 0.95,
-               labels = c("A", "B"),
-               label_size = 20)
-
-ggsave(file.path("output", "figures", "F4.png"),
-       p,
+ggsave(file.path("output", "figures", "draft_F5.svg"),
+       p2,
        dpi = 100,
        units = "in",
-       height = 4.5,
-       width = 12)
+       height = 4,
+       width = 10)
+
+# ------------------------------------------------------------------------------
+#   Compare the most universal taxon pairs in DIABIMMUNE and ABRP
+# ------------------------------------------------------------------------------
+
+tax_diabimmune_df <- NULL
+for(i in 1:(length(tax_diabimmune)-1)) {
+  piece <- str_split(tax_diabimmune[i], "\\|")[[1]]
+  piece_df <- data.frame(kingdom = NA,
+                         phylum = NA,
+                         class = NA,
+                         order = NA,
+                         family = NA,
+                         genus = NA)
+  for(i in 1:length(piece)) {
+    piece_df[,i] <- str_split(piece[i], "__")[[1]][2]
+    if(piece_df[,i] == "" | piece_df[,i] == "unclassified") {
+      piece_df[,i] <- NA
+    }
+    match <- str_match(piece_df[,i], "\\[(.*)\\]")
+    if(!is.na(match[1,2])) {
+      piece_df[,i] <- match[1,2]
+    }
+  }
+  tax_diabimmune_df <- rbind(tax_diabimmune_df,
+                             piece_df)
+}
+tax_diabimmune_df <- rbind(tax_diabimmune_df,
+                           data.frame(kingdom = NA,
+                                      phylum = NA,
+                                      class = NA,
+                                      order = NA,
+                                      family = NA,
+                                      genus = NA))
+tax_diabimmune_df <- cbind(idx = as.numeric(rownames(tax_diabimmune_df)),
+                           tax_diabimmune_df)
+
+cat(paste0("Number of shared genera: ", length(intersect(unique(tax_diabimmune_df$genus), unique(tax_abrp$genus))), "\n"))
+
+# Look at the most universal pairs in DIABIMMUNE. What are they?
+most_univ <- all_scores %>%
+  filter(dataset == "DIABIMMUNE") %>%
+  filter(X2 > 0.65) %>%
+  left_join(tax_diabimmune_df, by = c("idx1" = "idx")) %>%
+  left_join(tax_diabimmune_df, by = c("idx2" = "idx"))
+
+# View(most_univ %>% dplyr::select(-c(X1, X2, idx1, idx2, dataset, n_subjects)))
+
+# This is tricky. I'm not willing to try to do the string matching here without
+# more expertise.
+
+# We could look for evidence of enrichment of Lachno-Lachno (etc.) in the top
+# pairs.
+
+# pull_pair <- function(taxonomy, idx1, idx2) {
+#   piece1 <- str_split(taxonomy[idx1], "\\|")[[1]]
+#   piece1_df <- data.frame(kingdom = NA,
+#                           phylum = NA,
+#                           class = NA,
+#                           order = NA,
+#                           family = NA,
+#                           genus = NA)
+#   piece2_df <- piece1_df
+#   for(i in 1:length(piece1)) {
+#     piece1_df[,i] <- str_split(piece1[i], "__")[[1]][2]
+#   }
+#   piece2 <- str_split(taxonomy[idx2], "\\|")[[1]]
+#   for(i in 1:length(piece2)) {
+#     piece2_df[,i] <- str_split(piece2[i], "__")[[1]][2]
+#   }
+#   rbind(piece1_df, piece2_df)
+# }
+#
+# diabimmune_scores <- all_scores %>%
+#   filter(dataset == "DIABIMMUNE")
+# x <- diabimmune_scores %>% pull(X1)
+# y <- diabimmune_scores %>% pull(X2)
+# z <- x*y
+#
+# top_20p <- which(z > quantile(z, probs = c(0.8)))
+# pair_names <- c()
+# for(pair in top_20p) {
+#   pair <- pull_pair(tax_diabimmune, diabimmune_scores$idx1[pair], diabimmune_scores$idx2[pair])
+#   pair_names <- c(pair_names,
+#                   paste0(pair$class[1], " - ", pair$class[2]))
+# }
+# table(pair_names)
 
 # ------------------------------------------------------------------------------
 #   Supplemental Figure 12 panels
@@ -551,12 +670,12 @@ p <- plot_grid(s1, s2, legend, ncol = 3,
                label_x = -0.01,
                scale = 0.95)
 
-ggsave(file.path("output", "figures", "S12.png"),
+ggsave(file.path("output", "figures", "S12.svg"),
        p,
        dpi = 100,
        units = "in",
-       height = 3,
-       width = 12)
+       height = 4,
+       width = 9)
 
 cat(paste0("Median host-level contribution (Amboseli): ",
            round(median(minimizing_proportions %>% filter(dataset == "Amboseli") %>% pull(p)), 2), "\n"))
@@ -592,7 +711,7 @@ for(this_dataset in c("Johnson et al.", "DIABIMMUNE", "Amboseli")) {
 #               "universality"...
 # ------------------------------------------------------------------------------
 
-for(this_dataset in c("DIABIMMUNE", "Amboseli")) {
+for(this_dataset in c("Johnson et al.", "DIABIMMUNE", "Amboseli")) {
   subset_scores <- all_scores %>%
     filter(dataset == this_dataset) %>%
     mutate(score = X1*X2) %>%
@@ -621,12 +740,16 @@ for(this_dataset in c("DIABIMMUNE", "Amboseli")) {
   cat(paste0(toupper(this_dataset),
              " proportion positive in top 1%: ",
              round(ppos_1, 2),
-             " (of ", sum(pn_tally_1$n), " pairs)",
+             " (",
+             pn_tally_1 %>% filter(sign == 1) %>% pull(n),
+             " of ", sum(pn_tally_1$n), " pairs)",
              "\n"))
   cat(paste0(toupper(this_dataset),
              " proportion positive in top 2.5%: ",
              round(ppos_2p5, 2),
-             " (of ", sum(pn_tally_2p5$n), " pairs)",
+             " (",
+             pn_tally_2p5 %>% filter(sign == 1) %>% pull(n),
+             " of ", sum(pn_tally_2p5$n), " pairs)",
              "\n"))
 }
 
@@ -709,7 +832,7 @@ for(this_dataset in c("DIABIMMUNE", "Amboseli")) {
 #                   rel_widths = c(1, 0.35, 1, 0.25, 3),
 #                   labels = c("overall", "top 2.5% pairs"),
 #                   palette = temp_palette,
-#                   save_name = paste0(this_dataset, "-enrichment-pair.png"))
+#                   save_name = paste0(this_dataset, "-enrichment-pair.svg"))
 #
 #   # ----------------------------------------------------------------------------
 #   #   Enrichment of families
@@ -750,5 +873,5 @@ for(this_dataset in c("DIABIMMUNE", "Amboseli")) {
 #                   rel_widths = c(1, 0.35, 1, 0.1, 1.75),
 #                   labels = c("overall", "top 2.5% pairs"),
 #                   palette = temp_palette,
-#                   save_name = paste0(this_dataset, "-enrichment.png"))
+#                   save_name = paste0(this_dataset, "-enrichment.svg"))
 # }

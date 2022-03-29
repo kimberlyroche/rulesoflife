@@ -28,7 +28,7 @@ null_case <- TRUE # needed if rendering Figure S9
 #   Functions
 # ------------------------------------------------------------------------------
 
-pull_Etas <- function(sample_obj) {
+pull_Etas <- function(sample_obj, n_tax, Etas, host_dates) {
   # Parallelized over 6 cores this takes < 1 min.
   starts <- seq(from = 1, to = nrow(sample_obj), by = 100)
   sampled_list <- foreach(k = 1:length(starts), .combine = rbind) %dopar% {
@@ -181,46 +181,56 @@ if(!file.exists(save_fn)) {
   # This takes < 30 sec.
   sampled_overlap <- NULL
   permuted_overlap <- NULL
-  for(i in 1:ncol(pairs)) {
-    h1 <- hosts[pairs[1,i]]
-    h2 <- hosts[pairs[2,i]]
+  for(it in 1:10) {
+    for(i in 1:ncol(pairs)) {
+      h1 <- hosts[pairs[1,i]]
+      h2 <- hosts[pairs[2,i]]
 
-    temp <- overlap_obj %>%
-      filter((host1 == h1 & host2 == h2) | (host1 == h2 & host2 == h1))
-    if(nrow(temp) > 0) {
-      temp <- temp %>%
-        arrange(sample(1:nrow(temp))) %>%
-        slice(1)
-      if(is.null(sampled_overlap)) {
-        sampled_overlap <- temp
-      } else {
-        sampled_overlap <- rbind(sampled_overlap, temp)
+      if(it == 1) {
+        temp <- overlap_obj %>%
+          filter((host1 == h1 & host2 == h2) | (host1 == h2 & host2 == h1))
+        if(nrow(temp) > 0) {
+          temp <- temp %>%
+            arrange(sample(1:nrow(temp))) %>%
+            slice(1)
+          if(is.null(sampled_overlap)) {
+            sampled_overlap <- temp
+          } else {
+            sampled_overlap <- rbind(sampled_overlap, temp)
+          }
+        }
       }
-    }
 
-    # For "null" distribution -- take a random (likely non-overlapping) pair of
-    # samples from these hosts
-    h1_samples <- md %>%
-      filter(sname == h1) %>%
-      select(sample_id, collection_date)
-    h1_sample <- h1_samples[sample(1:nrow(h1_samples), size = 1),]
-    h2_samples <- md %>%
-      filter(sname == h2) %>%
-      select(sample_id, collection_date)
-    h2_sample <- h2_samples[sample(1:nrow(h2_samples), size = 1),]
-    permuted_overlap <- rbind(permuted_overlap,
-                              data.frame(host1 = h1,
-                                         host2 = h2,
-                                         overlap_date1 = h1_sample$collection_date,
-                                         overlap_date2 = h2_sample$collection_date,
-                                         sample_id1 = h1_sample$sample_id,
-                                         sample_id2 = h2_sample$sample_id))
+      # For "null" distribution -- take a random (likely non-overlapping) pair of
+      # samples from these hosts
+      h1_samples <- md %>%
+        filter(sname == h1) %>%
+        select(sample_id, collection_date)
+      h1_sample <- h1_samples[sample(1:nrow(h1_samples), size = 1),]
+      h2_samples <- md %>%
+        filter(sname == h2) %>%
+        select(sample_id, collection_date)
+      h2_sample <- h2_samples[sample(1:nrow(h2_samples), size = 1),]
+      permuted_overlap <- rbind(permuted_overlap,
+                                data.frame(host1 = h1,
+                                           host2 = h2,
+                                           overlap_date1 = h1_sample$collection_date,
+                                           overlap_date2 = h2_sample$collection_date,
+                                           sample_id1 = h1_sample$sample_id,
+                                           sample_id2 = h2_sample$sample_id,
+                                           iteration = it))
+    }
   }
 
-  sampled_list <- pull_Etas(sampled_overlap)
+  sampled_list <- pull_Etas(sampled_overlap, n_tax, Etas, host_dates)
   sampled_list_permuted <- NULL
   if(null_case) {
-    sampled_list_permuted <- pull_Etas(permuted_overlap)
+    for(it in 1:10) {
+      cat(paste0("Iteration ", it, "\n"))
+      sampled_list_permuted <- rbind(sampled_list_permuted,
+                                     cbind(pull_Etas(permuted_overlap %>% filter(iteration == it), n_tax, Etas, host_dates),
+                                           iteration = it))
+    }
   }
 
   saveRDS(list(observed = sampled_list,
@@ -236,31 +246,47 @@ rug_asv <- summarize_Sigmas(output_dir = "asv_days90_diet25_scale1")
 scores <- apply(rug_asv$rug, 2, calc_universality_score)
 consensus_signs <- apply(rug_asv$rug, 2, calc_consensus_sign)
 
-paired_samples_x <- c()
-paired_samples_y <- c()
-correlations <- c()
-correlations_permuted <- c()
-for(i in 1:(n_tax-1)) {
-  x <- sampled_list %>%
-    filter(partner == 1 & tax_idx == i) %>%
-    pull(Eta)
-  y <- sampled_list %>%
-    filter(partner == 2 & tax_idx == i) %>%
-    pull(Eta)
-  if(i == 23) {
-    paired_samples_x <- c(paired_samples_x, x)
-    paired_samples_y <- c(paired_samples_y, y)
-  }
-  correlations <- c(correlations, cor(x,y))
-  if(null_case) {
-    x <- sampled_list_permuted %>%
+# The loop below takes ~5-10 minutes to run if `null_cases = TRUE`
+save_fn <- file.path("output", "figures", "saved_synchrony_correlations.rds")
+if(!file.exists(save_fn)) {
+  paired_samples_x <- c()
+  paired_samples_y <- c()
+  correlations <- c()
+  correlations_permuted <- c()
+  for(i in 1:(n_tax-1)) {
+    cat(paste0("Taxon iteration ", i, "\n"))
+    x <- sampled_list %>%
       filter(partner == 1 & tax_idx == i) %>%
       pull(Eta)
-    y <- sampled_list_permuted %>%
+    y <- sampled_list %>%
       filter(partner == 2 & tax_idx == i) %>%
       pull(Eta)
-    correlations_permuted <- c(correlations_permuted, cor(x,y))
+    if(i == 23) {
+      paired_samples_x <- c(paired_samples_x, x)
+      paired_samples_y <- c(paired_samples_y, y)
+    }
+    correlations <- c(correlations, cor(x,y))
+    if(null_case) {
+      for(it in 1:10) {
+        cat(paste0("\tPermutation iteration ", it, "\n"))
+        x <- sampled_list_permuted %>%
+          filter(iteration == it & partner == 1 & tax_idx == i) %>%
+          pull(Eta)
+        y <- sampled_list_permuted %>%
+          filter(iteration == it & partner == 2 & tax_idx == i) %>%
+          pull(Eta)
+        correlations_permuted <- c(correlations_permuted, cor(x,y))
+      }
+    }
   }
+
+  saveRDS(list(correlations = correlations,
+               correlations_permuted = correlations_permuted),
+          save_fn)
+} else {
+  corr_obj <- readRDS(save_fn)
+  correlations <- corr_obj$correlations
+  correlations_permuted <- corr_obj$correlations_permuted
 }
 
 # ------------------------------------------------------------------------------
@@ -313,6 +339,7 @@ for(synchronous_idx in bottom_synchronous) {
 plot_df <- NULL
 plot_df_permuted <- NULL
 for(i in 1:length(rug_asv$tax_idx1)) {
+  cat(paste0("Taxon pair iteration ", i, "\n"))
   t1 <- rug_asv$tax_idx1[i]
   t2 <- rug_asv$tax_idx2[i]
   plot_df <- rbind(plot_df,
@@ -320,10 +347,14 @@ for(i in 1:length(rug_asv$tax_idx1)) {
                               universality = scores[i],
                               sign = consensus_signs[i]))
   if(null_case) {
-    plot_df_permuted <- rbind(plot_df_permuted,
-                              data.frame(synchrony = mean(c(correlations_permuted[t1], correlations_permuted[t2])),
-                                         universality = scores[i],
-                                         sign = consensus_signs[i]))
+    for(it in 1:10) {
+      t1_idx <- (it-1)*(n_tax-1) + t1
+      t2_idx <- (it-1)*(n_tax-1) + t2
+      plot_df_permuted <- rbind(plot_df_permuted,
+                                data.frame(synchrony = mean(c(correlations_permuted[t1_idx], correlations_permuted[t2_idx])),
+                                           universality = scores[i],
+                                           sign = consensus_signs[i]))
+    }
   }
 }
 plot_df$sign <- factor(plot_df$sign, levels = c(1, -1))
@@ -374,8 +405,8 @@ p1 <- ggplot() +
             size = 5,
             hjust = 1,
             color = "black") +
-  # geom_text_repel(data = plot_df %>% filter(!is.na(sign)) %>% filter(synchrony > 0.3 & universality > 0.4),
-  #                 mapping = aes(x = synchrony, y = universality, label = label)) +
+  geom_text_repel(data = plot_df %>% filter(!is.na(sign)) %>% filter(synchrony > 0.3 & universality > 0.4),
+                  mapping = aes(x = synchrony, y = universality, label = label)) +
   scale_fill_manual(values = c("#F25250", "#34CCDE")) +
   theme_bw() +
   labs(fill = "Consensus\ncorrelation sign",
@@ -397,7 +428,7 @@ if(null_case) {
 
   cat(paste0("R^2: ", round(cor(plot_df_permuted$synchrony, plot_df_permuted$universality)^2, 3), "\n"))
 
-  ggsave(file.path("output", "figures", "S10.png"),
+  ggsave(file.path("output", "figures", "S10.svg"),
          p1p,
          dpi = 100,
          units = "in",
@@ -406,13 +437,13 @@ if(null_case) {
 }
 
 # ------------------------------------------------------------------------------
-#   Synchrony not greater than expected by chance
+#   Synchrony not greater than expected by chance (V1: intervals)
 # ------------------------------------------------------------------------------
 
 cat(paste0("Synchrony: median = ", round(median(correlations), 3), ", min = ", round(min(correlations), 3), ", max = ", round(max(correlations), 3), "\n"))
 
-idx <- which(correlations < max(correlations_permuted))
-cat(paste0("Percent of taxa with 'significant' synchrony: ", round((1 - length(idx) / length(correlations))*100, 1),
+idx <- which(correlations > max(correlations_permuted))
+cat(paste0("Percent of taxa with 'significant' synchrony: ", round((length(idx) / length(correlations))*100, 1),
            " (", length(idx), " of 134)\n"))
 
 tax_syn <- cbind(idx = 1:134, data$taxonomy[1:134,2:ncol(data$taxonomy)], syn = correlations)
@@ -430,6 +461,18 @@ out_df <- data.frame(Synchrony = correlations,
                      Taxonomy = apply(data$taxonomy[1:134,2:ncol(data$taxonomy)], 1, function(x) paste0(x, collapse = " / ")))
 write.csv(out_df %>% arrange(desc(Synchrony)),
           file.path("output", "Table_S6.csv"))
+
+# ------------------------------------------------------------------------------
+#   Synchrony not greater than expected by chance (V2: p-values, FDR)
+# ------------------------------------------------------------------------------
+
+f <- ecdf(correlations_permuted)
+
+pvalues <- sapply(correlations, function(x) 2*min(f(x), 1-f(x)))
+pvalues_adj <- p.adjust(pvalues, method = "BH")
+
+prop <- sum(pvalues_adj < 0.05) / length(pvalues_adj)
+cat(paste0("Significant after FDR: ", round(prop, 3), "\n"))
 
 # ------------------------------------------------------------------------------
 #   Enrichment of top center and top right-hand parts
@@ -480,15 +523,19 @@ all_pairs_noNA_tc <- all_pairs_noNA %>%
   filter(topcenter == TRUE)
 frequencies_subset1 <- table(c(all_pairs_noNA_tc$tax1, all_pairs_noNA_tc$tax2))
 
-signif1 <- c()
 for(fam in names(frequencies_subset1)) {
   fam_in_sample <- unname(unlist(frequencies_subset1[fam]))
   sample_size <- unname(unlist(sum(frequencies_subset1)))
   fam_in_bg <- unname(unlist(frequencies[fam]))
   bg_size <- unname(unlist(sum(frequencies)))
+  # ctab <- matrix(c(fam_in_sample,
+  #                  sample_size - fam_in_sample,
+  #                  fam_in_bg,
+  #                  bg_size - fam_in_bg),
+  #                2, 2, byrow = TRUE)
   ctab <- matrix(c(fam_in_sample,
+                   fam_in_bg - fam_in_sample,
                    sample_size - fam_in_sample,
-                   fam_in_bg,
                    bg_size - fam_in_bg),
                  2, 2, byrow = TRUE)
   prob <- fisher.test(ctab, alternative = "greater")$p.value
@@ -496,10 +543,20 @@ for(fam in names(frequencies_subset1)) {
                       data.frame(name = fam,
                                  type = "family",
                                  location = "Low synchrony, high universality",
-                                 pvalue = prob))
-  if(prob < 0.05) {
-    signif1 <- c(signif1, fam)
-    cat(paste0("ASV family: ", fam, ", p-value: ", round(prob, 3), "\n"))
+                                 pvalue = prob,
+                                 qvalue = NA))
+}
+
+# Multiple test correction
+sel_idx <- which(enrichment$type == "family" & enrichment$location == "Low synchrony, high universality")
+enrichment$qvalue[sel_idx] <- p.adjust(enrichment$pvalue[sel_idx], method = "BH")
+
+signif1 <- c()
+for(i in sel_idx) {
+  q <- enrichment$qvalue[i]
+  if(q < 0.05) {
+    signif1 <- c(signif1, enrichment$name[i])
+    cat(paste0("ASV family: ", enrichment$name[i], ", adj. p-value: ", round(q, 3), "\n"))
   }
 }
 
@@ -508,15 +565,19 @@ all_pairs_noNA_tr <- all_pairs_noNA %>%
   filter(topright == TRUE)
 frequencies_subset2 <- table(c(all_pairs_noNA_tr$tax1, all_pairs_noNA_tr$tax2))
 
-signif2 <- c()
 for(fam in names(frequencies_subset2)) {
   fam_in_sample <- unname(unlist(frequencies_subset2[fam]))
   sample_size <- unname(unlist(sum(frequencies_subset2)))
   fam_in_bg <- unname(unlist(frequencies[fam]))
   bg_size <- unname(unlist(sum(frequencies)))
+  # ctab <- matrix(c(fam_in_sample,
+  #                  sample_size - fam_in_sample,
+  #                  fam_in_bg,
+  #                  bg_size - fam_in_bg),
+  #                2, 2, byrow = TRUE)
   ctab <- matrix(c(fam_in_sample,
+                   fam_in_bg - fam_in_sample,
                    sample_size - fam_in_sample,
-                   fam_in_bg,
                    bg_size - fam_in_bg),
                  2, 2, byrow = TRUE)
   prob <- fisher.test(ctab, alternative = "greater")$p.value
@@ -524,10 +585,20 @@ for(fam in names(frequencies_subset2)) {
                       data.frame(name = fam,
                                  type = "family",
                                  location = "High synchrony, high universality",
-                                 pvalue = prob))
-  if(prob < 0.05) {
-    signif2 <- c(signif2, fam)
-    cat(paste0("ASV family: ", fam, ", p-value: ", round(prob, 3), "\n"))
+                                 pvalue = prob,
+                                 qvalue = NA))
+}
+
+# Multiple test correction
+sel_idx <- which(enrichment$type == "family" & enrichment$location == "High synchrony, high universality")
+enrichment$qvalue[sel_idx] <- p.adjust(enrichment$pvalue[sel_idx], method = "BH")
+
+signif2 <- c()
+for(i in sel_idx) {
+  q <- enrichment$qvalue[i]
+  if(q < 0.05) {
+    signif2 <- c(signif2, enrichment$name[i])
+    cat(paste0("ASV family: ", enrichment$name[i], ", adj. p-value: ", round(q, 3), "\n"))
   }
 }
 
@@ -552,15 +623,19 @@ frequencies <- table(all_pairs_noNA$taxpair)
 
 frequencies_subset1 <- table(all_pairs_noNA$taxpair[all_pairs_noNA$topcenter == TRUE])
 
-signif1 <- c()
 for(fam in names(frequencies_subset1)) {
   fam_in_sample <- unname(unlist(frequencies_subset1[fam]))
   sample_size <- unname(unlist(sum(frequencies_subset1)))
   fam_in_bg <- unname(unlist(frequencies[fam]))
   bg_size <- unname(unlist(sum(frequencies)))
+  # ctab <- matrix(c(fam_in_sample,
+  #                  sample_size - fam_in_sample,
+  #                  fam_in_bg,
+  #                  bg_size - fam_in_bg),
+  #                2, 2, byrow = TRUE)
   ctab <- matrix(c(fam_in_sample,
+                   fam_in_bg - fam_in_sample,
                    sample_size - fam_in_sample,
-                   fam_in_bg,
                    bg_size - fam_in_bg),
                  2, 2, byrow = TRUE)
   prob <- fisher.test(ctab, alternative = "greater")$p.value
@@ -568,24 +643,38 @@ for(fam in names(frequencies_subset1)) {
                       data.frame(name = fam,
                                  type = "family-pair",
                                  location = "Low synchrony, high universality",
-                                 pvalue = prob))
-  if(prob < 0.05) {
-    signif1 <- c(signif1, fam)
-    cat(paste0("ASV family: ", fam, ", p-value: ", round(prob, 3), "\n"))
+                                 pvalue = prob,
+                                 qvalue = NA))
+}
+
+# Multiple test correction
+sel_idx <- which(enrichment$type == "family-pair" & enrichment$location == "Low synchrony, high universality")
+enrichment$qvalue[sel_idx] <- p.adjust(enrichment$pvalue[sel_idx], method = "BH")
+
+signif1 <- c()
+for(i in sel_idx) {
+  q <- enrichment$qvalue[i]
+  if(q < 0.05) {
+    signif1 <- c(signif1, enrichment$name[i])
+    cat(paste0("ASV family: ", enrichment$name[i], ", adj. p-value: ", round(q, 3), "\n"))
   }
 }
 
 frequencies_subset2 <- table(all_pairs_noNA$taxpair[all_pairs_noNA$topright == TRUE])
 
-signif2 <- c()
 for(fam in names(frequencies_subset2)) {
   fam_in_sample <- unname(unlist(frequencies_subset2[fam]))
   sample_size <- unname(unlist(sum(frequencies_subset2)))
   fam_in_bg <- unname(unlist(frequencies[fam]))
   bg_size <- unname(unlist(sum(frequencies)))
+  # ctab <- matrix(c(fam_in_sample,
+  #                  sample_size - fam_in_sample,
+  #                  fam_in_bg,
+  #                  bg_size - fam_in_bg),
+  #                2, 2, byrow = TRUE)
   ctab <- matrix(c(fam_in_sample,
+                   fam_in_bg - fam_in_sample,
                    sample_size - fam_in_sample,
-                   fam_in_bg,
                    bg_size - fam_in_bg),
                  2, 2, byrow = TRUE)
   prob <- fisher.test(ctab, alternative = "greater")$p.value
@@ -593,10 +682,20 @@ for(fam in names(frequencies_subset2)) {
                       data.frame(name = fam,
                                  type = "family-pair",
                                  location = "High synchrony, high universality",
-                                 pvalue = prob))
-  if(prob < 0.05) {
-    signif2 <- c(signif2, fam)
-    cat(paste0("ASV family: ", fam, ", p-value: ", round(prob, 3), "\n"))
+                                 pvalue = prob,
+                                 qvalue = NA))
+}
+
+# Multiple test correction
+sel_idx <- which(enrichment$type == "family-pair" & enrichment$location == "High synchrony, high universality")
+enrichment$qvalue[sel_idx] <- p.adjust(enrichment$pvalue[sel_idx], method = "BH")
+
+signif2 <- c()
+for(i in sel_idx) {
+  q <- enrichment$qvalue[i]
+  if(q < 0.05) {
+    signif2 <- c(signif2, enrichment$name[i])
+    cat(paste0("ASV family: ", enrichment$name[i], ", adj. p-value: ", round(q, 3), "\n"))
   }
 }
 
@@ -618,7 +717,8 @@ enrichment <- enrichment %>%
 colnames(enrichment) <- c("ASV family or pair name",
                           "Type",
                           "Enrichment evaluated in",
-                          "P-value (Fisher's exact test)")
+                          "P-value (Fisher's exact test)",
+                          "Adj. p-value (Benjamini-Hochberg)")
 write.table(enrichment,
             file = file.path("output", "Fig5_table.tsv"),
             sep = "\t",
@@ -628,20 +728,23 @@ write.table(enrichment,
 p4 <- plot_grid(p2, p3, ncol = 2, rel_widths = c(1, 2),
                labels = c("B", "C"),
                label_size = 20,
-               label_x = -0.02,
+               label_x = -0.04,
+               label_y = 1.02,
                scale = 0.95)
 
 p5 <- plot_grid(NULL, p1, NULL, ncol = 3,
                 rel_widths = c(0.3, 1, 0.3),
                 labels = c("", "A", ""),
                 label_size = 20,
-                label_x = -0.02,
+                label_x = -0.04,
+                label_y = 1.02,
                 scale = 1)
 
 p <- plot_grid(p5, NULL, p4, ncol = 1,
-               rel_heights = c(1, 0.05, 1))
+               rel_heights = c(1, 0.05, 1),
+               scale = 0.95)
 
-ggsave(file.path("output", "figures", "F5.png"),
+ggsave(file.path("output", "figures", "F5.svg"),
        p,
        dpi = 100,
        units = "in",
@@ -849,7 +952,7 @@ p <- plot_grid(prow1, prow2, ncol = 1,
                rel_heights = c(1.1, 1),
                scale = 0.95)
 
-ggsave(file.path("output", "figures", "S9.png"),
+ggsave(file.path("output", "figures", "S9.svg"),
        p,
        dpi = 100,
        units = "in",

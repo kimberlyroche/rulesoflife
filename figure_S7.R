@@ -17,6 +17,7 @@ library(RColorBrewer)
 # Pull top 2.5% most universal pairs
 rug_asv <- summarize_Sigmas(output_dir = "asv_days90_diet25_scale1")
 scores <- apply(rug_asv$rug, 2, calc_universality_score)
+scores_piecewise <- apply(rug_asv$rug, 2, function(x) calc_universality_score(x = x, return_pieces = TRUE))
 
 # Get average CLR abundance for all taxa
 data <- load_data(tax_level = "ASV")
@@ -26,7 +27,9 @@ clr.means <- rowMeans(clr.counts)
 plot_df <- data.frame(pair_idx = 1:ncol(rug_asv$rug),
                       tax_idx1 = rug_asv$tax_idx1,
                       tax_idx2 = rug_asv$tax_idx2,
-                      score = scores)
+                      score = scores,
+                      mad = scores_piecewise[1,],
+                      prop_agree = scores_piecewise[2,])
 plot_df$mean1 <- clr.means[plot_df$tax_idx1]
 plot_df$mean2 <- clr.means[plot_df$tax_idx2]
 
@@ -47,7 +50,24 @@ for(i in 1:nrow(plot_df)) {
 
 # ------------------------------------------------------------------------------
 #
-#   Version 1: plot a) distributions of differences in mean CLR and b)
+#   Statistical test(s): Does average abundance of either partner microbe
+#                        predict universality score?
+#
+# ------------------------------------------------------------------------------
+
+fit <- lm(log(score) ~ mean1*mean2, data = plot_df)
+coef(summary(fit))
+
+p0 <- ggplot(plot_df, aes(x = mean1, y = log(score))) +
+  geom_point() +
+  theme_bw() +
+  labs(x = "CLR ASV mean",
+       y = "log universality score") #+
+  # xlim(c(-2.5, 3.75))
+
+# ------------------------------------------------------------------------------
+#
+#   Visual confirmation: plot a) distributions of differences in mean CLR and b)
 #              distributions of mean CLR for each partner in pair
 #
 # ------------------------------------------------------------------------------
@@ -105,18 +125,36 @@ p1 <- ggplot(plot_df2, aes(x = mean, y = top, fill = partner)) +
         legend.background = element_rect(fill='transparent')) +
   guides(fill = guide_legend(reverse = TRUE))
 
-p <- plot_grid(p1, p2, ncol = 2,
-               scale = 0.95,
-               rel_widths = c(1, 0.9),
-               labels = c("A", "B"),
-               label_size = 22,
-               label_x = 0.02,
-               label_y = 1.02) +
+# p <- plot_grid(p1, p2, ncol = 2,
+#                scale = 0.95,
+#                rel_widths = c(1, 0.9),
+#                labels = c("A", "B"),
+#                label_size = 22,
+#                label_x = 0.02,
+#                label_y = 1.02) +
+#   theme(plot.background = element_rect(fill = "white", color = "white"))
+
+prow1 <- plot_grid(NULL, NULL, p0, NULL, ncol = 4,
+                   scale = 0.95,
+                   rel_widths = c(0.1, 0.1, 1, 0.2),
+                   labels = c("", "A", "", ""),
+                   label_size = 22,
+                   label_x = 0.02,
+                   label_y = 1.02)
+prow2 <- plot_grid(p1, p2, ncol = 2,
+                   scale = 0.95,
+                   rel_widths = c(1, 0.9),
+                   labels = c("B", "C"),
+                   label_size = 22,
+                   label_x = 0.02,
+                   label_y = 1.02)
+p <- plot_grid(prow1, NULL, prow2, ncol = 1,
+               rel_heights = c(1, 0.05, 0.9)) +
   theme(plot.background = element_rect(fill = "white", color = "white"))
 
-ggsave(file.path("output", "figures", "S7.png"),
+ggsave(file.path("output", "figures", "S7.svg"),
        p,
        dpi = 100,
        units = "in",
-       height = 4,
+       height = 9,
        width = 8)

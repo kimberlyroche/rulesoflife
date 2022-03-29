@@ -22,7 +22,7 @@ if(!file.exists(save_fn)) {
                               OTU = data_alr$taxonomy$OTU),
                    by = "OTU")
   map <- map %>%
-    select(tax, tax_alr)
+    dplyr::select(tax, tax_alr)
 
   output_dir <- "asv_days90_diet25_scale1"
   output_dir_alr <- "asv_days90_diet25_scale1_ALRmedian"
@@ -84,7 +84,7 @@ p <- ggplot(plot_df, aes(x = x, y = y)) +
   ylab("CLR correlation (ALR ref. median)") +
   theme_bw()
 
-ggsave(file.path("output", "figures", "S14.png"),
+ggsave(file.path("output", "figures", "S14.svg"),
        p,
        units = "in",
        height = 4,
