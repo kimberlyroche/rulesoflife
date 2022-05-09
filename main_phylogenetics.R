@@ -9,15 +9,6 @@ library(fido)
 library(ape)
 library(scales)
 
-# ------------------------------------------------------------------------------
-#
-#   Supplemental Figure S8 - scatterplots of phylogenetic distance vs. univer-
-#                            sality score or median association strength, plus
-#                            barplots of enrichment of closely related and
-#                            strongly universal pairs
-#
-# ------------------------------------------------------------------------------
-
 data <- load_data(tax_level = "ASV")
 rug_asv <- summarize_Sigmas(output_dir = "asv_days90_diet25_scale1")
 
@@ -41,18 +32,7 @@ phylo_neg_mean <- mean(phy_dist[signs < 0])
 phylo_pos_mean <- mean(phy_dist[signs > 0])
 
 p1 <- ggplot(plot_df %>% filter(sign == "positive"), aes(x = d, y = score)) +
-  # geom_segment(aes(x = phylo_neg_mean, xend = phylo_neg_mean, y = 0.26, yend = 0.8),
-  #              color = "#34CCDE",
-  #              size = 2,
-  #              linetype = "dashed") +
   geom_point(size = 2, shape = 21, fill = "#888888") +
-  # geom_segment(aes(x = phylo_pos_mean, xend = phylo_pos_mean, y = 0.05, yend = 0.8),
-  #              # color = "#F25250",
-  #              color = "gray",
-  #              size = 2,
-  #              linetype = "dashed") +
-  # scale_fill_manual(values = c("#F25250", "#34CCDE")) +
-  # scale_fill_gradient2(low = "white", high = "red") +
   theme_bw() +
   labs(x = "phylogenetic distance",
        y = "universality score",
@@ -79,6 +59,13 @@ p2 <- ggplot(plot_df %>% filter(sign == "negative"), aes(x = d, y = score, fill 
        y = "universality score",
        fill = "Consensus\ncorrelation sign") +
   theme(legend.position = "none")
+
+legend <- get_legend(ggplot(data.frame(x = 1:2, y = 1:2, sign = factor(c("1", "-1"), levels = c("1", "-1"))),
+                            aes(x = x, y = y, fill = sign)) +
+                       geom_point(size = 2, shape = 21) +
+                       scale_fill_manual(values = c("red", muted("navy")), labels = c("positive", "negative")) +
+                       theme_bw() +
+                       labs(fill = "Consensus sign"))
 
 # ------------------------------------------------------------------------------
 #   Enrichment of closely related, strongly universal pairs
@@ -168,9 +155,10 @@ p3 <- plot_enrichment(frequencies_subset1 = frequencies_subset,
                       plot_width = 3,
                       legend_topmargin = 100,
                       use_pairs = FALSE,
-                      rel_widths = c(1, 0.35, 1, 0.3, 2),
+                      rel_widths = c(1, 0.35, 1, 0.4, 2),
                       labels = c("overall\n", "low distance\nhigh univ."),
-                      save_name = NULL)
+                      save_name = NULL,
+                      suppress_y = TRUE)
 
 # ------------------------------------------------------------------------------
 #   Family-pair enrichment
@@ -228,36 +216,39 @@ p4 <- plot_enrichment(frequencies_subset1 = frequencies_subset,
                       use_pairs = TRUE,
                       rel_widths = c(1, 0.3, 1, 1, 2.8),
                       labels = c("overall\n", "low distance\nhigh univ."),
-                      save_name = NULL)
+                      save_name = NULL,
+                      suppress_y = TRUE)
 
 # ------------------------------------------------------------------------------
 #   Plot all panels
 # ------------------------------------------------------------------------------
 
-common_scale <- 0.9
+common_scale <- 0.95
 
-prow1 <- plot_grid(p1 + ggtitle("Consensus positively associated ASVs"),
-                   p2 + ggtitle("Consensus negatively associated ASVs"),
-                   ncol = 2,
-               labels = c("A", "B"),
+prow1 <- plot_grid(p1,
+                   p2,
+                   # p1 + ggtitle("Consensus positively associated ASVs"),
+                   # p2 + ggtitle("Consensus negatively associated ASVs"),
+                   legend,
+                   ncol = 3,
+               labels = c("A", "B", ""),
                label_size = 18,
                scale = common_scale,
-               rel_widths = c(1, 1))
+               rel_widths = c(1, 1, 0.3))
 prow2 <- plot_grid(NULL, p3, NULL, p4, NULL, ncol = 5,
                labels = c("", "C", "", "D", ""),
                label_size = 18,
-               label_x = -0.02,
-               label_y = 1.01,
+               label_x = -0.03,
+               label_y = 1.02,
                scale = common_scale,
                rel_widths = c(0.3, 0.9, 0.1, 1.1, 0.3))
 p <- plot_grid(prow1, prow2, ncol = 1,
-               rel_heights = c(1, 0.8))
-
-ggsave(file.path("output", "figures", "S8.svg"),
+               rel_heights = c(1, 0.9))
+ggsave(file.path("output", "figures", "phylogenetic.svg"),
        p,
        dpi = 100,
        units = "in",
-       height = 9,
+       height = 8,
        width = 11)
 
 # ------------------------------------------------------------------------------

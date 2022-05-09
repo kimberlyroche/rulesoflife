@@ -488,14 +488,17 @@ cat(paste0("Observed values exceeding these thresholds for ASV: ",
 for(ttype in unique(corr_distros$type)) {
   f <- ecdf(corr_distros %>% filter(type == ttype & scheme == "permuted") %>% pull(x))
 
-  pvalues <- sapply(corr_distros %>% filter(type == ttype & scheme == "observed") %>% pull(x), function(x) {
+  values <- corr_distros %>% filter(type == ttype & scheme == "observed") %>% pull(x)
+  pvalues <- sapply(values, function(x) {
     2*min(f(x), 1-f(x))
   })
 
   pvalues_adj <- p.adjust(pvalues, method = "BH")
+  signif_vec <- pvalues_adj < 0.05
 
-  prop <- sum(pvalues_adj < 0.05) / length(pvalues_adj)
+  prop <- sum(signif_vec) / length(pvalues_adj)
   cat(paste0("Significant after FDR (", ttype, "): ", round(prop, 3), "\n"))
+  cat(paste0("\tMedian values (signif pairs): ", round(median(abs(values[signif_vec])), 3), "\n"))
 }
 
 # ------------------------------------------------------------------------------
@@ -505,13 +508,26 @@ for(ttype in unique(corr_distros$type)) {
 for(ttype in unique(score_distros$type)) {
   f <- ecdf(score_distros %>% filter(type == ttype & scheme == "permuted") %>% pull(x))
 
-  pvalues <- sapply(score_distros %>% filter(type == ttype & scheme == "observed") %>% pull(x), function(x) {
-    1-f(x)
+  values <- score_distros %>% filter(type == ttype & scheme == "observed") %>% pull(x)
+  pvalues <- sapply(values, function(x) {
+    # 1-f(x)
+    2*min(f(x), 1-f(x))
   })
 
   pvalues_adj <- p.adjust(pvalues, method = "BH")
+  signif_vec <- pvalues_adj < 0.05
 
-  prop <- sum(pvalues_adj < 0.05) / length(pvalues_adj)
+  prop <- sum(signif_vec) / length(pvalues_adj)
   cat(paste0("Significant after FDR (", ttype, "): ", round(prop, 3), "\n"))
+  higher_than_chance <- signif_vec & values > median(values)
+  prop <- sum(higher_than_chance) / length(pvalues_adj)
+  cat(paste0("\tHIGHER than chance): ", round(prop, 3), "\n"))
+  lower_than_chance <- signif_vec & values < median(values)
+  prop <- sum(lower_than_chance) / length(pvalues_adj)
+  cat(paste0("\tLOWER than chance): ", round(prop, 3), "\n"))
+
+  asv_scores_piecewise <- apply(rug_asv$rug[,lower_than_chance], 2, function(x) calc_universality_score(x, return_pieces = TRUE))
+
+  hist(rug_asv$rug[,higher_than_chance])
 }
 

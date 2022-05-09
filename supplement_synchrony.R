@@ -9,18 +9,10 @@ library(doParallel)
 library(foreach)
 library(fido)
 
-registerDoParallel(detectCores())
+palette_fn <- file.path("output", "family_palette.rds")
+fpalette <- readRDS(palette_fn)
 
-# ------------------------------------------------------------------------------
-#
-#   Figure 5 - synchrony "cartoon", paired synchrony vs. universality plots,
-#              plus enrichment barplots, for relative abundances of family-
-#              family pairs in subregions
-#
-#   Supplemental Figure S9 - synchrony of most synchronous taxon across a sample
-#                            of hosts
-#
-# ------------------------------------------------------------------------------
+registerDoParallel(detectCores())
 
 null_case <- TRUE # needed if rendering Figure S9
 
@@ -73,6 +65,8 @@ pull_Etas <- function(sample_obj, n_tax, Etas, host_dates) {
 # ------------------------------------------------------------------------------
 
 data <- load_data(tax_level = "ASV")
+
+tax <- data$taxonomy
 
 # Get sampling dates for all hosts
 md <- data$metadata
@@ -332,56 +326,52 @@ for(synchronous_idx in bottom_synchronous) {
 
 # ------------------------------------------------------------------------------
 #
-#   Figure S panels
+#   Figures
 #
 # ------------------------------------------------------------------------------
 
-plot_df <- NULL
-plot_df_permuted <- NULL
-for(i in 1:length(rug_asv$tax_idx1)) {
-  cat(paste0("Taxon pair iteration ", i, "\n"))
-  t1 <- rug_asv$tax_idx1[i]
-  t2 <- rug_asv$tax_idx2[i]
-  plot_df <- rbind(plot_df,
-                   data.frame(synchrony = mean(c(correlations[t1], correlations[t2])),
-                              universality = scores[i],
-                              sign = consensus_signs[i]))
-  if(null_case) {
-    for(it in 1:10) {
-      t1_idx <- (it-1)*(n_tax-1) + t1
-      t2_idx <- (it-1)*(n_tax-1) + t2
-      plot_df_permuted <- rbind(plot_df_permuted,
-                                data.frame(synchrony = mean(c(correlations_permuted[t1_idx], correlations_permuted[t2_idx])),
-                                           universality = scores[i],
-                                           sign = consensus_signs[i]))
+# ------------------------------------------------------------------------------
+#   Synchrony versus universality
+# ------------------------------------------------------------------------------
+
+save_fn <- file.path("output", "synchrony_plot_obj.rds")
+if(file.exists(save_fn)) {
+  plot_obj <- readRDS(save_fn)
+  plot_df <- plot_obj$plot_df
+  plot_df_permuted <- plot_obj$plot_df_permuted
+} else {
+  plot_df <- NULL
+  plot_df_permuted <- NULL
+  for(i in 1:length(rug_asv$tax_idx1)) {
+    if(i %% 1000 == 0) {
+      cat(paste0("Taxon pair iteration ", i, " / ", length(rug_asv$tax_idx1), "\n"))
+    }
+    t1 <- rug_asv$tax_idx1[i]
+    t2 <- rug_asv$tax_idx2[i]
+    plot_df <- rbind(plot_df,
+                     data.frame(synchrony = mean(c(correlations[t1], correlations[t2])),
+                                universality = scores[i],
+                                sign = consensus_signs[i]))
+    if(null_case) {
+      for(it in 1:10) {
+        t1_idx <- (it-1)*(n_tax-1) + t1
+        t2_idx <- (it-1)*(n_tax-1) + t2
+        plot_df_permuted <- rbind(plot_df_permuted,
+                                  data.frame(synchrony = mean(c(correlations_permuted[t1_idx],
+                                                                correlations_permuted[t2_idx])),
+                                             universality = scores[i],
+                                             sign = consensus_signs[i]))
+      }
     }
   }
+  plot_df$sign <- factor(plot_df$sign, levels = c(1, -1))
+  levels(plot_df$sign) <- c("positive", "negative")
+  plot_df_permuted$sign <- factor(plot_df_permuted$sign, levels = c(1, -1))
+  levels(plot_df_permuted$sign) <- c("positive", "negative")
+  saveRDS(list(plot_df = plot_df, plot_df_permuted = plot_df_permuted), save_fn)
 }
-plot_df$sign <- factor(plot_df$sign, levels = c(1, -1))
-levels(plot_df$sign) <- c("positive", "negative")
-plot_df_permuted$sign <- factor(plot_df_permuted$sign, levels = c(1, -1))
-levels(plot_df_permuted$sign) <- c("positive", "negative")
-
-# Include these labels to visually confirm the enrichment of Atobobiaceae and
-# Eggerthellaceae in the high universality/low synchrony cohort and Lachnospiraceae
-# pairs in the high universality/high synchrony cohort
-
-# library(ggrepel)
-# tax <- data$taxonomy
-# labels <- character(nrow(plot_df))
-# for(i in 1:length(labels)) {
-#   t1 <- rug_asv$tax_idx1[i]
-#   t2 <- rug_asv$tax_idx2[i]
-#   f1 <- tax$family[t1]
-#   f2 <- tax$family[t2]
-#   labels[i] <- paste0(substr(f1, 1, 6), "-", substr(f2, 1, 6))
-# }
-# plot_df$label <- labels
 
 p1 <- ggplot() +
-  # geom_point(data = plot_df %>% filter(!is.na(sign)) %>% filter(synchrony > 0.3 & universality > 0.4),
-  #            mapping = aes(x = synchrony, y = universality, fill = sign),
-  #            size = 2, shape = 21) +
   geom_point(data = plot_df %>% filter(!is.na(sign)),
              mapping = aes(x = synchrony, y = universality, fill = sign),
              size = 2, shape = 21) +
@@ -405,8 +395,6 @@ p1 <- ggplot() +
             size = 5,
             hjust = 1,
             color = "black") +
-  geom_text_repel(data = plot_df %>% filter(!is.na(sign)) %>% filter(synchrony > 0.3 & universality > 0.4),
-                  mapping = aes(x = synchrony, y = universality, label = label)) +
   scale_fill_manual(values = c("#F25250", "#34CCDE")) +
   theme_bw() +
   labs(fill = "Consensus\ncorrelation sign",
@@ -428,7 +416,7 @@ if(null_case) {
 
   cat(paste0("R^2: ", round(cor(plot_df_permuted$synchrony, plot_df_permuted$universality)^2, 3), "\n"))
 
-  ggsave(file.path("output", "figures", "S10.svg"),
+  ggsave(file.path("output", "figures", paste0("synchrony", ifelse(null_case, "_null", ""), ".svg")),
          p1p,
          dpi = 100,
          units = "in",
@@ -437,33 +425,183 @@ if(null_case) {
 }
 
 # ------------------------------------------------------------------------------
-#   Synchrony not greater than expected by chance (V1: intervals)
+#   Are Johannes' seasonal taxa more synchronous or universal than others?
+#   (OMITTED)
 # ------------------------------------------------------------------------------
 
-cat(paste0("Synchrony: median = ", round(median(correlations), 3), ", min = ", round(min(correlations), 3), ", max = ", round(max(correlations), 3), "\n"))
+seasonal_families <- list(wet = c("Helicobacteraceae",
+                                  "Coriobacteriaceae",
+                                  "Burkholderiaceae",
+                                  "Eggerthellaceae",
+                                  "Atopobiaceae",
+                                  "Erysipelotrichaceae",
+                                  "Lachnospiraceae"),
+                          dry = c("Baceroidales RF16 group",
+                                  "vadinBE97",
+                                  "Spirochaetaceae",
+                                  "Campylobacteraceae",
+                                  "Christensenellaceae",
+                                  "Syntrophomonadaceae"))
 
-idx <- which(correlations > max(correlations_permuted))
-cat(paste0("Percent of taxa with 'significant' synchrony: ", round((length(idx) / length(correlations))*100, 1),
-           " (", length(idx), " of 134)\n"))
+plot_df$idx1 <- rug_asv$tax_idx1
+plot_df$idx2 <- rug_asv$tax_idx2
+plot_df$fam1 <- tax[plot_df$idx1,6]
+plot_df$fam2 <- tax[plot_df$idx2,6]
 
-tax_syn <- cbind(idx = 1:134, data$taxonomy[1:134,2:ncol(data$taxonomy)], syn = correlations)
+plot_df$fam1[!(plot_df$fam1 %in% seasonal_families$wet |
+                 plot_df$fam1 %in% seasonal_families$dry)] <- NA
+plot_df$fam2[!(plot_df$fam2 %in% seasonal_families$wet |
+                 plot_df$fam2 %in% seasonal_families$dry)] <- NA
 
-# Most synchronous
-View(tax_syn %>% filter(syn > 0.4) %>% arrange(family))
+if(FALSE) {
+  x <- plot_df %>%
+    filter(fam1 == "Lachnospiraceae" & fam2 == "Lachnospiraceae") %>%
+    dplyr::select(c(synchrony, universality))
+  cat(paste0("R^2: ", round(cor(x$synchrony, x$universality)^2, 3), "\n"))
 
-# Lease synchronous
-View(tax_syn %>% arrange(syn, family) %>% slice(1:5))
+  x <- plot_df %>%
+    filter(!is.na(fam1) & fam1 != "Lachnospiraceae" &
+             !is.na(fam2) & fam2 != "Lachnospiraceae") %>%
+    dplyr::select(c(synchrony, universality))
+  cat(paste0("R^2: ", round(cor(x$synchrony, x$universality)^2, 3), "\n"))
 
-# Output Supplemental Table S6
-out_df <- data.frame(Synchrony = correlations,
-                     Significant = correlations > max(correlations_permuted),
-                     ASV = 1:134,
-                     Taxonomy = apply(data$taxonomy[1:134,2:ncol(data$taxonomy)], 1, function(x) paste0(x, collapse = " / ")))
-write.csv(out_df %>% arrange(desc(Synchrony)),
-          file.path("output", "Table_S6.csv"))
+  p1 <- ggplot() +
+    geom_point(data = plot_df %>% filter(is.na(fam1) | fam1 == "Lachnospiraceae"),
+               mapping = aes(x = synchrony, y = universality),
+               color = "gray") +
+    geom_point(data = plot_df %>% filter(!is.na(fam1) & fam1 != "Lachnospiraceae"),
+               mapping = aes(x = synchrony, y = universality, fill = fam1),
+               size = 2,
+               shape = 21) +
+    scale_fill_manual(values = fpalette) +
+    theme_bw() +
+    theme(legend.position = "none")
+  p2 <- ggplot() +
+    geom_point(data = plot_df %>% filter(is.na(fam1)),
+               mapping = aes(x = synchrony, y = universality),
+               color = "gray") +
+    geom_point(data = plot_df %>% filter(fam1 == "Lachnospiraceae"),
+               mapping = aes(x = synchrony, y = universality, fill = fam1),
+               size = 2,
+               shape = 21) +
+    scale_fill_manual(values = fpalette) +
+    theme_bw() +
+    theme(legend.position = "none")
+  p3 <- ggplot() +
+    geom_point(data = plot_df %>% filter(is.na(fam2) | fam2 == "Lachnospiraceae"),
+               mapping = aes(x = synchrony, y = universality),
+               color = "gray") +
+    geom_point(data = plot_df %>% filter(!is.na(fam2) & fam2 != "Lachnospiraceae"),
+               mapping = aes(x = synchrony, y = universality, fill = fam2),
+               size = 2,
+               shape = 21) +
+    scale_fill_manual(values = fpalette) +
+    theme_bw() +
+    theme(legend.position = "bottom") +
+    labs(fill = "family")
+  legend <- get_legend(p3)
+  p3 <- p3 +
+    theme(legend.position = "none")
+  p4 <- ggplot() +
+    geom_point(data = plot_df %>% filter(is.na(fam2)),
+               mapping = aes(x = synchrony, y = universality),
+               color = "gray") +
+    geom_point(data = plot_df %>% filter(fam2 == "Lachnospiraceae"),
+               mapping = aes(x = synchrony, y = universality, fill = fam2),
+               size = 2,
+               shape = 21) +
+    scale_fill_manual(values = fpalette) +
+    theme_bw() +
+    theme(legend.position = "none")
+  r1 <- plot_grid(p1, p2, rel_widths = c(1, 1))
+  r2 <- plot_grid(p3, p4, rel_widths = c(1, 1))
+  p <- plot_grid(r1, r2, legend, ncol = 1, rel_heights = c(1, 1, 0.3))
+  ggsave("temp.svg", p, dpi = 100, units = "in",
+         height = 10, width = 10)
+}
 
 # ------------------------------------------------------------------------------
-#   Synchrony not greater than expected by chance (V2: p-values, FDR)
+#   Lachnospiraceae-lachnospiraceae pairs show increased universality with
+#   increased synchrony
+# ------------------------------------------------------------------------------
+
+x <- plot_df %>% filter(fam1 == "Lachnospiraceae" & fam2 == "Lachnospiraceae")
+y <- plot_df %>% filter(fam1 != "Lachnospiraceae" & fam2 != "Lachnospiraceae")
+
+x$universality <- scale(x$universality)
+x$synchrony <- scale(x$synchrony)
+res <- summary(lm(universality ~ synchrony, x))
+cat(paste0("Lachno-lachno beta (synchrony x universality): ", round(coef(res)[2,1], 3), "\n"))
+cat(paste0("\tp-value: ", round(coef(res)[2,4], 3), "\n"))
+
+y$universality <- scale(y$universality)
+y$synchrony <- scale(y$synchrony)
+res <- summary(lm(universality ~ synchrony, y))
+cat(paste0("Non-lachno 'seasonal' pairs beta (synchrony x universality): ", round(coef(res)[2,1], 3), "\n"))
+cat(paste0("\tp-value: ", round(coef(res)[2,4], 3), "\n"))
+
+# Boxplots - are universality scores different when one or both partners in a
+# pair belongs to one of Johannes' seasonal families?
+plot_df$n_seasonal <- as.numeric(!sapply(plot_df$fam1, is.na)) + as.numeric(!sapply(plot_df$fam2, is.na))
+plot_df$n_seasonal_factor <- factor(plot_df$n_seasonal)
+levels(plot_df$n_seasonal_factor) <- c("no seasonal partners", "one seasonal partner", "two seasonal partners")
+
+# Test for differences in average universality scores in seasonal pairs
+t.test(universality ~ n_seasonal_factor, plot_df %>% filter(n_seasonal %in% c(0,1)))
+t.test(universality ~ n_seasonal_factor, plot_df %>% filter(n_seasonal %in% c(0,2)))
+
+ggplot(plot_df, aes(x = n_seasonal_factor, y = universality)) +
+  geom_boxplot() + #width = 0.2) +
+  theme_bw() +
+  labs(x = "", y = "median correlation")
+
+ggsave(file.path("output", "figures", "synchrony_seasonal_boxplots.svg"),
+       p1p,
+       dpi = 100,
+       units = "in",
+       height = 6,
+       width = 9)
+
+
+
+# ------------------------------------------------------------------------------
+#   Previous version of "significance" thresholding
+# ------------------------------------------------------------------------------
+
+if(FALSE) {
+  cat(paste0("Synchrony: median = ",
+             round(median(correlations), 3),
+             ", min = ",
+             round(min(correlations), 3),
+             ", max = ",
+             round(max(correlations), 3),
+             "\n"))
+
+  idx <- which(correlations > max(correlations_permuted))
+  cat(paste0("Percent of taxa with 'significant' synchrony: ",
+             round((length(idx) / length(correlations))*100, 1),
+             " (", length(idx), " of 134)\n"))
+
+  tax_syn <- cbind(idx = 1:134, data$taxonomy[1:134,2:ncol(data$taxonomy)], syn = correlations)
+
+  # Most synchronous
+  View(tax_syn %>% filter(syn > 0.4) %>% arrange(family))
+
+  # Lease synchronous
+  View(tax_syn %>% arrange(syn, family) %>% slice(1:5))
+
+  # Output Supplemental Table S6
+  out_df <- data.frame(Synchrony = correlations,
+                       Significant = correlations > max(correlations_permuted),
+                       ASV = 1:134,
+                       Taxonomy = apply(data$taxonomy[1:134,2:ncol(data$taxonomy)], 1, function(x) paste0(x, collapse = " / ")))
+  write.csv(out_df %>% arrange(desc(Synchrony)),
+            file.path("output", "Table_S6.csv"))
+}
+
+# ------------------------------------------------------------------------------
+#   Synchrony not greater than expected by chance
+#   Evaluated via p-value w/ FDR <= 0.05
 # ------------------------------------------------------------------------------
 
 f <- ecdf(correlations_permuted)
@@ -528,11 +666,6 @@ for(fam in names(frequencies_subset1)) {
   sample_size <- unname(unlist(sum(frequencies_subset1)))
   fam_in_bg <- unname(unlist(frequencies[fam]))
   bg_size <- unname(unlist(sum(frequencies)))
-  # ctab <- matrix(c(fam_in_sample,
-  #                  sample_size - fam_in_sample,
-  #                  fam_in_bg,
-  #                  bg_size - fam_in_bg),
-  #                2, 2, byrow = TRUE)
   ctab <- matrix(c(fam_in_sample,
                    fam_in_bg - fam_in_sample,
                    sample_size - fam_in_sample,
@@ -570,11 +703,6 @@ for(fam in names(frequencies_subset2)) {
   sample_size <- unname(unlist(sum(frequencies_subset2)))
   fam_in_bg <- unname(unlist(frequencies[fam]))
   bg_size <- unname(unlist(sum(frequencies)))
-  # ctab <- matrix(c(fam_in_sample,
-  #                  sample_size - fam_in_sample,
-  #                  fam_in_bg,
-  #                  bg_size - fam_in_bg),
-  #                2, 2, byrow = TRUE)
   ctab <- matrix(c(fam_in_sample,
                    fam_in_bg - fam_in_sample,
                    sample_size - fam_in_sample,
@@ -667,11 +795,6 @@ for(fam in names(frequencies_subset2)) {
   sample_size <- unname(unlist(sum(frequencies_subset2)))
   fam_in_bg <- unname(unlist(frequencies[fam]))
   bg_size <- unname(unlist(sum(frequencies)))
-  # ctab <- matrix(c(fam_in_sample,
-  #                  sample_size - fam_in_sample,
-  #                  fam_in_bg,
-  #                  bg_size - fam_in_bg),
-  #                2, 2, byrow = TRUE)
   ctab <- matrix(c(fam_in_sample,
                    fam_in_bg - fam_in_sample,
                    sample_size - fam_in_sample,
@@ -752,9 +875,7 @@ ggsave(file.path("output", "figures", "F5.svg"),
        width = 14)
 
 # ------------------------------------------------------------------------------
-#
-#   Supplemental Figure S9
-#
+#   Synchrony calculation "cartoon" figure
 # ------------------------------------------------------------------------------
 
 # ------------------------------------------------------------------------------

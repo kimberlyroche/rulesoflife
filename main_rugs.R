@@ -7,14 +7,6 @@ library(rulesoflife)
 library(RColorBrewer)
 library(cowplot)
 
-# ------------------------------------------------------------------------------
-#
-#   Figure 3 - permuted and observed "rug" plots for ASVs plus breakout plots
-#              of negatively and positively correlated highly "universal" taxa
-#              over three hosts
-#
-# ------------------------------------------------------------------------------
-
 data <- load_data(tax_level = "ASV")
 md <- data$metadata
 hosts <- unique(md$sname)
@@ -174,7 +166,7 @@ p1 <- ggplot(rug, aes(x = pair, y = host)) +
         legend.position = "none")
 
 # Plot rugs
-p <- plot_grid(p1, NULL, p2, ncol = 3,
+p <- plot_grid(p2, NULL, p1, ncol = 3,
                rel_widths = c(1, 0.05, 1),
                labels = c("A", "", "B"),
                label_size = 18,
@@ -207,6 +199,125 @@ for(host in host_shortlist[host_order]) {
   }
   pred_objs[[host]] <- pred_obj
 }
+
+# Seasonally striped version - buggy bug I'm saving
+# render_trajectories <- function(tax_indices, host_shortlist, host_labels, host_y_offset = 5,
+#                                 with_season = FALSE) {
+#   plot_df <- NULL
+#   for(tax_idx in tax_indices) {
+#     y_offset_counter <- 0
+#     for(h in 1:length(host_shortlist)) {
+#       host <- host_shortlist[h]
+#       label <- host_labels[h]
+#       pred_obj <- pred_objs[[host]]
+#       pred_df <- suppressMessages(gather_array(pred_obj$predictions[[host]]$Eta,
+#                                                val,
+#                                                coord,
+#                                                sample,
+#                                                iteration) %>%
+#                                     filter(coord == tax_idx) %>%
+#                                     group_by(coord, sample) %>%
+#                                     summarize(p25 = quantile(val, probs = c(0.25)),
+#                                               mean = mean(val),
+#                                               p75 = quantile(val, probs = c(0.75))))
+#       pred_df$host <- label
+#
+#       # Calculate day from (shared) baseline
+#       addend <- as.numeric(difftime(min(pred_obj$dates[[host]]), min_date, units = "day"))
+#
+#       day_span <- pred_obj$predictions[[host]]$span
+#       pred_df <- pred_df %>%
+#         left_join(data.frame(sample = 1:length(day_span), day = day_span), by = "sample")
+#
+#       pred_df$day <- pred_df$day + addend
+#
+#       pred_df2 <- pred_df %>%
+#         group_by(coord, host) %>%
+#         mutate(mean = mean - mean(mean),
+#                p25 = p25 - mean(p25),
+#                p75 = p75 - mean(p75))
+#
+#       if(y_offset_counter > 0) {
+#         pred_df2$p25 <- pred_df2$p25 + host_y_offset*y_offset_counter
+#         pred_df2$mean <- pred_df2$mean + host_y_offset*y_offset_counter
+#         pred_df2$p75 <- pred_df2$p75 + host_y_offset*y_offset_counter
+#       }
+#
+#       y_offset_counter <- y_offset_counter + 1
+#
+#       plot_df <- rbind(plot_df, pred_df2)
+#     }
+#   }
+#
+#   p3 <- ggplot()
+#
+#   if(with_season) {
+#     first_day <- "2000-07-10"
+#     wet_intervals <- list()
+#     seasons <- md %>%
+#       select(collection_date, season) %>%
+#       arrange(collection_date) %>%
+#       distinct() %>%
+#       filter(collection_date >= first_day)
+#     # The lazy way
+#     wet <- FALSE
+#     wet_start <- NULL
+#     for(i in 1:nrow(seasons)) {
+#       if(seasons$season[i] == "Wet" & !wet) {
+#         wet <- TRUE
+#         wet_start <- as.numeric(difftime(seasons$collection_date[i], first_day, units = "days"))
+#       } else if(seasons$season[i] == "Dry" & wet) {
+#         wet <- FALSE
+#         wet_intervals[[length(wet_intervals)+1]] <- c(wet_start,
+#                                                       as.numeric(difftime(seasons$collection_date[i], first_day, units = "days")))
+#       }
+#     }
+#
+#     for(i in 1:length(wet_intervals)) {
+#       p3 <- p3 + geom_rect(data = data.frame(xmin = wet_intervals[[i]][1], xmax = wet_intervals[[i]][2],
+#                                              ymin = -5, ymax = Inf),
+#                            mapping = aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax), fill = "#eeeeee")
+#     }
+#
+#   }
+#
+#   swap_color <- FALSE
+#   for(tax_idx in tax_indices) {
+#     for(this_host in host_labels) {
+#       p3 <- p3 +
+#         geom_ribbon(data = plot_df %>% filter(host == this_host & coord == tax_idx),
+#                     mapping = aes(x = day, ymin = p25, ymax = p75),
+#                     fill = ifelse(swap_color, "#a6cee3", "#fdbf6f"),
+#                     alpha = alpha) +
+#         geom_line(data = plot_df %>% filter(host == this_host & coord == tax_idx),
+#                   mapping = aes(x = day, y = mean),
+#                   color = ifelse(swap_color, "#1f78b4", "#ff7f00"),
+#                   size = 1,
+#                   alpha = alpha)
+#     }
+#     swap_color <- TRUE
+#   }
+#
+#   breaks <- plot_df %>%
+#     group_by(host) %>%
+#     summarize(y_mean = mean(mean))
+#   name_map <- unlist(breaks$host)
+#   names(name_map) <- round(unlist(breaks$y_mean))
+#
+#   p3 <- p3 +
+#     theme_bw() +
+#     labs(x = paste0("days from first sample (", min_date, ")"),
+#          y = "") +
+#     scale_x_continuous(expand = c(0.01, 0.01)) +
+#     scale_y_continuous(breaks = unlist(breaks$y_mean), labels = name_map, expand = c(0, 0)) +
+#     # scale_y_continuous(expand = c(0.01, 0.01)) +
+#     theme(panel.grid.major = element_blank(),
+#           # axis.text.y = element_blank(),
+#           # axis.ticks.y = element_blank(),
+#           panel.grid.minor = element_blank())
+#
+#   p3
+# }
 
 render_trajectories <- function(tax_indices, host_shortlist, host_labels, host_y_offset = 5) {
   plot_df <- NULL
@@ -288,10 +399,12 @@ render_trajectories <- function(tax_indices, host_shortlist, host_labels, host_y
 }
 
 # Order to match the "rug" row order
+# p_test <- render_trajectories(c(1,9), host_shortlist[c(2,3,4,5,1)], use_labels[c(1,5,3,4,2)], host_y_offset = 5, with_season = TRUE)
+
 p3 <- render_trajectories(c(2,3), host_shortlist[c(2,3,4,5,1)], use_labels[c(1,5,3,4,2)], host_y_offset = 5)
 p4 <- render_trajectories(c(31,114), host_shortlist[c(2,3,4,5,1)], use_labels[c(1,5,3,4,2)], host_y_offset = 10)
 
-prow2 <- plot_grid(p3, NULL, p4, NULL, ncol = 4,
+prow2 <- plot_grid(p4, NULL, p3, NULL, ncol = 4,
                    labels = c("C", "", "D", ""),
                    rel_widths = c(1, 0.05, 1, 0.27),
                    label_size = 18,
@@ -301,12 +414,9 @@ prow2 <- plot_grid(p3, NULL, p4, NULL, ncol = 4,
 p_out <- plot_grid(prow1, prow2, ncol = 1,
                    rel_heights = c(1, 0.75))
 
-ggsave(file.path("output", "figures", "draft_F3.svg"),
+ggsave(file.path("output", "figures", "rugs.svg"),
        p_out,
        dpi = 50,
        units = "in",
        height = 9,
        width = 12)
-
-
-

@@ -11,17 +11,9 @@ library(ggridges)
 library(RColorBrewer)
 library(cowplot)
 library(frechet)
-
-# ------------------------------------------------------------------------------
-#
-#   Figure 5 - Comparing results to those from other data sets (Johnson et al.
-#              and DIABIMMUNE); the "titration" experiment to estimate population-
-#              versus host-level signal is performed at the end of this script
-#
-#   Supplemental Figure S12 - "rug" heat maps and estimated proportions of host-
-#                             vs. population-level signal for the human data sets
-#
-# ------------------------------------------------------------------------------
+library(ggrepel)
+library(pals)
+library(lme4)
 
 # ------------------------------------------------------------------------------
 #   Functions
@@ -53,8 +45,15 @@ filter_taxa2 <- function(host_columns, counts, min_relab = 1/10000, tax = NULL) 
   counts <- rbind(counts[retain_tax,],
                   agglom_tax)
   if(!is.null(tax)) {
-    tax <- c(tax[retain_tax], "Other")
-  t}
+    if(is.data.frame(tax)) {
+      tax <- tax[retain_tax,]
+      empty_row <- rep(NA, ncol(tax))
+      names(empty_row) <- colnames(tax)
+      tax <- rbind(tax, empty_row)
+    } else {
+      tax <- c(tax[retain_tax], "Other")
+    }
+  }
   return(list(counts = counts, filter_vec = retain_tax, tax = tax))
 }
 
@@ -188,6 +187,88 @@ mapping <- read.delim(file.path("input", "johnson2019", "SampleID_map.txt"),
 tax_johnson <- counts$taxonomy
 counts <- counts[,2:ncol(counts)]
 
+
+tax_johnson_df <- NULL
+for(i in 1:(length(tax_johnson)-1)) {
+  piece <- str_split(tax_johnson[i], "\\;")[[1]]
+  piece_df <- data.frame(kingdom = NA,
+                         phylum = NA,
+                         class = NA,
+                         order = NA,
+                         family = NA,
+                         genus = NA,
+                         species = NA)
+  for(j in 1:length(piece)) {
+    piece_df[,j] <- str_split(piece[j], "__")[[1]][2]
+    if(!is.na(piece_df[,j]) & (piece_df[,j] == "" | piece_df[,j] == "unclassified")) {
+      piece_df[,j] <- NA
+    }
+    match <- str_match(piece_df[,j], "\\[(.*)\\]")
+    if(!is.na(match[1,2])) {
+      piece_df[,j] <- match[1,2]
+    }
+  }
+  tax_johnson_df <- rbind(tax_johnson_df,
+                             piece_df)
+}
+tax_johnson_df <- rbind(tax_johnson_df,
+                           data.frame(kingdom = NA,
+                                      phylum = NA,
+                                      class = NA,
+                                      order = NA,
+                                      family = NA,
+                                      genus = NA,
+                                      species = NA))
+tax_johnson_df <- cbind(idx = as.numeric(rownames(tax_johnson_df)),
+                           tax_johnson_df)
+tax_johnson <- tax_johnson_df
+rm(tax_johnson_df)
+
+# Collapse to family
+temp_tax <- tax_johnson
+temp_tax$species[is.na(temp_tax$species)] <- "missing"
+temp_tax$family[is.na(temp_tax$family)] <- "missing"
+temp_tax$class[is.na(temp_tax$class)] <- "missing"
+temp_tax$order[is.na(temp_tax$order)] <- "missing"
+temp_tax$phylum[is.na(temp_tax$phylum)] <- "missing"
+temp_tax$kingdom[is.na(temp_tax$kingdom)] <- "missing"
+
+temp <- temp_tax %>%
+  group_by(kingdom, phylum, class, order, family) %>%
+  mutate(index_list = paste(idx, collapse = ",")) %>%
+  dplyr::select(c(kingdom, phylum, class, order, family, index_list)) %>%
+  distinct()
+
+new_counts <- matrix(NA, nrow(temp), ncol(counts))
+new_tax <- NULL
+for(i in 1:nrow(temp)) {
+  indices <- as.numeric(str_split(temp$index_list[i], ",")[[1]])
+  if(length(indices) > 1) {
+    new_counts[i,] <- colSums(counts[indices,])
+  } else {
+    new_counts[i,] <- unname(unlist(counts[indices,]))
+  }
+  new_tax <- rbind(new_tax,
+                   temp %>%
+                     filter(kingdom == temp$kingdom[i] &
+                              phylum == temp$phylum[i] &
+                              class == temp$class[i] &
+                              order == temp$order[i] &
+                              family == temp$family[i]) %>%
+                     dplyr::select(!index_list))
+  dim(new_counts)
+}
+
+new_tax$family[new_tax$family == "missing"] <- NA
+new_tax$class[new_tax$class == "missing"] <- NA
+new_tax$order[new_tax$order == "missing"] <- NA
+new_tax$phylum[new_tax$phylum == "missing"] <- NA
+new_tax$kingdom[new_tax$kingdom == "missing"] <- NA
+
+colnames(new_counts) <- colnames(counts)
+counts <- new_counts
+tax_johnson <- new_tax
+
 subjects <- unique(mapping$UserName)
 host_columns <- list()
 host_dates <- list()
@@ -206,7 +287,9 @@ for(i in 1:length(subjects)) {
 }
 
 # Filter counts
-counts <- filter_taxa2(host_columns, counts)$counts
+f_obj <- filter_taxa2(host_columns, counts, tax = tax_johnson)
+counts <- f_obj$counts
+tax <- f_obj$tax
 
 # Stats
 study_stats <- rbind(study_stats,
@@ -222,7 +305,7 @@ if(file.exists(saved_fn)) {
   johnson_vec <- vectorize_results(johnson)
 } else {
   johnson <- fit_model(counts, host_columns, host_dates, dataset_name = "Johnson et al.")
-  johnson_vec <- vectorize_results(johnson)
+  johnson_vec <- vectorize_results(johnson[1:(dim(johnson)[1]-1),1:(dim(johnson)[2]-1),])
   saveRDS(johnson, saved_fn)
 }
 pairs_johnson <- johnson_vec$pairs
@@ -237,8 +320,11 @@ rug$pair <- as.numeric(rug$pair)
 
 s1 <-  ggplot(rug, aes(x = pair, y = host)) +
   geom_raster(aes(fill = correlation)) +
-  scale_fill_gradient2(low = "navy", mid = "white", high = "red",
-                       midpoint = 0,
+  # scale_fill_gradient2(low = "navy", mid = "white", high = "red",
+  #                      midpoint = 0,
+  #                      guide = guide_colorbar(frame.colour = "black",
+  #                                             ticks.colour = "black")) +
+  scale_fill_gradientn(limits = c(-1,1), colors = c("navy", "white", "red"),
                        guide = guide_colorbar(frame.colour = "black",
                                               ticks.colour = "black")) +
   labs(y = "host") +
@@ -276,6 +362,83 @@ counts <- t(data_16s)
 rm(data_16s)
 tax_diabimmune <- rownames(counts)
 rownames(counts) <- NULL # omit taxonomy
+
+tax_diabimmune_df <- NULL
+for(i in 1:(length(tax_diabimmune)-1)) {
+  piece <- str_split(tax_diabimmune[i], "\\|")[[1]]
+  piece_df <- data.frame(kingdom = NA,
+                         phylum = NA,
+                         class = NA,
+                         order = NA,
+                         family = NA,
+                         genus = NA)
+  for(j in 1:length(piece)) {
+    piece_df[,j] <- str_split(piece[j], "__")[[1]][2]
+    if(piece_df[,j] == "" | piece_df[,j] == "unclassified") {
+      piece_df[,j] <- NA
+    }
+    match <- str_match(piece_df[,j], "\\[(.*)\\]")
+    if(!is.na(match[1,2])) {
+      piece_df[,j] <- match[1,2]
+    }
+  }
+  tax_diabimmune_df <- rbind(tax_diabimmune_df,
+                             piece_df)
+}
+tax_diabimmune_df <- rbind(tax_diabimmune_df,
+                           data.frame(kingdom = NA,
+                                      phylum = NA,
+                                      class = NA,
+                                      order = NA,
+                                      family = NA,
+                                      genus = NA))
+tax_diabimmune_df <- cbind(idx = as.numeric(rownames(tax_diabimmune_df)),
+                           tax_diabimmune_df)
+tax_diabimmune <- tax_diabimmune_df
+rm(tax_diabimmune_df)
+
+# Collapse to family
+temp_tax <- tax_diabimmune
+temp_tax$family[is.na(temp_tax$family)] <- "missing"
+temp_tax$class[is.na(temp_tax$class)] <- "missing"
+temp_tax$order[is.na(temp_tax$order)] <- "missing"
+temp_tax$phylum[is.na(temp_tax$phylum)] <- "missing"
+temp_tax$kingdom[is.na(temp_tax$kingdom)] <- "missing"
+
+temp <- temp_tax %>%
+  group_by(kingdom, phylum, class, order, family) %>%
+  mutate(index_list = paste(idx, collapse = ",")) %>%
+  dplyr::select(c(kingdom, phylum, class, order, family, index_list)) %>%
+  distinct()
+
+new_counts <- matrix(NA, nrow(temp), ncol(counts))
+new_tax <- NULL
+for(i in 1:nrow(temp)) {
+  indices <- as.numeric(str_split(temp$index_list[i], ",")[[1]])
+  if(length(indices) > 1) {
+    new_counts[i,] <- colSums(counts[indices,])
+  } else {
+    new_counts[i,] <- counts[indices,]
+  }
+  new_tax <- rbind(new_tax,
+                   temp %>%
+                     filter(kingdom == temp$kingdom[i] &
+                            phylum == temp$phylum[i] &
+                            class == temp$class[i] &
+                            order == temp$order[i] &
+                            family == temp$family[i]) %>%
+                     dplyr::select(!index_list))
+}
+
+new_tax$family[new_tax$family == "missing"] <- NA
+new_tax$class[new_tax$class == "missing"] <- NA
+new_tax$order[new_tax$order == "missing"] <- NA
+new_tax$phylum[new_tax$phylum == "missing"] <- NA
+new_tax$kingdom[new_tax$kingdom == "missing"] <- NA
+
+colnames(new_counts) <- colnames(counts)
+counts <- new_counts
+tax_diabimmune <- new_tax
 
 # These aren't counts but relative abundances (summing to 5).
 # Let's scale them into CPM.
@@ -330,7 +493,7 @@ if(file.exists(saved_fn)) {
   diabimmune_vec <- vectorize_results(diabimmune)
 } else {
   diabimmune <- fit_model(counts, host_columns, host_dates, "DIABIMMUNE")
-  diabimmune_vec <- vectorize_results(diabimmune)
+  diabimmune_vec <- vectorize_results(diabimmune[1:(dim(diabimmune)[1]-1),1:(dim(diabimmune)[2]-1),])
   saveRDS(diabimmune, saved_fn)
 }
 pairs_diabimmune <- diabimmune_vec$pairs
@@ -345,8 +508,7 @@ rug$pair <- as.numeric(rug$pair)
 
 s2 <- ggplot(rug, aes(x = pair, y = host)) +
   geom_raster(aes(fill = correlation)) +
-  scale_fill_gradient2(low = "navy", mid = "white", high = "red",
-                       midpoint = 0,
+  scale_fill_gradientn(limits = c(-1,1), colors = c("navy", "white", "red"),
                        guide = guide_colorbar(frame.colour = "black",
                                               ticks.colour = "black")) +
   labs(y = "host") +
@@ -377,10 +539,12 @@ all_scores <- rbind(all_scores,
 #   Amboseli baboons
 # ------------------------------------------------------------------------------
 
-amboseli <- summarize_Sigmas("asv_days90_diet25_scale1")
+# amboseli <- summarize_Sigmas("asv_days90_diet25_scale1")
+amboseli <- summarize_Sigmas("fam_days90_diet25_scale1")
 scores <- apply(amboseli$rug, 2, function(x) calc_universality_score(x, return_pieces = TRUE))
 consensus_sign <- apply(amboseli$rug, 2, calc_consensus_sign)
-tax_abrp <- load_data(tax_level = "ASV")$taxonomy
+# tax_abrp <- load_data(tax_level = "ASV")$taxonomy
+tax_abrp <- load_data(tax_level = "family")$taxonomy
 all_scores <- rbind(all_scores,
                     data.frame(X1 = scores[1,],
                                X2 = scores[2,],
@@ -401,175 +565,267 @@ names(dataset_palette) <- sort(unique(all_scores$dataset))[c(1,2,3)]
 #   Previous version - densities
 # ------------------------------------------------------------------------------
 
-# plot_scores <- all_scores %>%
-#   mutate(prop_subjects = n_subjects / max(n_subjects))
-#
-# p1 <- ggplot(plot_scores %>% filter(!(dataset %in% c("McMahon et al. (epilimnion)",
-#                                                      "McMahon et al. (hypolimnion)",
-#                                                      "Grossart et al."))),
-#              aes(x = X2, y = reorder(dataset, n_subjects), fill = dataset)) +
-#   geom_density_ridges(stat = "binline", bins = 20, scale = 0.95, draw_baseline = TRUE) +
-#   theme_bw() +
-#   # scale_alpha_continuous(range = c(0.25, 1.0)) +
-#   scale_fill_manual(values = dataset_palette) +
-#   scale_y_discrete(expand = expansion(add = c(0.35, 0.75))) +
-#   coord_cartesian(clip = "off") +
-#   guides(fill = "none",
-#          alpha = "none") +
-#   labs(x = "universality scores",
-#        y = "")
-#
-# # Density plot from:
-# # https://stackoverflow.com/questions/23437000/how-to-plot-a-contour-line-showing-where-95-of-values-fall-within-in-r-and-in
-#
-# # Specify desired contour levels
-# prob <- c(0.95, 0.5)
-#
-# # I'm just using the studies with 5+ subjects
-# dc_combined <- rbind(cbind(get_density_obj(all_scores %>% filter(dataset == "DIABIMMUNE") %>% dplyr::select(X1, X2)), type = "DIABIMMUNE"),
-#                      cbind(get_density_obj(all_scores %>% filter(dataset == "Amboseli") %>% dplyr::select(X1, X2)), type = "Amboseli"),
-#                      cbind(get_density_obj(all_scores %>% filter(dataset == "Johnson et al.") %>% dplyr::select(X1, X2)), type = "Johnson et al."))
-#
-# dc_combined$type <- factor(dc_combined$type, levels = c("DIABIMMUNE", "Johnson et al.", "Amboseli"))
-#
-# p2 <- ggplot(data = dc_combined,
-#              aes(x = Var1, y = Var2, z = prob, fill = type, alpha = ..level..)) +
-#   geom_contour_filled(breaks = c(prob, 0)) +
-#   scale_alpha_discrete(range = c(0.4, 0.7)) +
-#   # scale_fill_manual(values = dataset_palette[c(2,7,8)]) +
-#   scale_fill_manual(values = dataset_palette) +
-#   theme_bw() +
-#   xlim(c(0.5, 1)) +
-#   ylim(c(0, 1)) +
-#   labs(x = "proportion shared sign",
-#        y = "median association strength",
-#        fill = "Data set") +
-#   guides(alpha = "none",
-#          color = "none")
-#
-# p <- plot_grid(p1, NULL, p2,
-#                ncol = 3,
-#                rel_widths = c(1, 0.1, 1.2),
-#                scale = 0.95,
-#                labels = c("A", "B"),
-#                label_size = 20)
-#
-# ggsave(file.path("output", "figures", "F4.svg"),
-#        p,
-#        dpi = 100,
-#        units = "in",
-#        height = 4.5,
-#        width = 12)
+sign_palette <- c("red", "#0047AB")
+names(sign_palette) <- c(1, -1)
 
-p2 <- ggplot(data = all_scores,
-             aes(x = X1, y = X2)) +
-  # geom_contour_filled(breaks = c(prob, 0)) +
-  geom_point(size = 2) +
-  # scale_alpha_discrete(range = c(0.4, 0.7)) +
-  # scale_fill_manual(values = dataset_palette) +
+row2 <- ggplot(all_scores %>% filter(sign %in% c(-1,1)),
+               aes(x = X1, y = X2, fill = factor(sign))) +
+  geom_point(size = 3, shape = 21) +
+  scale_fill_manual(values = sign_palette, labels = c("positive", "negative")) +
   facet_wrap(. ~ dataset) +
   theme_bw() +
-  # xlim(c(0.5, 1)) +
-  # ylim(c(0, 1)) +
   labs(x = "proportion shared sign",
-       y = "median association strength",
-       fill = "Data set") +
+       y = "median correlation strength",
+       fill = "Consensus sign") +
   guides(alpha = "none",
          color = "none")
-
-ggsave(file.path("output", "figures", "draft_F5.svg"),
-       p2,
-       dpi = 100,
-       units = "in",
-       height = 4,
-       width = 10)
 
 # ------------------------------------------------------------------------------
 #   Compare the most universal taxon pairs in DIABIMMUNE and ABRP
 # ------------------------------------------------------------------------------
 
-tax_diabimmune_df <- NULL
-for(i in 1:(length(tax_diabimmune)-1)) {
-  piece <- str_split(tax_diabimmune[i], "\\|")[[1]]
-  piece_df <- data.frame(kingdom = NA,
-                         phylum = NA,
-                         class = NA,
-                         order = NA,
-                         family = NA,
-                         genus = NA)
-  for(i in 1:length(piece)) {
-    piece_df[,i] <- str_split(piece[i], "__")[[1]][2]
-    if(piece_df[,i] == "" | piece_df[,i] == "unclassified") {
-      piece_df[,i] <- NA
-    }
-    match <- str_match(piece_df[,i], "\\[(.*)\\]")
-    if(!is.na(match[1,2])) {
-      piece_df[,i] <- match[1,2]
-    }
+# Quick fixes
+colnames(tax_diabimmune)[1] <- "domain"
+colnames(tax_johnson)[1] <- "domain"
+tax_abrp <- tax_abrp[,2:ncol(tax_abrp)]
+rownames(tax_abrp) <- NULL
+
+tax_diabimmune$index <- 1:nrow(tax_diabimmune)
+tax_johnson$index <- 1:nrow(tax_johnson)
+tax_abrp$index <- 1:nrow(tax_abrp)
+
+pull_overlap <- function(tax_target, target_name, tax_ref = NULL, ref_name = "Amboseli") {
+  if(is.null(tax_ref)) {
+    tax_ref <- tax_abrp
+    ref_name <- "Amboseli"
   }
-  tax_diabimmune_df <- rbind(tax_diabimmune_df,
-                             piece_df)
+  t2 <- tax_target[1:(nrow(tax_target)-1),] %>%
+    ungroup() %>%
+    mutate(name = paste(domain, phylum, class, order, family)) %>%
+    mutate(highest_label = case_when(
+      !is.na(family) ~ paste0("family ", family),
+      !is.na(order) ~ paste0("order ", order),
+      !is.na(class) ~ paste0("class ", class),
+      !is.na(phylum) ~ paste0("phylum ", phylum),
+      TRUE ~ paste0("domain ", domain)
+    )) %>%
+    dplyr::select(index, highest_label, name)
+  t2 <- as.data.frame(t2)
+
+  t1 <- tax_ref[1:(nrow(tax_ref)-1),] %>%
+    ungroup() %>%
+    mutate(name = paste(domain, phylum, class, order, family)) %>%
+    mutate(highest_label = case_when(
+      !is.na(family) ~ paste0("family ", family),
+      !is.na(order) ~ paste0("order ", order),
+      !is.na(class) ~ paste0("class ", class),
+      !is.na(phylum) ~ paste0("phylum ", phylum),
+      TRUE ~ paste0("domain", domain)
+    )) %>%
+    dplyr::select(index, highest_label, name)
+
+  temp <- t2 %>%
+    full_join(t1, by = "name")
+  temp_shared <- temp[!is.na(temp$index.x) & !is.na(temp$index.y),]
+
+  # 10 of 63 families in common
+  cat(paste0(nrow(temp_shared), " of ", nrow(temp), " families combos in common!\n"))
+
+  target_scores <- all_scores %>%
+    filter(dataset == target_name) %>%
+    left_join(t2, by = c("idx1" = "index")) %>%
+    left_join(t2, by = c("idx2" = "index")) %>%
+    mutate(friendly = paste(highest_label.x, "/", highest_label.y)) %>%
+    mutate(name2 = case_when(
+      name.x < name.y ~ paste(name.x, "/", name.y),
+      TRUE ~ paste(name.y, "/", name.x)
+    ))
+
+  ref_scores <- all_scores %>%
+    filter(dataset == ref_name) %>%
+    left_join(t1, by = c("idx1" = "index")) %>%
+    left_join(t1, by = c("idx2" = "index")) %>%
+    mutate(friendly = paste(highest_label.x, "/", highest_label.y)) %>%
+    mutate(name2 = case_when(
+      name.x < name.y ~ paste(name.x, "/", name.y),
+      TRUE ~ paste(name.y, "/", name.x)
+    ))
+
+  comp_scores <- ref_scores %>%
+    full_join(target_scores, by = "name2")
+
+  comp_scores
 }
-tax_diabimmune_df <- rbind(tax_diabimmune_df,
-                           data.frame(kingdom = NA,
-                                      phylum = NA,
-                                      class = NA,
-                                      order = NA,
-                                      family = NA,
-                                      genus = NA))
-tax_diabimmune_df <- cbind(idx = as.numeric(rownames(tax_diabimmune_df)),
-                           tax_diabimmune_df)
 
-cat(paste0("Number of shared genera: ", length(intersect(unique(tax_diabimmune_df$genus), unique(tax_abrp$genus))), "\n"))
+# Johnson et al. and DIABIMMUNE overlap
+# comp_scores_alt <- pull_overlap(tax_johnson, tax_diabimmune, target_name = "Johnson et al.", ref_name = "DIABIMMUNE") %>%
+#   filter(complete.cases(.))
+# comp_scores_alt$score.x <- comp_scores_alt$X1.x*comp_scores_alt$X2.x
+# comp_scores_alt$score.y <- comp_scores_alt$X1.y*comp_scores_alt$X2.y
+# summary(lm(comp_scores_alt$score.y ~ comp_scores_alt$score.x))
 
-# Look at the most universal pairs in DIABIMMUNE. What are they?
-most_univ <- all_scores %>%
-  filter(dataset == "DIABIMMUNE") %>%
-  filter(X2 > 0.65) %>%
-  left_join(tax_diabimmune_df, by = c("idx1" = "idx")) %>%
-  left_join(tax_diabimmune_df, by = c("idx2" = "idx"))
+# What's the family-family overlap for DIABIMMUNE?
+comp_scores_d <- pull_overlap(tax_diabimmune, target_name = "DIABIMMUNE")
 
-# View(most_univ %>% dplyr::select(-c(X1, X2, idx1, idx2, dataset, n_subjects)))
-
-# This is tricky. I'm not willing to try to do the string matching here without
-# more expertise.
-
-# We could look for evidence of enrichment of Lachno-Lachno (etc.) in the top
-# pairs.
-
-# pull_pair <- function(taxonomy, idx1, idx2) {
-#   piece1 <- str_split(taxonomy[idx1], "\\|")[[1]]
-#   piece1_df <- data.frame(kingdom = NA,
-#                           phylum = NA,
-#                           class = NA,
-#                           order = NA,
-#                           family = NA,
-#                           genus = NA)
-#   piece2_df <- piece1_df
-#   for(i in 1:length(piece1)) {
-#     piece1_df[,i] <- str_split(piece1[i], "__")[[1]][2]
-#   }
-#   piece2 <- str_split(taxonomy[idx2], "\\|")[[1]]
-#   for(i in 1:length(piece2)) {
-#     piece2_df[,i] <- str_split(piece2[i], "__")[[1]][2]
-#   }
-#   rbind(piece1_df, piece2_df)
-# }
+# n_combo <- comp_scores %>%
+#   dplyr::select(dataset.x, dataset.y, name2) %>%
+#   filter(complete.cases(.)) %>%
+#   count() %>%
+#   pull(n)
+# n_missing <- comp_scores %>%
+#   dplyr::select(dataset.x, dataset.y, name2) %>%
+#   filter(!complete.cases(.)) %>%
+#   count() %>%
+#   pull(n)
 #
-# diabimmune_scores <- all_scores %>%
-#   filter(dataset == "DIABIMMUNE")
-# x <- diabimmune_scores %>% pull(X1)
-# y <- diabimmune_scores %>% pull(X2)
-# z <- x*y
+# # How many / which family-family pairs overlap?
+# cat(paste0(n_combo, " family-family pairs of ", n_missing+n_combo, " in common!\n"))
+
+# What's the family overlap for Johnson et al.?
+comp_scores_j <- pull_overlap(tax_johnson, target_name = "Johnson et al.")
+
+# n_combo <- comp_scores %>%
+#   dplyr::select(dataset.x, dataset.y, name2) %>%
+#   filter(complete.cases(.)) %>%
+#   count() %>%
+#   pull(n)
+# n_missing <- comp_scores %>%
+#   dplyr::select(dataset.x, dataset.y, name2) %>%
+#   filter(!complete.cases(.)) %>%
+#   count() %>%
+#   pull(n)
+
+# How many / which family pairs overlap?
+# cat(paste0(n_combo, " family-family pairs of ", n_missing+n_combo, " in common!\n"))
+
+comp_scores <- rbind(cbind(comp_scores_d, dataset = "DIABIMMUNE"),
+                     cbind(comp_scores_j, dataset = "Johnson et al.")) %>%
+  filter(complete.cases(.))
+
+# How many pairs overlap in all three data sets?
+# dj_names <- comp_scores %>%
+#   filter(dataset != "Johnson et al.") %>%
+#   dplyr::select(c(score.x, score.y, dataset, name2)) %>%
+#   left_join(comp_scores %>%
+#               filter(dataset != "DIABIMMUNE") %>%
+#               dplyr::select(c(score.x, score.y, dataset, name2)), by = "name2") %>%
+#   filter(complete.cases(.))
 #
-# top_20p <- which(z > quantile(z, probs = c(0.8)))
-# pair_names <- c()
-# for(pair in top_20p) {
-#   pair <- pull_pair(tax_diabimmune, diabimmune_scores$idx1[pair], diabimmune_scores$idx2[pair])
-#   pair_names <- c(pair_names,
-#                   paste0(pair$class[1], " - ", pair$class[2]))
-# }
-# table(pair_names)
+# dj_names1 <- dj_names[,1:4]
+# dj_names2 <- dj_names[,c(5:7,4)]
+# colnames(dj_names1) <- c("score.x", "score.y", "dataset", "name")
+# colnames(dj_names2) <- c("score.x", "score.y", "dataset", "name")
+# dj_names <- rbind(dj_names1, dj_names2)
+#
+# plot(dj_names$score.x, dj_names$score.y)
+# summary(lm(score.y ~ score.x, dj_names))
+# summary(lmer(score.y ~ score.x + (1|dataset), dj_names))
+# summary(lmer(score.y ~ score.x + (score.x|dataset), dj_names))
+
+comp_scores$score.x <- comp_scores$X1.x*comp_scores$X2.x
+comp_scores$score.y <- comp_scores$X1.y*comp_scores$X2.y
+comp_scores$label <- comp_scores$friendly.x
+# comp_scores$label[comp_scores$score.x < 0.3 & comp_scores$score.y < 0.3] <- NA
+comp_scores$label[comp_scores$score.x*comp_scores$score.y < 0.05] <- NA
+comp_scores$label <- factor(comp_scores$label)
+s3 <- ggplot() +
+  geom_point(data = comp_scores %>% filter(is.na(label)),
+             mapping = aes(x = score.x, y = score.y, color = dataset),
+             size =  3.5,
+             shape = 21,
+             fill = "#dddddd",
+             stroke = 1.5) +
+  geom_point(data = comp_scores %>% filter(!is.na(label)),
+             mapping = aes(x = score.x, y = score.y, color = dataset, fill = label),
+             size =  3.5,
+             shape = 21,
+             stroke = 1.5) +
+  geom_smooth(method = "lm") +
+  scale_fill_manual(values = unname(pals::alphabet2())[-c(4,5,9)]) +
+  scale_color_manual(values = c("black", "gray")) +
+  theme_bw() +
+  xlim(c = c(0, 0.85)) +
+  ylim(c = c(0, 0.85)) +
+  labs(x = "\nAmboseli score",
+       y = "DIABIMMUNE or Johnson et al. score\n",
+       fill = "Taxon pair",
+       color = "Data set")
+
+# Figure version 1
+s12 <- plot_grid(s1 + theme(legend.position = "none"),
+                 NULL,
+                 s2,
+                 ncol = 3,
+                 rel_widths = c(1, 0.1, 1.3),
+                 labels = c("A", "", "B"),
+                 label_size = 18,
+                 label_y = 1.03,
+                 label_x = -0.05)
+# row1 <- plot_grid(s12,
+#                   NULL,
+#                   s3,
+#                   ncol = 3,
+#                   rel_widths = c(1.6, 0.1, 1.5),
+#                   labels = c("", "", "C"),
+#                   label_size = 18,
+#                   label_y = 1.03,
+#                   label_x = -0.03)
+# row2_scaled <- row2 + theme(text = element_text(size = 13))
+# row2_padded <- plot_grid(NULL, row2_scaled, NULL,
+#                          ncol = 3,
+#                          rel_widths = c(0.2, 1, 0.2),
+#                          labels = c("", "D", ""),
+#                          label_size = 18,
+#                          label_y = 1.03,
+#                          label_x = -0)
+# p <- plot_grid(row1, NULL, row2_padded,
+#                ncol = 1,
+#                rel_heights = c(1, 0.05, 0.85),
+#                scale = 0.95)
+# ggsave(file.path("output", "figures", "human_studies.svg"),
+#        p,
+#        dpi = 100,
+#        units = "in",
+#        height = 9.5,
+#        width = 18)
+
+p <- plot_grid(s12,
+               NULL,
+               plot_grid(NULL, s3 + theme(text = element_text(size = 13)), NULL, ncol = 3,
+                         rel_widths = c(0.07, 1, 0.07),
+                         labels = c("", "C", ""),
+                         label_size = 19,
+                         label_y = 1.02),
+               NULL,
+               row2 + theme(text = element_text(size = 13)),
+               ncol = 1,
+               rel_heights = c(0.9, 0.05, 1.2, 0.01, 0.85),
+               labels = c("", "", "", "", "D"),
+               label_size = 18,
+               label_y = 1.02,
+               label_x = 0,
+               scale = 0.95)
+ggsave(file.path("output", "figures", "human_studies.svg"),
+       p,
+       dpi = 100,
+       units = "in",
+       height = 12,
+       width = 10)
+
+ggsave(file.path("output", "figures", "temp.svg"),
+       s3,
+       dpi = 100,
+       units = "in",
+       height = 5,
+       width = 9)
+
+# Association -- ABRP x DIABIMMUNE
+summary(lm(score.y ~ score.x, data = comp_scores %>% filter(dataset != "Johnson et al.")))
+# beta = 0.456, p-value = 0.0152
+
+# Association -- ABRP x Johnson et al.
+summary(lm(score.y ~ score.x, data = comp_scores %>% filter(dataset != "DIABIMMUNE")))
+# beta = -0.222, p-value = 0.0628
 
 # ------------------------------------------------------------------------------
 #   Supplemental Figure 12 panels
@@ -670,6 +926,20 @@ p <- plot_grid(s1, s2, legend, ncol = 3,
                label_x = -0.01,
                scale = 0.95)
 
+ggsave("C:/Users/kimbe/Desktop/rug_johnson.svg",
+       s1,
+       dpi = 100,
+       units = "in",
+       height = 4,
+       width = 6)
+
+ggsave("C:/Users/kimbe/Desktop/rug_diabimmune.svg",
+       s2,
+       dpi = 100,
+       units = "in",
+       height = 4,
+       width = 6)
+
 ggsave(file.path("output", "figures", "S12.svg"),
        p,
        dpi = 100,
@@ -753,7 +1023,7 @@ for(this_dataset in c("Johnson et al.", "DIABIMMUNE", "Amboseli")) {
              "\n"))
 }
 
-# ------------------------------------------------------------------------------
+------------------------------------------------------------------------------
 #   QUESTION 3: Are the most universal pairs from the same families?
 # ------------------------------------------------------------------------------
 

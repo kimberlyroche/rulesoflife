@@ -100,6 +100,7 @@ mix <- seq(from = 0, to = 1, by = 0.05)
 mins <- NULL
 p1_real <- NULL
 legend <- NULL
+p1 <- NULL
 for(h in 1:N) {
   host_obs <- F1$Sigmas[,,h]
   host_residual <- host_obs - global_mean
@@ -164,7 +165,7 @@ p2 <- ggplot(data.frame(x = mins %>%
                           group_by(host) %>%
                           arrange(dist) %>%
                           slice(1) %>%
-                          pull(p)), aes(x = x)) +
+                          pull(p)), aes(x = 1 - x)) +
   # geom_density_ridges(stat = "binline", binwidth = 0.05, scale = 0.95) +
   geom_histogram(color = "white", binwidth = 0.05) +
   theme_bw() +
@@ -173,7 +174,7 @@ p2 <- ggplot(data.frame(x = mins %>%
   coord_cartesian(clip = "off") +
   guides(fill = "none",
          alpha = "none") +
-  labs(x = "host-level proportion",
+  labs(x = "population mean weight",
        y = "count")
 
 # p1_padded <- plot_grid(NULL, p1, NULL, ncol = 1,
@@ -196,4 +197,3 @@ ggsave(file.path("output", "figures", "S6.svg"),
        units = "in",
        height = 3.5,
        width = 12)
-

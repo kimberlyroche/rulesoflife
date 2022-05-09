@@ -14,13 +14,6 @@ library(cowplot)
 
 # ------------------------------------------------------------------------------
 #
-#   Supplemental Figure S11 - R^2 and ANOVA (no plots) analyses for factors
-#                             associated with dynamics distances
-#
-# ------------------------------------------------------------------------------
-
-# ------------------------------------------------------------------------------
-#
 #   R^2 association testing
 #
 # ------------------------------------------------------------------------------
@@ -258,13 +251,22 @@ p3_comp <- plot_grid(p1_comp, p2_comp, ncol = 2,
                     scale = 0.9,
                     label_size = 18)
 
-p_all <- plot_grid(p3_ped, p3_comp, ncol = 1)
+# p_all <- plot_grid(p3_ped, p3_comp, ncol = 1)
 
-ggsave(file.path("output", "figures", "S11.svg"),
+p_all <- plot_grid(p1_ped, p1_comp,
+                   ncol = 2,
+                   rel_widths = c(1, 1),
+                   labels = c("A", "B"),
+                   label_size = 18,
+                   label_y = 1.00,
+                   label_x = -0.01,
+                   scale = 0.925)
+
+ggsave(file.path("output", "figures", "anova.svg"),
        plot = p_all,
        dpi = 100,
        units = "in",
-       height = 9,
+       height = 4.5,
        width = 10)
 
 # ------------------------------------------------------------------------------

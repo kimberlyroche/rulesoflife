@@ -79,7 +79,10 @@ for(rtype in names(rugs)) {
 
   p <- ggplot(rug, aes(x = pair, y = host)) +
     geom_raster(aes(fill = correlation)) +
-    scale_fill_gradient2(low = "navy", mid = "white", high = "red", midpoint = 0,
+    # scale_fill_gradient2(low = "navy", mid = "white", high = "red", midpoint = 0,
+    #                      guide = guide_colorbar(frame.colour = "black",
+    #                                             ticks.colour = "black"))
+    scale_fill_gradientn(limits = c(-1,1), colors = c("navy", "white", "red"),
                          guide = guide_colorbar(frame.colour = "black",
                                                 ticks.colour = "black"))
 
@@ -98,8 +101,8 @@ for(rtype in names(rugs)) {
     scale_x_continuous(expand = c(0, 0)) +
     labs(fill = "Correlation",
          x = xlabel,
-         y = ylabel,
-         title = title) +
+         y = ylabel) +
+         # title = title) +
     scale_y_continuous(expand = c(0, 0)) +
     theme(axis.text.x = element_blank(),
           axis.text.y = element_blank(),
@@ -107,12 +110,93 @@ for(rtype in names(rugs)) {
           axis.ticks.y = element_blank(),
           axis.title = element_text(size = 10, face = "plain"),
           plot.title = element_text(size = 12, hjust = 0.5),
-          legend.title = element_text(size = 10),
-          # legend.position = "bottom",
+          legend.title = element_text(size = 10, vjust = 0.85),
+          legend.position = "bottom",
           plot.margin = margin(t = 20, r = 10, b = 10, l = 0))
   # legend.text = element_text(margin = margin(b = -20)))
   p <- p +
     theme(plot.margin = margin(t = 20, r = 10, b = 10, l = 10))
+
+  # p <- ggplot(data.frame(x = 1:ncol(rugs$ASV$rug),
+  #                        y = clr_means[rugs$ASV$tax_idx1][asv_column_order]),
+  #             aes(x = x, y = y)) +
+  #   geom_point(size = 0.25, color = "#cccccc") +
+  #   geom_smooth(method = "loess", color = "orange", size = 0.75) +
+  #   # theme_void() +
+  #   theme_bw() +
+  #   theme(axis.title.x=element_blank(),
+  #         axis.text.x=element_blank(),
+  #         axis.ticks.x=element_blank(),
+  #         panel.border = element_blank(),
+  #         panel.grid.major = element_blank(),
+  #         panel.grid.minor = element_blank(),
+  #         axis.line = element_line(colour = "black")) +
+  #   scale_x_continuous(expand = c(0, 0)) +
+  #   labs(y = "ASV 1\nCLR mean")
+  # ggsave(file.path("C:/Users/kimbe/Desktop/ab1.svg"),
+  #        p,
+  #        dpi = 100,
+  #        units = "in",
+  #        height = 1,
+  #        width = 12)
+  #
+  # p <- ggplot(data.frame(x = 1:ncol(rugs$ASV$rug),
+  #                        y = clr_means[rugs$ASV$tax_idx2][asv_column_order]),
+  #             aes(x = x, y = y)) +
+  #   geom_point(size = 0.25, color = "#cccccc") +
+  #   geom_smooth(method = "loess", color = "#18BD6F", size = 0.75) +
+  #   # theme_void() +
+  #   theme_bw() +
+  #   theme(axis.title.x=element_blank(),
+  #         axis.text.x=element_blank(),
+  #         axis.ticks.x=element_blank(),
+  #         panel.border = element_blank(),
+  #         panel.grid.major = element_blank(),
+  #         panel.grid.minor = element_blank(),
+  #         axis.line = element_line(colour = "black")) +
+  #   scale_x_continuous(expand = c(0, 0)) +
+  #   labs(y = "ASV 2\nCLR mean")
+  # ggsave(file.path("C:/Users/kimbe/Desktop/ab2.svg"),
+  #        p,
+  #        dpi = 100,
+  #        units = "in",
+  #        height = 1,
+  #        width = 12)
+  #
+  # p <- ggplot(data.frame(x = 1:ncol(rugs$ASV$rug),
+  #                        y = apply(rugs$ASV$rug, 2, calc_universality_score)[asv_column_order])) +
+  #                        # z = abs(apply(rugs$ASV$rug, 2, median)[asv_column_order]))) +
+  #   geom_point(mapping = aes(x = x, y = y), size = 0.25, color = "black") +
+  #   # geom_point(mapping = aes(x = x, y = z), size = 0.25, color = "#18BD6F") +
+  #   # geom_smooth(method = "loess", color = "#18BD6F", size = 0.75) +
+  #   # theme_void() +
+  #   theme_bw() +
+  #   theme(axis.title.x=element_blank(),
+  #         axis.text.x=element_blank(),
+  #         axis.ticks.x=element_blank(),
+  #         panel.border = element_blank(),
+  #         panel.grid.major = element_blank(),
+  #         panel.grid.minor = element_blank(),
+  #         axis.line = element_line(colour = "black")) +
+  #   scale_x_continuous(expand = c(0, 0)) +
+  #   labs(y = "score") +
+  #   ylim(c(0,1))
+  # ggsave(file.path("C:/Users/kimbe/Desktop/score.svg"),
+  #        p,
+  #        dpi = 100,
+  #        units = "in",
+  #        height = 1,
+  #        width = 12)
+
+  # ggsave(file.path("C:/Users/kimbe/Desktop/rug_asv.svg"),
+  #        p + theme(legend.position = "none",
+  #                  axis.title.x = element_blank(),
+  #                  axis.title.y = element_blank()),
+  #        dpi = 100,
+  #        units = "in",
+  #        height = 4,
+  #        width = 7)
+
   if(rtype == "ASV") {
     legend <- get_legend(p)
   }

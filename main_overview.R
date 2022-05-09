@@ -7,13 +7,6 @@ library(cowplot)
 library(RColorBrewer)
 
 # ------------------------------------------------------------------------------
-#
-#   Figure 2 - relative abundance time courses for all 56 hosts and sample
-#              series over time
-#
-# ------------------------------------------------------------------------------
-
-# ------------------------------------------------------------------------------
 #   Timecourse plots
 # ------------------------------------------------------------------------------
 
@@ -157,7 +150,7 @@ p <- plot_grid(plotlist = plots[order(labels2$host_label)],
                scale = 0.95,
                label_x = -0.1,
                label_y = 1,
-               label_size = 8)
+               label_size = 10)
 
 p1 <- plot_grid(p, legend, ncol = 1, rel_heights = c(1, 0.15))
 
@@ -193,26 +186,40 @@ p2 <- ggplot(hosts_dates, aes(x = time, y = host_label)) +
   labs(x = "sample collection date",
        y = "host") +
   scale_x_continuous(breaks = xticks, labels = xlabs) +
-  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1))
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 12),
+        axis.ticks.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.title.x = element_text(size = 14),
+        axis.title.y = element_text(size = 14))
 
 p1_padded <- plot_grid(p1, NULL, ncol = 1,
                        rel_heights = c(1, 0.02))
 
-p <- plot_grid(p1_padded,
-               p2 +
-                 theme(axis.text.x = element_text(size = 8),
-                       axis.text.y = element_text(size = 7)),
-               ncol = 2,
-               rel_widths = c(1, 0.8),
-               labels = c("A", "B"),
-               label_size = 18,
-               label_x = 0,
-               label_y = 1,
-               scale = 0.9)
+prow2 <- plot_grid(p2,
+                   p1_padded,
+                   ncol = 2,
+                   rel_widths = c(0.9, 1.1),
+                   labels = c("B", "C"),
+                   label_size = 20,
+                   label_x = 0,
+                   label_y = 1,
+                   scale = 0.9)
 
-ggsave(file.path("output", "figures", "draft_F2.svg"),
+prow1 <- plot_grid(ggdraw() +
+                     draw_image(file.path("output", "figures", "placeholder_overview.png")),
+                   ncol = 1,
+                   labels = c("A"),
+                   label_size = 20,
+                   label_x = 0,
+                   label_y = 1,
+                   scale = 0.95)
+
+p <- plot_grid(prow1, prow2, ncol = 1,
+               rel_heights = c(0.8, 1))
+
+ggsave(file.path("output", "figures", "overview.svg"),
        p,
        units = "in",
        dpi = 100,
-       height = 6,
-       width = 14)
+       height = 12,
+       width = 14.5)

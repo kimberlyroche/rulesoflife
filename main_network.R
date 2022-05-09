@@ -9,15 +9,6 @@ library(ggridges)
 library(ggraph)
 library(igraph)
 
-# ------------------------------------------------------------------------------
-#
-#   Figure 4 - "hockey stick" plot of universality scores, histograms of
-#              universality scores, barplot enrichment visualizations of
-#              family-family pairs in the top 2.5% of universal pairs, and
-#              network of top 2.5% most universal pairs
-#
-# ------------------------------------------------------------------------------
-
 source("thresholds.R")
 
 rug_obj <- summarize_Sigmas(output_dir = "asv_days90_diet25_scale1")
@@ -207,9 +198,10 @@ p3 <- plot_enrichment(frequencies_subset1 = frequencies_subset,
                       plot_width = 3.5, # was 5
                       legend_topmargin = 100,
                       use_pairs = FALSE,
-                      rel_widths = c(1, 0.35, 1, 0.3, 2),
+                      rel_widths = c(1, 0.35, 1, 0.4, 2),
                       labels = c("overall", "top ASVs"),
-                      save_name = NULL)
+                      save_name = NULL,
+                      suppress_y = TRUE)
 
 # ------------------------------------------------------------------------------
 #   Family-family version
@@ -294,9 +286,10 @@ p5 <- plot_enrichment(frequencies_subset1 = frequencies_subset,
                       plot_width = 6,
                       legend_topmargin = 100,
                       use_pairs = TRUE,
-                      rel_widths = c(1, 0.35, 1, 0.3, 3.75),
+                      rel_widths = c(1, 0.35, 1, 0.5, 3.75),
                       labels = c("overall", "top ASVs"),
-                      save_name = NULL)
+                      save_name = NULL,
+                      suppress_y = TRUE)
 
 enrichment <- enrichment %>%
   arrange(type, name)
@@ -401,45 +394,73 @@ p4 <- ggraph(graph, layout = "fr") +
 #     axis.ticks.y = element_blank(),
 #     axis.title.y = element_blank())
 
-p1a_padded <- plot_grid(NULL, p1a, ncol = 2,
-                        rel_widths = c(0.05, 1))
-p1b_padded <- plot_grid(NULL, p1b, ncol = 2,
-                        rel_widths = c(0.05, 1))
+# p1a_padded <- plot_grid(NULL, p1a, ncol = 2,
+#                         rel_widths = c(0.05, 1))
+# p1b_padded <- plot_grid(NULL, p1b, ncol = 2,
+#                         rel_widths = c(0.05, 1))
+#
+# psegment1 <- plot_grid(p1b_padded, NULL, p1a_padded, ncol = 1,
+#                        rel_heights = c(1, 0.1, 1),
+#                        scale = 1,
+#                        labels = c("A", "", "B"),
+#                        label_size = 18,
+#                        label_x = -0.04,
+#                        label_y = 1.08)
+#
+# p4_padded <- plot_grid(p4, NULL, ncol = 1,
+#                        rel_heights = c(1, 0.05))
+#
+# psegment2 <- plot_grid(psegment1, NULL, p4_padded, ncol = 3,
+#                        rel_widths = c(0.5, 0.02, 1),
+#                        scale = 0.95,
+#                        labels = c("", "", "D"),
+#                        label_size = 18,
+#                        label_x = -0.02,
+#                        label_y = 1.01)
+#
+# p2_padded <- plot_grid(NULL, p2, ncol = 1,
+#                        rel_heights = c(0.25, 1))
+#
+# psegment3 <- plot_grid(p2_padded, NULL, p3, NULL, p5, ncol = 5,
+#                        rel_widths = c(0.6, 0.01, 0.7, 0.05, 1),
+#                        scale = 0.95,
+#                        labels = c("C", "", "E", "", "F"),
+#                        label_size = 18,
+#                        label_x = -0.02,
+#                        label_y = 1.08)
+#
+# p <- plot_grid(psegment2, NULL, psegment3, ncol = 1,
+#                rel_heights = c(1, 0.05, 0.6))
 
-psegment1 <- plot_grid(p1a_padded, NULL, p1b_padded, ncol = 1,
-                       rel_heights = c(1, 0.1, 1),
-                       scale = 1,
-                       labels = c("A", "", "B"),
-                       label_size = 22,
-                       label_x = -0.04,
-                       label_y = 1.08)
-
-p4_padded <- plot_grid(p4, NULL, ncol = 1,
-                       rel_heights = c(1, 0.05))
-
-psegment2 <- plot_grid(psegment1, NULL, p4_padded, ncol = 3,
-                       rel_widths = c(0.5, 0.02, 1),
-                       scale = 0.95,
-                       labels = c("", "", "C"),
-                       label_size = 22,
+col1 <- plot_grid(p1b, p1a, p2,
+                  ncol = 1,
+                  labels = c("A", "B", "C"),
+                  label_size = 18,
+                  scale = 0.9)
+row1 <- plot_grid(p3, p5,
+                  ncol = 2,
+                  rel_widths = c(1, 1.4),
+                  labels = c("E", "F"),
+                  label_size = 18,
+                  label_y = 1.02,
+                  label_x = -0.02,
+                  scale = 0.9)
+p4_padded <- plot_grid(NULL, p4,
+                       ncol = 1,
+                       rel_heights = c(0.1, 1),
+                       labels = c("", "D"),
+                       label_size = 18,
+                       label_y = 1.02,
                        label_x = -0.02,
-                       label_y = 1.01)
+                       scale = 0.95)
+col2 <- plot_grid(p4_padded, NULL, row1,
+                  ncol = 1,
+                  rel_heights = c(1, 0.1, 0.75))
+p <- plot_grid(col1, NULL, col2,
+               ncol = 3,
+               rel_widths = c(1, 0.05, 2))
 
-p2_padded <- plot_grid(NULL, p2, ncol = 1,
-                       rel_heights = c(0.25, 1))
-
-psegment3 <- plot_grid(p2_padded, NULL, p3, NULL, p5, ncol = 5,
-                       rel_widths = c(0.6, 0.01, 0.7, 0.05, 1),
-                       scale = 0.95,
-                       labels = c("D", "", "E", "", "F"),
-                       label_size = 22,
-                       label_x = -0.02,
-                       label_y = 1.08)
-
-p <- plot_grid(psegment2, NULL, psegment3, ncol = 1,
-               rel_heights = c(1, 0.05, 0.6))
-
-ggsave(file.path("output", "figures", "draft_F4.svg"),
+ggsave(file.path("output", "figures", "network.svg"),
        p,
        units = "in",
        dpi = 100,
