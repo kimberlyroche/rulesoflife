@@ -9,13 +9,6 @@ library(cowplot)
 
 # ------------------------------------------------------------------------------
 #
-#   Supplemental Figure S6 - distributions of distances from mean dynamics for
-#                            dynamics estimates
-#
-# ------------------------------------------------------------------------------
-
-# ------------------------------------------------------------------------------
-#
 #   (A) Cartoon explanatory figure
 #
 # ------------------------------------------------------------------------------
@@ -100,7 +93,7 @@ mix <- seq(from = 0, to = 1, by = 0.05)
 mins <- NULL
 p1_real <- NULL
 legend <- NULL
-p1 <- NULL
+# p1 <- NULL
 for(h in 1:N) {
   host_obs <- F1$Sigmas[,,h]
   host_residual <- host_obs - global_mean
@@ -166,19 +159,14 @@ p2 <- ggplot(data.frame(x = mins %>%
                           arrange(dist) %>%
                           slice(1) %>%
                           pull(p)), aes(x = 1 - x)) +
-  # geom_density_ridges(stat = "binline", binwidth = 0.05, scale = 0.95) +
   geom_histogram(color = "white", binwidth = 0.05) +
   theme_bw() +
   scale_alpha_continuous(range = c(0.25, 1.0)) +
-  # scale_y_discrete(expand = expansion(add = c(0.15, 1.05))) +
   coord_cartesian(clip = "off") +
   guides(fill = "none",
          alpha = "none") +
   labs(x = "population mean weight",
        y = "count")
-
-# p1_padded <- plot_grid(NULL, p1, NULL, ncol = 1,
-#                        rel_heights = c(0.18, 1, 0.18))
 
 p1_padded <- plot_grid(NULL, p1, NULL, ncol = 1,
                        rel_heights = c(0.1, 1, 0.18))
@@ -191,7 +179,7 @@ p_all <- plot_grid(p1_padded, NULL, p2_padded, ncol = 3,
                    label_size = 18,
                    scale = 0.95)
 
-ggsave(file.path("output", "figures", "S6.svg"),
+ggsave(file.path("output", "figures", "titration.svg"),
        p_all,
        dpi = 100,
        units = "in",

@@ -97,8 +97,8 @@ y <- c(rug_coat)
 subset_idx <- sample(1:length(x), size = 1e5)
 p3 <- ggplot(data.frame(x = x[subset_idx], y = y[subset_idx]),
        aes(x = x, y = y)) +
-  # geom_point(size = 1, shape = 21, fill = "#aaaaaa") +
-  geom_point(size = 1, alpha = 0.1) +
+  geom_point(size = 1, shape = 21, fill = "#888888") +
+  # geom_point(size = 1, alpha = 0.1) +
   theme_bw() +
   labs(y = "CLR correlation (COAT)",
        x = "CLR correlation (basset)")
@@ -133,7 +133,7 @@ prow2 <- plot_grid(p3, p4, ncol = 2,
 p <- plot_grid(prow1, prow2, ncol = 1,
                rel_heights = c(1, 1))
 
-ggsave(file.path("output", "figures", "S15.svg"),
+ggsave(file.path("output", "figures", "alternative-COAT.svg"),
        plot = p,
        dpi = 100,
        units = "in",

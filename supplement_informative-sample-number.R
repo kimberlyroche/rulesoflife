@@ -7,13 +7,6 @@ library(fido)
 library(rulesoflife)
 library(LaplacesDemon)
 
-# ------------------------------------------------------------------------------
-#
-#   Supplemental Figure S13 - reproducibility of estimates using two different
-#                             ALR references
-#
-# ------------------------------------------------------------------------------
-
 save_fn <- file.path("output", "downsampling_experiment.rds")
 if(!file.exists(save_fn)) {
   T <- 1000
@@ -80,7 +73,7 @@ p <- ggplot(prop_agree, aes(x = factor(n_subset), y = prop)) +
   labs(x = "sample number",
        y = "proportion matched CLR correlation sign")
 
-ggsave(file.path("output", "figures", "S13.svg"),
+ggsave(file.path("output", "figures", "informative_sample_no.svg"),
        plot = p,
        dpi = 100,
        units = "in",

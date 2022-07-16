@@ -5,13 +5,6 @@ library(fido)
 library(tidyverse)
 library(dplyr)
 
-# ------------------------------------------------------------------------------
-#
-#   Supplemental Figure S14 - reproducibility of estimates using two different
-#                             ALR references
-#
-# ------------------------------------------------------------------------------
-
 save_fn <- file.path("output", "alr_sanity_check.rds")
 if(!file.exists(save_fn)) {
   data <- readRDS(file.path("input", "processed_ASV_1_20.rds"))
@@ -71,6 +64,8 @@ if(!file.exists(save_fn)) {
     }
   }
   saveRDS(list(alr_other = x, alr_median = y), save_fn)
+  alr_other <- x
+  alr_median <- y
 } else {
   save_obj <- readRDS(save_fn)
   alr_other <- save_obj$alr_other
@@ -84,7 +79,7 @@ p <- ggplot(plot_df, aes(x = x, y = y)) +
   ylab("CLR correlation (ALR ref. median)") +
   theme_bw()
 
-ggsave(file.path("output", "figures", "S14.svg"),
+ggsave(file.path("output", "figures", "alternative-ALR.svg"),
        p,
        units = "in",
        height = 4,

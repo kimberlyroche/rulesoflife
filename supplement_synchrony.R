@@ -12,7 +12,7 @@ library(fido)
 palette_fn <- file.path("output", "family_palette.rds")
 fpalette <- readRDS(palette_fn)
 
-registerDoParallel(detectCores())
+# registerDoParallel(detectCores())
 
 null_case <- TRUE # needed if rendering Figure S9
 
@@ -238,6 +238,7 @@ if(!file.exists(save_fn)) {
 
 rug_asv <- summarize_Sigmas(output_dir = "asv_days90_diet25_scale1")
 scores <- apply(rug_asv$rug, 2, calc_universality_score)
+mcs <- apply(rug_asv$rug, 2, function(x) median(abs(x)))
 consensus_signs <- apply(rug_asv$rug, 2, calc_consensus_sign)
 
 # The loop below takes ~5-10 minutes to run if `null_cases = TRUE`
@@ -281,6 +282,13 @@ if(!file.exists(save_fn)) {
   corr_obj <- readRDS(save_fn)
   correlations <- corr_obj$correlations
   correlations_permuted <- corr_obj$correlations_permuted
+
+  paired_samples_x <- sampled_list %>%
+    filter(partner == 1 & tax_idx == 23) %>%
+    pull(Eta)
+  paired_samples_y <- sampled_list %>%
+    filter(partner == 2 & tax_idx == 23) %>%
+    pull(Eta)
 }
 
 # ------------------------------------------------------------------------------
@@ -351,6 +359,7 @@ if(file.exists(save_fn)) {
     plot_df <- rbind(plot_df,
                      data.frame(synchrony = mean(c(correlations[t1], correlations[t2])),
                                 universality = scores[i],
+                                mcs = mcs[i],
                                 sign = consensus_signs[i]))
     if(null_case) {
       for(it in 1:10) {
@@ -371,7 +380,7 @@ if(file.exists(save_fn)) {
   saveRDS(list(plot_df = plot_df, plot_df_permuted = plot_df_permuted), save_fn)
 }
 
-p1 <- ggplot() +
+p0 <- ggplot() +
   geom_point(data = plot_df %>% filter(!is.na(sign)),
              mapping = aes(x = synchrony, y = universality, fill = sign),
              size = 2, shape = 21) +
@@ -401,7 +410,14 @@ p1 <- ggplot() +
        x = "synchrony score",
        y = "universality score")
 
-cat(paste0("R^2: ", round(cor(plot_df$synchrony, plot_df$universality)^2, 3), "\n"))
+cat(paste0("R^2 (variance explained): ", round(cor(plot_df$synchrony, plot_df$universality)^2, 3), "\n"))
+fit <- lm(scale(plot_df$synchrony) ~ scale(plot_df$universality))
+cat(paste0("Beta: ", round(coef(summary(fit))[2,1], 3), "\n"))
+cat(paste0("\tp-value: ", round(coef(summary(fit))[2,4], 3), "\n"))
+
+median(plot_df$synchrony)
+min(plot_df$synchrony)
+max(plot_df$synchrony)
 
 if(null_case) {
   p1p <- ggplot() +
@@ -516,8 +532,121 @@ if(FALSE) {
   r1 <- plot_grid(p1, p2, rel_widths = c(1, 1))
   r2 <- plot_grid(p3, p4, rel_widths = c(1, 1))
   p <- plot_grid(r1, r2, legend, ncol = 1, rel_heights = c(1, 1, 0.3))
-  ggsave("temp.svg", p, dpi = 100, units = "in",
-         height = 10, width = 10)
+  ggsave(file.path("output", "figures", "temp.svg"),
+         p,
+         dpi = 100,
+         units = "in",
+         height = 10,
+         width = 10)
+
+  # # Purposely overplot
+  # # Labeled: any single partner is seasonal, non-Lachno
+  p1 <- ggplot() +
+    geom_point(data = plot_df %>% filter(is.na(fam1) | fam1 == "Lachnospiraceae" |
+                                           is.na(fam2) | fam2 == "Lachnospiraceae"),
+               mapping = aes(x = synchrony, y = universality),
+               color = "gray") +
+    geom_point(data = plot_df %>% filter(!is.na(fam1) & fam1 != "Lachnospiraceae"),
+               mapping = aes(x = synchrony, y = universality, fill = fam1),
+               size = 2,
+               shape = 21) +
+    geom_point(data = plot_df %>% filter(!is.na(fam2) & fam2 != "Lachnospiraceae"),
+               mapping = aes(x = synchrony, y = universality, fill = fam2),
+               size = 2,
+               shape = 21) +
+    scale_fill_manual(values = fpalette) +
+    theme_bw() +
+    theme(legend.position = "none")
+  # Labeled: any single partner is Lachnospiraceae
+  p2 <- ggplot() +
+    geom_point(data = plot_df %>% filter(is.na(fam1) | fam1 != "Lachnospiraceae" |
+                                           is.na(fam2) | fam2 != "Lachnospiraceae"),
+               mapping = aes(x = synchrony, y = universality),
+               color = "gray") +
+    geom_point(data = plot_df %>% filter(fam1 == "Lachnospiraceae" | fam2 == "Lachnospiraceae"),
+               mapping = aes(x = synchrony, y = universality, fill = fam2),
+               size = 2,
+               shape = 21) +
+    scale_fill_manual(values = fpalette) +
+    theme_bw() #+
+    # theme(legend.position = "none")
+
+  p <- plot_grid(p1, p2, rel_widths = c(1, 1.35))
+  ggsave(file.path("output", "figures", "temp.svg"),
+         p,
+         dpi = 100,
+         units = "in",
+         height = 4.5,
+         width = 12)
+}
+
+if(FALSE) {
+  # Evaluate which pairs have strong, singificant correlations (synchrony x universality)
+  # These are interesting - Lachno-Lachno is at the top - but it's REALLY tough
+  # to interpret these. Probably drop this.
+  families <- sort(unique(tax$family)) # all families
+  # families <- sort(unique(c(plot_df$fam1, plot_df$fam2))) # Johannes' seasonal only
+
+  # Restore family labels
+  plot_df$fam1_preserved <- tax[plot_df$idx1,6]
+  plot_df$fam2_preserved <- tax[plot_df$idx2,6]
+
+  temp <- combn(1:length(families), m = 2)
+  fam_combos <- data.frame(a = 1:length(families), b = 1:length(families), r = NA, p = NA)
+  for(i in 1:ncol(temp)) {
+    fam_combos <- rbind(fam_combos,
+                        data.frame(a = temp[1,i], b = temp[2,i], r = NA, p = NA))
+  }
+  fam_combos <- fam_combos %>%
+    arrange(a, b) %>%
+    left_join(data.frame(a = 1:length(families), family_a = families), by = "a") %>%
+    left_join(data.frame(b = 1:length(families), family_b = families), by = "b")
+
+  for(i in 1:nrow(fam_combos)) {
+    temp <- plot_df %>%
+      filter((fam1_preserved == fam_combos$family_a[i] & fam2_preserved == fam_combos$family_b[i]) |
+               (fam2_preserved == fam_combos$family_a[i] & fam1_preserved == fam_combos$family_b[i])) %>%
+      dplyr::select(c(synchrony, universality))
+    if(nrow(temp) >= 5) {
+      fit <- lm(scale(temp$universality) ~ scale(temp$synchrony))
+      fam_combos$r[i] <- coef(summary(fit))[2,1]
+      fam_combos$p[i] <- coef(summary(fit))[2,4]
+    }
+  }
+  fam_combos <- fam_combos %>%
+    filter(complete.cases(.))
+  fam_combos$q <- p.adjust(fam_combos$p, method = "BH")
+
+  fam_combos <- fam_combos %>%
+    filter(q < 0.01) %>%
+    mutate(r = round(r, 3),
+           q = round(q, 3)) %>%
+    dplyr::select(c(family_a, family_b, r, q)) %>%
+    arrange(q, desc(r))
+  fam_combos
+
+  # Labeled: arbitrary family pairs
+  all_family_pair_palette <- readRDS(file.path("output", "family-family_palette.rds"))
+  fams <- c("Clostridiaceae 1", "Prevotellaceae")
+  temp <- plot_df %>%
+    mutate(label = case_when(
+      fam1_preserved < fam2_preserved ~ paste0(fam1_preserved, " - ", fam2_preserved),
+      TRUE ~ paste0(fam2_preserved, " - ", fam1_preserved)
+    ))
+  temp$label[temp$label != ifelse(fams[1] < fams[2],
+                                  paste0(fams[1], " - ", fams[2]),
+                                  paste0(fams[2], " - ", fams[1]))] <- NA
+  ggplot() +
+    geom_point(data = temp %>% filter(is.na(label)),
+               mapping = aes(x = synchrony, y = universality),
+               color = "gray") +
+    geom_point(data = temp %>% filter(!is.na(label)),
+               mapping = aes(x = synchrony, y = universality, fill = label),
+               size = 3,
+               shape = 21) +
+    scale_fill_manual(values = all_family_pair_palette) +
+    theme_bw() +
+    theme(legend.position = "none")
 }
 
 # ------------------------------------------------------------------------------
@@ -525,44 +654,120 @@ if(FALSE) {
 #   increased synchrony
 # ------------------------------------------------------------------------------
 
-x <- plot_df %>% filter(fam1 == "Lachnospiraceae" & fam2 == "Lachnospiraceae")
-y <- plot_df %>% filter(fam1 != "Lachnospiraceae" & fam2 != "Lachnospiraceae")
+if(FALSE) {
+  x <- plot_df %>% filter(fam1 == "Lachnospiraceae" & fam2 == "Lachnospiraceae")
+  y <- plot_df %>% filter(fam1 != "Lachnospiraceae" & fam2 != "Lachnospiraceae")
 
-x$universality <- scale(x$universality)
-x$synchrony <- scale(x$synchrony)
-res <- summary(lm(universality ~ synchrony, x))
-cat(paste0("Lachno-lachno beta (synchrony x universality): ", round(coef(res)[2,1], 3), "\n"))
-cat(paste0("\tp-value: ", round(coef(res)[2,4], 3), "\n"))
+  x$universality <- scale(x$universality)
+  x$synchrony <- scale(x$synchrony)
+  res <- summary(lm(universality ~ synchrony, x))
+  cat(paste0("Lachno-lachno beta (synchrony x universality): ", round(coef(res)[2,1], 3), "\n"))
+  cat(paste0("\tp-value: ", round(coef(res)[2,4], 3), "\n"))
 
-y$universality <- scale(y$universality)
-y$synchrony <- scale(y$synchrony)
-res <- summary(lm(universality ~ synchrony, y))
-cat(paste0("Non-lachno 'seasonal' pairs beta (synchrony x universality): ", round(coef(res)[2,1], 3), "\n"))
-cat(paste0("\tp-value: ", round(coef(res)[2,4], 3), "\n"))
+  y$universality <- scale(y$universality)
+  y$synchrony <- scale(y$synchrony)
+  res <- summary(lm(universality ~ synchrony, y))
+  cat(paste0("Non-lachno 'seasonal' pairs beta (synchrony x universality): ", round(coef(res)[2,1], 3), "\n"))
+  cat(paste0("\tp-value: ", round(coef(res)[2,4], 3), "\n"))
+}
 
-# Boxplots - are universality scores different when one or both partners in a
-# pair belongs to one of Johannes' seasonal families?
+# ------------------------------------------------------------------------------
+#   Barplots
+# ------------------------------------------------------------------------------
+
+temp <- data.frame(index = 1:134, fam = tax$family[1:134], synchrony = correlations)
+temp$seasonal <- "none"
+temp$seasonal[temp$fam %in% seasonal_families$wet] <- "wet"
+temp$seasonal[temp$fam %in% seasonal_families$dry] <- "dry"
+temp$label <- paste0("taxon ", temp$index, " (family ", temp$fam, ")")
+
+season_palette <- c("gray", "#9B59B6", "#59B690")
+names(season_palette) <- c("none", "dry", "wet")
+
+p1 <- ggplot(temp %>% filter(fam == "Lachnospiraceae"),
+       aes(x = synchrony, y = reorder(label, synchrony), fill = seasonal)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = season_palette) +
+  theme_bw() +
+  xlim(c(0,0.5)) +
+  labs(y = "",
+       fill = "Seasonal enrichment") +
+  theme(legend.position = "bottom")
+legend <- get_legend(p1)
+p1 <- p1 +
+  theme(legend.position = "none")
+p2 <- ggplot(temp %>% filter(fam != "Lachnospiraceae"),
+       aes(x = synchrony, y = reorder(label, synchrony), fill = seasonal)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = season_palette) +
+  theme_bw() +
+  xlim(c(0,0.5)) +
+  labs(y = "",
+       fill = "Seasonal enrichment") +
+  theme(legend.position = "none")
+
+row1 <- plot_grid(p1, p2,
+                  ncol = 2,
+                  rel_widths = c(1, 1),
+                  labels = c("A", "B"),
+                  label_size = 18)
+
+p <- plot_grid(row1, legend,
+               ncol = 1,
+               rel_heights = c(1, 0.1))
+
+temp$lachno <- !is.na(temp$fam) & temp$fam == "Lachnospiraceae"
+p <- ggplot(temp, aes(x = reorder(label, synchrony), y = synchrony, fill = seasonal, color = lachno)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = season_palette) +
+  scale_color_manual(values = c("white", "black")) +
+  theme_bw() +
+  ylim(c(0,0.5)) +
+  labs(x = "",
+       fill = "Seasonal enrichment") +
+  guides(color = "none") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1, size = 9),
+        legend.position = "bottom")
+
+ggsave(file.path("output", "figures", "season_vs_synchrony.svg"),
+       p,
+       dpi = 100,
+       units = "in",
+       height = 7,
+       width = 14)
+
+# Test for significant enrichment of labeled things and highly synchronous things
+temp$seasonal[temp$fam %in% unlist(seasonal_families)] <- "seasonal"
+summary(aov(temp$synchrony ~ temp$seasonal))
+# p = 0.18
+
+# ------------------------------------------------------------------------------
+#   Boxplots
+# ------------------------------------------------------------------------------
+
 plot_df$n_seasonal <- as.numeric(!sapply(plot_df$fam1, is.na)) + as.numeric(!sapply(plot_df$fam2, is.na))
 plot_df$n_seasonal_factor <- factor(plot_df$n_seasonal)
 levels(plot_df$n_seasonal_factor) <- c("no seasonal partners", "one seasonal partner", "two seasonal partners")
+plot_df$both_seasonal <- plot_df$n_seasonal == 2
 
 # Test for differences in average universality scores in seasonal pairs
-t.test(universality ~ n_seasonal_factor, plot_df %>% filter(n_seasonal %in% c(0,1)))
-t.test(universality ~ n_seasonal_factor, plot_df %>% filter(n_seasonal %in% c(0,2)))
+# t.test(universality ~ n_seasonal_factor, plot_df %>% filter(n_seasonal %in% c(0,1))) # not signif
+# t.test(universality ~ n_seasonal_factor, plot_df %>% filter(n_seasonal %in% c(0,2)))
+t.test(mcs ~ both_seasonal, plot_df)
+cat(paste0("Difference of means: ", round(mean(plot_df$mcs[plot_df$n_seasonal == 2]) -
+                                            mean(plot_df$mcs[plot_df$n_seasonal != 0]), 3), "\n"))
 
-ggplot(plot_df, aes(x = n_seasonal_factor, y = universality)) +
+p <- ggplot(plot_df, aes(x = n_seasonal_factor, y = mcs)) +
   geom_boxplot() + #width = 0.2) +
   theme_bw() +
-  labs(x = "", y = "median correlation")
+  labs(x = "", y = "median correlation strength")
 
 ggsave(file.path("output", "figures", "synchrony_seasonal_boxplots.svg"),
-       p1p,
+       p,
        dpi = 100,
        units = "in",
-       height = 6,
-       width = 9)
-
-
+       height = 4,
+       width = 6)
 
 # ------------------------------------------------------------------------------
 #   Previous version of "significance" thresholding
@@ -619,6 +824,9 @@ cat(paste0("Significant after FDR: ", round(prop, 3), "\n"))
 # Score enrichment of family pairs or families themselves?
 topcenter_pairs <- which(plot_df$synchrony < 0.3 & plot_df$universality > 0.4)
 topright_pairs <- which(plot_df$synchrony > 0.3 & plot_df$universality > 0.4)
+
+# topcenter_pairs <- which(plot_df$synchrony <= 0.25)
+# topright_pairs <- which(plot_df$synchrony > 0.25)
 
 all_pairs <- data.frame(idx1 = rug_asv$tax_idx1,
                         idx2 = rug_asv$tax_idx2,
@@ -739,9 +947,10 @@ p2 <- plot_enrichment(frequencies_subset1 = frequencies_subset1,
                       plot_width = 6.5,
                       legend_topmargin = 100,
                       use_pairs = FALSE,
-                      rel_widths = c(1, 0.35, 1, 0.35, 1, 0.2, 2),
+                      rel_widths = c(1, 0.35, 1, 0.35, 0.75, 0.2, 2),
                       labels = c("overall\n", "high univ.\nlow synch.", "high univ.\nhigh synch."),
-                      save_name = NULL)
+                      save_name = NULL,
+                      suppress_y = TRUE)
 
 # ------------------------------------------------------------------------------
 #   Family-pair enrichment
@@ -831,9 +1040,10 @@ p3 <- plot_enrichment(frequencies_subset1 = frequencies_subset1,
                 plot_width = 10,
                 legend_topmargin = 100,
                 use_pairs = TRUE,
-                rel_widths = c(1, 0.3, 1, 0.3, 1, 0.2, 7),
+                rel_widths = c(1, 0.3, 1, 0.3, 0.75, 0.2, 7),
                 labels = c("overall\n", "high univ.\nlow synch.", "high univ.\nhigh synch."),
-                save_name = NULL)
+                save_name = NULL,
+                suppress_y = TRUE)
 
 enrichment <- enrichment %>%
   arrange(location, type, name)
@@ -843,19 +1053,19 @@ colnames(enrichment) <- c("ASV family or pair name",
                           "P-value (Fisher's exact test)",
                           "Adj. p-value (Benjamini-Hochberg)")
 write.table(enrichment,
-            file = file.path("output", "Fig5_table.tsv"),
+            file = file.path("output", "enrichment-synchrony.tsv"),
             sep = "\t",
             quote = FALSE,
             row.names = FALSE)
 
-p4 <- plot_grid(p2, p3, ncol = 2, rel_widths = c(1, 2),
-               labels = c("B", "C"),
+p4 <- plot_grid(p2, NULL, p3, ncol = 3, rel_widths = c(1, 0.05, 2),
+               labels = c("B", "", "C"),
                label_size = 20,
                label_x = -0.04,
                label_y = 1.02,
                scale = 0.95)
 
-p5 <- plot_grid(NULL, p1, NULL, ncol = 3,
+p5 <- plot_grid(NULL, p0, NULL, ncol = 3,
                 rel_widths = c(0.3, 1, 0.3),
                 labels = c("", "A", ""),
                 label_size = 20,
@@ -867,7 +1077,7 @@ p <- plot_grid(p5, NULL, p4, ncol = 1,
                rel_heights = c(1, 0.05, 1),
                scale = 0.95)
 
-ggsave(file.path("output", "figures", "F5.svg"),
+ggsave(file.path("output", "figures", "synchrony_vs_universality.svg"),
        p,
        dpi = 100,
        units = "in",
@@ -1073,7 +1283,7 @@ p <- plot_grid(prow1, prow2, ncol = 1,
                rel_heights = c(1.1, 1),
                scale = 0.95)
 
-ggsave(file.path("output", "figures", "S9.svg"),
+ggsave(file.path("output", "figures", "synchrony_cartoon.svg"),
        p,
        dpi = 100,
        units = "in",

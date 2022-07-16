@@ -122,13 +122,13 @@ for(host in ref_hosts) {
   p <- ggplot(plot_df, aes(x = sample, y = relative_abundance, fill = palette_value)) +
     geom_area() +
     scale_fill_manual(values = palette2) +
-    theme(legend.position = "bottom") +
+    theme(legend.position = "bottom",
+          legend.text = element_text(size = 11)) +
     labs(fill = "")
   if(is.null(legend)) {
     legend <- get_legend(p)
   }
   p <- p +
-    # geom_area(linetype = 1, size = 0.3, color = "black") +
     theme_nothing() +
     scale_x_continuous(expand = c(0, 0)) +
     scale_y_continuous(expand = c(0, 0)) +
@@ -149,8 +149,8 @@ p <- plot_grid(plotlist = plots[order(labels2$host_label)],
                labels = labels2$host_label[order(labels2$host_label)],
                scale = 0.95,
                label_x = -0.1,
-               label_y = 1,
-               label_size = 10)
+               label_y = 1.03,
+               label_size = 12)
 
 p1 <- plot_grid(p, legend, ncol = 1, rel_heights = c(1, 0.15))
 
@@ -165,10 +165,17 @@ hosts_dates$sname <- factor(hosts_dates$sname,
 baseline_time <- min(hosts_dates$collection_date)
 hosts_dates$time <- as.numeric(sapply(hosts_dates$collection_date, function(x) difftime(x, baseline_time, units = "days")))
 
-xticks <- seq(from = 0, to = 5000, length = 20)
-xlabs <- character(length(xticks))
+# xticks <- seq(from = 0, to = 5000, length = 10)
+# xlabs <- character(length(xticks))
+# for(i in 1:length(xticks)) {
+#   xlabs[i] <- as.character(as.Date(baseline_time) + xticks[i])
+# }
+xlabs <- c("2001", "2002", "2003", "2004", "2005",
+           "2006", "2007", "2008", "2009", "2010",
+           "2011", "2012", "2013")
+xticks <- numeric(length(xlabs))
 for(i in 1:length(xticks)) {
-  xlabs[i] <- as.character(as.Date(baseline_time) + xticks[i])
+  xticks[i] <- as.numeric(as.Date(paste0(xlabs[i], "-01-01")) - as.Date(baseline_time))
 }
 
 anon_labels <- read.delim(file.path("output", "host_labels.tsv"),
@@ -186,24 +193,24 @@ p2 <- ggplot(hosts_dates, aes(x = time, y = host_label)) +
   labs(x = "sample collection date",
        y = "host") +
   scale_x_continuous(breaks = xticks, labels = xlabs) +
-  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 12),
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 14),
         axis.ticks.y = element_blank(),
         axis.text.y = element_blank(),
-        axis.title.x = element_text(size = 14),
-        axis.title.y = element_text(size = 14))
+        axis.title.x = element_text(size = 16),
+        axis.title.y = element_text(size = 16))
 
-p1_padded <- plot_grid(p1, NULL, ncol = 1,
-                       rel_heights = c(1, 0.02))
+p1_padded <- plot_grid(NULL, p1, ncol = 2,
+                       rel_widths = c(0.04, 1))
 
 prow2 <- plot_grid(p2,
                    p1_padded,
                    ncol = 2,
-                   rel_widths = c(0.9, 1.1),
+                   rel_widths = c(0.8, 1.2),
                    labels = c("B", "C"),
                    label_size = 20,
                    label_x = 0,
-                   label_y = 1,
-                   scale = 0.9)
+                   label_y = 1.02,
+                   scale = 0.98)
 
 prow1 <- plot_grid(ggdraw() +
                      draw_image(file.path("output", "figures", "placeholder_overview.png")),
@@ -211,15 +218,15 @@ prow1 <- plot_grid(ggdraw() +
                    labels = c("A"),
                    label_size = 20,
                    label_x = 0,
-                   label_y = 1,
-                   scale = 0.95)
+                   label_y = 1.02,
+                   scale = 1.00)
 
 p <- plot_grid(prow1, prow2, ncol = 1,
-               rel_heights = c(0.8, 1))
+               rel_heights = c(1, 1))
 
 ggsave(file.path("output", "figures", "overview.svg"),
        p,
        units = "in",
        dpi = 100,
-       height = 12,
-       width = 14.5)
+       height = 10,
+       width = 13)

@@ -37,7 +37,7 @@ plot_ac <- function(scores, title = NULL) {
 }
 
 sin_f <- function(j, x) {
-  sin(j + x/(365/(2*pi)))
+  sin(j*7 + x/(365/(2*pi)))
 }
 
 # ------------------------------------------------------------------------------
@@ -159,62 +159,39 @@ for(host in hosts) {
     d_idx <- which(hdays == i)
     j <- hdates$count[hcombos[1,d_idx[1]]]
     k <- hdates$count[hcombos[2,d_idx[1]]]
-    # scores <- rbind(scores,
-    #                 data.frame(host = host,
-    #                            diff = i,
-    #                            dist = cor(clr_counts[,j], clr_counts[,k])))
+    scores <- rbind(scores,
+                    data.frame(host = host,
+                               diff = i,
+                               dist = cor(clr_counts[,j], clr_counts[,k])))
     scores_ar <- rbind(scores_ar,
                        data.frame(host = host,
                                   diff = i,
                                   dist = cor(clr_ar[,j], clr_ar[,k])))
-    # scores_aper <- rbind(scores_aper,
-    #                      data.frame(host = host,
-    #                                 diff = i,
-    #                                 dist = cor(clr_aper[,j], clr_aper[,k])))
+    scores_aper <- rbind(scores_aper,
+                         data.frame(host = host,
+                                    diff = i,
+                                    dist = cor(clr_aper[,j], clr_aper[,k])))
   }
 }
+
+# ------------------------------------------------------------------------------
+#   Generate autocorrelation plots
+# ------------------------------------------------------------------------------
 
 p1 <- plot_ac(scores_ar)
 p2 <- plot_ac(scores_aper)
 
-p <- plot_grid(p1, p2, ncol = 2,
-               labels = c("a", "b"),
-               label_size = 18)
-ggsave(file.path("output", "figures", "lmer_fits.svg"),
-       p,
-       dpi = 100,
-       units = "in",
-       height = 4,
-       width = 8)
-
 # ------------------------------------------------------------------------------
-#   Generate autocorrelation plots
+#   Compare model estimates
 # ------------------------------------------------------------------------------
 
 # Pull ASV-ASV consensus correlations derived from fido models
 F1 <- readRDS(file.path("output", "Frechet_1_corr.rds"))
 F1$mean <- CovFMean(F1$Sigmas)$Mout[[1]]
 
-p1 <- plot_kernel_or_cov_matrix(F1$mean) +
-  theme_bw() +
-  theme(legend.position = "bottom") +
-  scale_x_continuous(expand = c(0, 0)) +
-  scale_y_continuous(expand = c(0, 0)) +
-  labs(x = "taxon A", y = "taxon B", fill = "CLR correlation")
-legend <- get_legend(p1)
-p1 <- p1 +
-  theme(legend.position = "none")
-
 # Estimate correlation from aperiodic/season-less joint model
 cov_after <- cov(t(clr_aper))
 cor_after <- cov2cor(cov_after)
-p2 <- plot_kernel_or_cov_matrix(cor_after) +
-  theme_bw() +
-  theme(legend.position = "bottom") +
-  scale_x_continuous(expand = c(0, 0)) +
-  scale_y_continuous(expand = c(0, 0)) +
-  labs(x = "taxon A", y = "taxon B", fill = "CLR correlation") +
-  theme(legend.position = "none")
 
 # Plot correlation of CLR correlation estimates
 p3 <- ggplot(data.frame(x = c(F1$mean[1:134,1:134]),
@@ -223,32 +200,28 @@ p3 <- ggplot(data.frame(x = c(F1$mean[1:134,1:134]),
   geom_point(size = 2, shape = 21, fill = "#bbbbbb") +
   theme_bw() +
   labs(x = "CLR correlation (original)",
-       y = "CLR correlation (minus 'season')")
+       y = "CLR correlation (minus seasonal effect)")
 
-block1 <- plot_grid(p1, p2, ncol = 2,
-                    labels = c("a", "b"),
-                    label_size = 18,
-                    label_y = 1.03,
-                    label_x = -0.01,
-                    scale = 0.98)
-block2 <- plot_grid(block1, NULL, legend, ncol = 1,
-                    rel_heights = c(1, 0.02, 0.15))
-p <- plot_grid(block2, p3, ncol = 2,
-               labels = c("", "c"),
+p <- plot_grid(p1, NULL, p2, NULL, p3,
+               ncol = 5,
+               rel_widths = c(1, 0.05, 1, 0.05, 1),
+               labels = c("A", "", "B", "", "C"),
                label_size = 18,
-               label_y = 1.02,
-               label_x = -0.01,
-               rel_widths = c(2, 1.15),
-               scale = 0.98)
+               label_y = 1.01,
+               label_x = -0.015)
 
 ggsave(file.path("output", "figures", "lmer_results.svg"),
        p,
        dpi = 100,
        units = "in",
-       height = 4.5,
-       width = 12)
+       height = 4,
+       width = 13)
 
-cat(paste0("R^2 of estimates: ", round(cor(c(F1$mean), c(cor_after))**2, 2), "\n"))
+x <- scale(c(cor_after[upper.tri(cor_after, diag = FALSE)]))
+y <- scale(c(F1$mean[upper.tri(cor_after, diag = FALSE)]))
+summary(lm(y ~ x))
+
+# cat(paste0("R^2 of estimates: ", round(cor(c(F1$mean), c(cor_after))**2, 2), "\n"))
 
 # ------------------------------------------------------------------------------
 #   Is R^2 different for Johannes' "seasonal" taxa? (Ans: No)
@@ -357,3 +330,4 @@ ggplot(data.frame(x = ve_aper - ve_ar),
        y = "count\n")
 
 cat(paste0("Median change in percent variance explained w/ seasonal trend: ", round(median(ve_aper - ve_ar)*100,1 ), "\n"))
+round(quantile(ve_aper - ve_ar, probs = c(0, 0.025, 0.5, 0.975, 1)), 3)

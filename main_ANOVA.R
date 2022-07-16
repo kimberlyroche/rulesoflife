@@ -30,6 +30,7 @@ p <- 999 # number of permutations
 data <- load_data(tax_level = "ASV")
 md <- data$metadata
 hosts <- sort(unique(md$sname))
+groups <- get_host_social_groups(host_list = hosts)
 N <- length(hosts)
 
 Sigmas <- list()
@@ -49,6 +50,21 @@ D <- dim(Sigmas[[1]])[1]
 
 # Calculate samples of the dynamics distance
 host_combos <- combn(length(hosts), m = 2)
+
+grp_assignments <- get_host_social_groups(hosts)
+group_combos <- character(ncol(host_combos))
+for(i in 1:ncol(host_combos)) {
+  h1 <- hosts[host_combos[1,i]]
+  h2 <- hosts[host_combos[2,i]]
+  grp1 <- grp_assignments$grp[grp_assignments$sname == h1]
+  grp2 <- grp_assignments$grp[grp_assignments$sname == h2]
+  if(grp1 == grp2) {
+    group_combos[i] <- grp1
+  } else {
+    group_combos[i] <- NA
+  }
+}
+
 dynamics_distances <- matrix(NA, N, N)
 for(i in 1:ncol(host_combos)) {
   if(i %% 100 == 0) {
@@ -81,14 +97,24 @@ ped_vec <- ped_dist[lower.tri(ped_dist, diag = FALSE)]
 obs_Rsq_ped <- c(cor(scale(ped_vec), scale(dynamics_dist_vec))**2)
 
 # R^2 plot
-# p1_ped <- ggplot(data.frame(x = scale(ped_vec), y = scale(dynamics_dist_vec)),
-p1_ped <- ggplot(data.frame(x = ped_vec, y = dynamics_dist_vec),
-                 aes(x = x, y = y)) +
-  # geom_smooth(color = "gray", alpha = 0.5) +
-  geom_point(size = 3, shape = 21, fill = "#999999") +
+p1_ped <- ggplot() +
+  geom_point(data = data.frame(x = ped_vec, y = dynamics_dist_vec, grp = group_combos) %>%
+               filter(is.na(grp)),
+             mapping = aes(x = x, y = y),
+             size = 3, shape = 21, fill = "#bbbbbb") +
+  geom_point(data = data.frame(x = ped_vec, y = dynamics_dist_vec, grp = group_combos) %>%
+               filter(!is.na(grp)),
+             mapping = aes(x = x, y = y, fill = grp),
+             size = 3, shape = 21) +
+  geom_smooth(data = data.frame(x = ped_vec, y = dynamics_dist_vec),
+              mapping = aes(x = x, y = y),
+              color = "black", alpha = 0.2, method = "lm") +
+  scale_fill_brewer(palette = "Spectral") +
   theme_bw() +
+  theme(legend.position = "none") +
   labs(x = "kinship dissimilarity (1 - % relatedness)",
-       y = "host-host dynamics distance")
+       y = "host-host dynamics distance",
+       fill = "Paired social group")
 
 # ------------------------------------------------------------------------------
 #   Mantel test
@@ -189,13 +215,27 @@ baseline_dist_vec <- c(baseline_distances)
 obs_Rsq_comp <- c(cor(baseline_dist_vec, dynamics_dist_vec)**2)
 
 # R^2 plot
-p1_comp <- ggplot(data.frame(x = baseline_dist_vec, y = dynamics_dist_vec),
-                  aes(x = x, y = y)) +
-  # geom_smooth(color = "gray", alpha = 0.5) +
-  geom_point(size = 3, shape = 21, fill = "#999999") +
+p1_comp <- ggplot() +
+  geom_point(data = data.frame(x = baseline_dist_vec, y = dynamics_dist_vec, grp = group_combos) %>%
+               filter(is.na(grp)),
+             mapping = aes(x = x, y = y),
+             size = 3, shape = 21, fill = "#bbbbbb") +
+  geom_point(data = data.frame(x = baseline_dist_vec, y = dynamics_dist_vec, grp = group_combos) %>%
+               filter(!is.na(grp)),
+             mapping = aes(x = x, y = y, fill = grp),
+             size = 3, shape = 21) +
+  geom_smooth(data = data.frame(x = baseline_dist_vec, y = dynamics_dist_vec),
+              mapping = aes(x = x, y = y),
+              color = "black", alpha = 0.2, method = "lm") +
+  scale_fill_brewer(palette = "Spectral") +
   theme_bw() +
+  theme(legend.position = "bottom") +
   labs(x = "Aitchison distance over baselines",
-       y = "host-host dynamics distance")
+       y = "host-host dynamics distance",
+       fill = "Paired social group")
+legend <- get_legend(p1_comp)
+p1_comp <- p1_comp +
+  theme(legend.position = "none")
 
 # ------------------------------------------------------------------------------
 #   Mantel test
@@ -253,21 +293,25 @@ p3_comp <- plot_grid(p1_comp, p2_comp, ncol = 2,
 
 # p_all <- plot_grid(p3_ped, p3_comp, ncol = 1)
 
-p_all <- plot_grid(p1_ped, p1_comp,
+p_row <- plot_grid(p1_comp, p1_ped,
                    ncol = 2,
                    rel_widths = c(1, 1),
                    labels = c("A", "B"),
-                   label_size = 18,
+                   label_size = 16,
                    label_y = 1.00,
                    label_x = -0.01,
-                   scale = 0.925)
+                   scale = 0.95)
+
+p_all <- plot_grid(p_row, legend,
+                   ncol = 1,
+                   rel_heights = c(1, 0.1))
 
 ggsave(file.path("output", "figures", "anova.svg"),
        plot = p_all,
        dpi = 100,
        units = "in",
-       height = 4.5,
-       width = 10)
+       height = 4,
+       width = 8)
 
 # ------------------------------------------------------------------------------
 #

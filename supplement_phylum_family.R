@@ -110,7 +110,7 @@ p <- plot_grid(p1, NULL, p2_padded, ncol = 3,
                # label_x = -0.02,
                scale = 0.95)
 
-ggsave("output/figures/S5.svg",
+ggsave(file.path("output", "figures", "S5.svg"),
        p,
        dpi = 100,
        units = "in",

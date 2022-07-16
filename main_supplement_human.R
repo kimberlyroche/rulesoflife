@@ -187,7 +187,6 @@ mapping <- read.delim(file.path("input", "johnson2019", "SampleID_map.txt"),
 tax_johnson <- counts$taxonomy
 counts <- counts[,2:ncol(counts)]
 
-
 tax_johnson_df <- NULL
 for(i in 1:(length(tax_johnson)-1)) {
   piece <- str_split(tax_johnson[i], "\\;")[[1]]
@@ -555,14 +554,71 @@ all_scores <- rbind(all_scores,
                                n_subjects = 56))
 
 # ------------------------------------------------------------------------------
-#   Figure 5 panels
+#   Quick stats
+# ------------------------------------------------------------------------------
+
+cat(paste0("Median median corr. strength in Johnson et al.:",
+           round(all_scores %>% filter(dataset == "Johnson et al.") %>% summarize(x = median(X2)) %>% pull(x), 3),
+           "\n"))
+
+cor.test(all_scores %>% filter(dataset == "Amboseli") %>% pull(X1),
+         all_scores %>% filter(dataset == "Amboseli") %>% pull(X2), method = "spearman")
+
+cor.test(all_scores %>% filter(dataset == "DIABIMMUNE") %>% pull(X1),
+         all_scores %>% filter(dataset == "DIABIMMUNE") %>% pull(X2), method = "spearman")
+
+cor.test(all_scores %>% filter(dataset == "Johnson et al.") %>% pull(X1),
+         all_scores %>% filter(dataset == "Johnson et al.") %>% pull(X2), method = "spearman")
+
+temp <- all_scores %>%
+  mutate(score = X1*X2)
+
+temp %>%
+  filter(dataset == "Amboseli") %>%
+  summarize(med_mcs = round(median(X2), 3),
+            p50 = round(median(score), 3),
+            p90 = round(quantile(score, probs = c(0.9)), 3),
+            p95 = round(quantile(score, probs = c(0.95)), 3))
+
+temp %>%
+  filter(dataset == "DIABIMMUNE") %>%
+  summarize(med_mcs = round(median(X2), 3),
+            p50 = round(median(score), 3),
+            p90 = round(quantile(score, probs = c(0.9)), 3),
+            p95 = round(quantile(score, probs = c(0.95)), 3))
+
+temp %>%
+  filter(dataset == "Johnson et al.") %>%
+  summarize(med_mcs = round(median(X2), 3),
+            p50 = round(median(score), 3),
+            p90 = round(quantile(score, probs = c(0.9)), 3),
+            p95 = round(quantile(score, probs = c(0.95)), 3))
+
+temp2 <- temp %>%
+  filter(dataset == "Amboseli") %>%
+  arrange(desc(score)) %>%
+  dplyr::select(c(score, sign))
+
+table(temp2$sign[1:round(nrow(temp)*0.01)])
+table(temp2$sign[1:round(nrow(temp)*0.025)])
+
+temp2 <- temp %>%
+  filter(dataset == "DIABIMMUNE") %>%
+  arrange(desc(score)) %>%
+  dplyr::select(c(score, sign))
+
+table(temp2$sign[1:round(nrow(temp)*0.01)])
+table(temp2$sign[1:round(nrow(temp)*0.025)])
+
+# ------------------------------------------------------------------------------
+#   Figure panels
 # ------------------------------------------------------------------------------
 
 dataset_palette <- c(brewer.pal(9, "Spectral")[c(2,8,9)])
 names(dataset_palette) <- sort(unique(all_scores$dataset))[c(1,2,3)]
 
 # ------------------------------------------------------------------------------
-#   Previous version - densities
+#   Hockeysticks
 # ------------------------------------------------------------------------------
 
 sign_palette <- c("red", "#0047AB")
@@ -726,98 +782,95 @@ comp_scores$score.x <- comp_scores$X1.x*comp_scores$X2.x
 comp_scores$score.y <- comp_scores$X1.y*comp_scores$X2.y
 comp_scores$label <- comp_scores$friendly.x
 # comp_scores$label[comp_scores$score.x < 0.3 & comp_scores$score.y < 0.3] <- NA
-comp_scores$label[comp_scores$score.x*comp_scores$score.y < 0.05] <- NA
+comp_scores$label[comp_scores$score.x*comp_scores$score.y < 0.05] <- "other family pairs"
 comp_scores$label <- factor(comp_scores$label)
+
+d_palette <- c(unname(pals::alphabet2())[-c(4,5,9)][1:13], "#dddddd")
+names(d_palette) <- levels(comp_scores$label)
+
 s3 <- ggplot() +
-  geom_point(data = comp_scores %>% filter(is.na(label)),
-             mapping = aes(x = score.x, y = score.y, color = dataset),
+  geom_smooth(data = comp_scores %>% filter(dataset.y == "DIABIMMUNE"),
+              mapping = aes(x = score.x, y = score.y),
+              method = "lm",
+              color = "black",
+              alpha = 0.2,
+              size = 0.5) +
+  geom_point(data = comp_scores %>% filter(dataset.y == "DIABIMMUNE"),
+             mapping = aes(x = score.x, y = score.y, fill = label, color = dataset),
              size =  3.5,
              shape = 21,
-             fill = "#dddddd",
              stroke = 1.5) +
-  geom_point(data = comp_scores %>% filter(!is.na(label)),
-             mapping = aes(x = score.x, y = score.y, color = dataset, fill = label),
+  geom_smooth(data = comp_scores %>% filter(dataset.y == "Johnson et al."),
+              mapping = aes(x = score.x, y = score.y),
+              method = "lm",
+              color = "gray",
+              alpha = 0.2,
+              size = 0.5) +
+  geom_point(data = comp_scores %>% filter(dataset.y == "Johnson et al."),
+             mapping = aes(x = score.x, y = score.y, fill = label, color = dataset),
              size =  3.5,
              shape = 21,
              stroke = 1.5) +
-  geom_smooth(method = "lm") +
-  scale_fill_manual(values = unname(pals::alphabet2())[-c(4,5,9)]) +
+  scale_fill_manual(values = d_palette) +
   scale_color_manual(values = c("black", "gray")) +
   theme_bw() +
-  xlim(c = c(0, 0.85)) +
-  ylim(c = c(0, 0.85)) +
+  # xlim(c = c(0, 0.85)) +
+  # ylim(c = c(0, 0.85)) +
   labs(x = "\nAmboseli score",
        y = "DIABIMMUNE or Johnson et al. score\n",
        fill = "Taxon pair",
        color = "Data set")
 
-# Figure version 1
-s12 <- plot_grid(s1 + theme(legend.position = "none"),
+s12 <- plot_grid(s2 + theme(legend.position = "none"),
                  NULL,
-                 s2,
+                 s1,
                  ncol = 3,
                  rel_widths = c(1, 0.1, 1.3),
                  labels = c("A", "", "B"),
                  label_size = 18,
                  label_y = 1.03,
                  label_x = -0.05)
-# row1 <- plot_grid(s12,
-#                   NULL,
-#                   s3,
-#                   ncol = 3,
-#                   rel_widths = c(1.6, 0.1, 1.5),
-#                   labels = c("", "", "C"),
-#                   label_size = 18,
-#                   label_y = 1.03,
-#                   label_x = -0.03)
-# row2_scaled <- row2 + theme(text = element_text(size = 13))
-# row2_padded <- plot_grid(NULL, row2_scaled, NULL,
-#                          ncol = 3,
-#                          rel_widths = c(0.2, 1, 0.2),
-#                          labels = c("", "D", ""),
-#                          label_size = 18,
-#                          label_y = 1.03,
-#                          label_x = -0)
-# p <- plot_grid(row1, NULL, row2_padded,
+
+# p <- plot_grid(s12,
+#                NULL,
+#                plot_grid(NULL, s3 + theme(text = element_text(size = 13)), NULL, ncol = 3,
+#                          rel_widths = c(0.07, 1, 0.07),
+#                          labels = c("", "C", ""),
+#                          label_size = 19,
+#                          label_y = 1.02),
+#                NULL,
+#                row2 + theme(text = element_text(size = 13)),
 #                ncol = 1,
-#                rel_heights = c(1, 0.05, 0.85),
+#                rel_heights = c(0.9, 0.05, 1.2, 0.01, 0.85),
+#                labels = c("", "", "", "", "D"),
+#                label_size = 18,
+#                label_y = 1.02,
+#                label_x = 0,
 #                scale = 0.95)
-# ggsave(file.path("output", "figures", "human_studies.svg"),
-#        p,
-#        dpi = 100,
-#        units = "in",
-#        height = 9.5,
-#        width = 18)
 
 p <- plot_grid(s12,
                NULL,
+               row2 + theme(text = element_text(size = 13)),
+               NULL,
                plot_grid(NULL, s3 + theme(text = element_text(size = 13)), NULL, ncol = 3,
                          rel_widths = c(0.07, 1, 0.07),
-                         labels = c("", "C", ""),
+                         labels = c("", "D", ""),
                          label_size = 19,
                          label_y = 1.02),
-               NULL,
-               row2 + theme(text = element_text(size = 13)),
                ncol = 1,
-               rel_heights = c(0.9, 0.05, 1.2, 0.01, 0.85),
-               labels = c("", "", "", "", "D"),
+               rel_heights = c(0.9, 0.02, 0.85, 0.15, 1.2),
+               labels = c("", "", "C", "", ""),
                label_size = 18,
                label_y = 1.02,
                label_x = 0,
                scale = 0.95)
+
 ggsave(file.path("output", "figures", "human_studies.svg"),
        p,
        dpi = 100,
        units = "in",
        height = 12,
        width = 10)
-
-ggsave(file.path("output", "figures", "temp.svg"),
-       s3,
-       dpi = 100,
-       units = "in",
-       height = 5,
-       width = 9)
 
 # Association -- ABRP x DIABIMMUNE
 summary(lm(score.y ~ score.x, data = comp_scores %>% filter(dataset != "Johnson et al.")))

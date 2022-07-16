@@ -38,27 +38,43 @@ p1 <- ggplot(plot_df %>% filter(sign == "positive"), aes(x = d, y = score)) +
        y = "universality score",
        fill = "Consensus\ncorrelation sign")
 
-p1 <- ggplot(plot_df %>% filter(sign == "positive"), aes(x = d, y = score, fill = score)) +
-  geom_point(size = 2, shape = 21) +
+# p1 <- ggplot(plot_df %>% filter(sign == "positive"), aes(x = d, y = score, fill = score)) +
+p1 <- ggplot(plot_df %>% filter(sign == "positive"), aes(x = d, y = score)) +
+  geom_point(size = 2, shape = 21, fill = "red") +
   xlim(c(min(plot_df$d), max(plot_df$d))) +
   ylim(c(min(plot_df$score), max(plot_df$score))) +
-  scale_fill_gradient2(low = "white", high = "red") +
+  # scale_fill_gradient2(low = "white", high = "red") +
   theme_bw() +
   labs(x = "phylogenetic distance",
        y = "universality score",
        fill = "Consensus\ncorrelation sign") +
   theme(legend.position = "none")
 
-p2 <- ggplot(plot_df %>% filter(sign == "negative"), aes(x = d, y = score, fill = score)) +
-  geom_point(size = 2, shape = 21) +
+temp <- plot_df %>%
+  filter(sign == "positive")
+
+fit <- summary(lm(scale(temp$score) ~ scale(temp$d)))
+cat(paste0("Beta (distance x score): ", round(coef(fit)[2,1], 3), "\n"))
+cat(paste0("\tp-value: ", round(coef(fit)[2,4], 3), "\n"))
+
+# p2 <- ggplot(plot_df %>% filter(sign == "negative"), aes(x = d, y = score, fill = score)) +
+p2 <- ggplot(plot_df %>% filter(sign == "negative"), aes(x = d, y = score)) +
+  geom_point(size = 2, shape = 21, fill = muted("navy")) +
   xlim(c(min(plot_df$d), max(plot_df$d))) +
   ylim(c(min(plot_df$score), max(plot_df$score))) +
-  scale_fill_gradient2(low = "white", high = muted("navy")) +
+  # scale_fill_gradient2(low = "white", high = muted("navy")) +
   theme_bw() +
   labs(x = "phylogenetic distance",
        y = "universality score",
        fill = "Consensus\ncorrelation sign") +
   theme(legend.position = "none")
+
+temp <- plot_df %>%
+  filter(sign == "negative")
+
+fit <- summary(lm(scale(temp$score) ~ scale(temp$d)))
+cat(paste0("Beta (distance x score): ", round(coef(fit)[2,1], 3), "\n"))
+cat(paste0("\tp-value: ", round(coef(fit)[2,4], 3), "\n"))
 
 legend <- get_legend(ggplot(data.frame(x = 1:2, y = 1:2, sign = factor(c("1", "-1"), levels = c("1", "-1"))),
                             aes(x = x, y = y, fill = sign)) +
@@ -241,7 +257,7 @@ prow2 <- plot_grid(NULL, p3, NULL, p4, NULL, ncol = 5,
                label_x = -0.03,
                label_y = 1.02,
                scale = common_scale,
-               rel_widths = c(0.3, 0.9, 0.1, 1.1, 0.3))
+               rel_widths = c(0.45, 0.85, 0.1, 1.1, 0.5))
 p <- plot_grid(prow1, prow2, ncol = 1,
                rel_heights = c(1, 0.9))
 ggsave(file.path("output", "figures", "phylogenetic.svg"),
@@ -263,7 +279,7 @@ colnames(enrichment) <- c("ASV family or pair name",
                           "P-value (Fisher's exact test)",
                           "Adj. p-value (Benjamini-Hochberg)")
 write.table(enrichment,
-            file = file.path("output", "FigS8_table.tsv"),
+            file = file.path("output", "enrichment_closely-related.tsv"),
             sep = "\t",
             quote = FALSE,
             row.names = FALSE)

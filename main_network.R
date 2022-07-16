@@ -8,8 +8,9 @@ library(grid)
 library(ggridges)
 library(ggraph)
 library(igraph)
+library(scales)
 
-source("thresholds.R")
+# source("thresholds.R")
 
 rug_obj <- summarize_Sigmas(output_dir = "asv_days90_diet25_scale1")
 rug <- rug_obj$rug
@@ -39,44 +40,52 @@ score_df$signif <- apply(rug, 2, function(x) {
   sum(x < thresholds %>% filter(type == "ASV") %>% pull(lower) | x > thresholds %>% filter(type == "ASV") %>% pull(upper))/length(x)
 })
 
-p1a <- ggplot(score_df %>% filter(sign == "negative")) +
-  geom_point(mapping = aes(x = x, y = y, fill = y),
+p1a <- ggplot(score_df %>% filter(sign == "negative") %>% mutate(overall = "Consensus negatively associated pairs")) +
+  # geom_point(mapping = aes(x = x, y = y, fill = y),
+  geom_point(mapping = aes(x = x, y = y),
              size = 2,
-             shape = 21) +
+             shape = 21,
+             fill = muted("navy")) +
   # scale_fill_distiller(palette = "PuRd", direction = 1,
   #                      guide = guide_colorbar(frame.colour = "black",
   #                                             ticks.colour = "black")) +
   # scale_color_manual(values = c("#000000", "#888888")) +
-  scale_fill_gradient2(low = "white", high = "#0047AB") +
+  # scale_fill_gradient2(low = "white", high = "#0047AB") +
   theme_bw() +
   ylim(c(0,1)) +
+  facet_wrap(~ overall) +
   # theme(legend.title = element_text(margin = margin(b = 5))) +
   theme(legend.position = "none",
         axis.text.x = element_text(size = 11),
         axis.title.x = element_text(size = 13),
         axis.text.y = element_text(size = 11),
-        axis.title.y = element_text(size = 13)) +
+        axis.title.y = element_text(size = 13),
+        strip.text.x = element_text(size = 12)) +
   labs(x = "proportion shared sign",
        y = "median correlation strength",
        color = "Consensus\ncorrelation sign")
 
-p1b <- ggplot(score_df %>% filter(sign == "positive")) +
-  geom_point(mapping = aes(x = x, y = y, fill = y),
+p1b <- ggplot(score_df %>% filter(sign == "positive") %>% mutate(overall = "Consensus positively associated pairs")) +
+  # geom_point(mapping = aes(x = x, y = y, fill = y),
+  geom_point(mapping = aes(x = x, y = y),
              size = 2,
-             shape = 21) +
+             shape = 21,
+             fill = "red") +
   # scale_fill_distiller(palette = "PuRd", direction = 1,
   #                      guide = guide_colorbar(frame.colour = "black",
   #                                             ticks.colour = "black")) +
   # scale_color_manual(values = c("#000000", "#888888")) +
-  scale_fill_gradient2(low = "white", high = "red") +
+  # scale_fill_gradient2(low = "white", high = "red") +
   theme_bw() +
   ylim(c(0,1)) +
+  facet_wrap(~ overall) +
   # theme(legend.title = element_text(margin = margin(b = 5))) +
   theme(legend.position = "none",
         axis.text.x = element_text(size = 11),
         axis.title.x = element_text(size = 13),
         axis.text.y = element_text(size = 11),
-        axis.title.y = element_text(size = 13)) +
+        axis.title.y = element_text(size = 13),
+        strip.text.x = element_text(size = 12)) +
   labs(x = "proportion shared sign",
        y = "median correlation strength",
        color = "Consensus\ncorrelation sign")
@@ -299,7 +308,7 @@ colnames(enrichment) <- c("ASV family or pair name",
                           "P-value (Fisher's exact test)",
                           "Adj. p-value (Benjamini-Hochberg)")
 write.table(enrichment,
-            file = file.path("output", "Fig3_table.tsv"),
+            file = file.path("output", "enrichment_top-pairs.tsv"),
             sep = "\t",
             quote = FALSE,
             row.names = FALSE)
@@ -434,9 +443,11 @@ p4 <- ggraph(graph, layout = "fr") +
 
 col1 <- plot_grid(p1b, p1a, p2,
                   ncol = 1,
+                  rel_heights = c(1, 1, 0.8),
                   labels = c("A", "B", "C"),
                   label_size = 18,
-                  scale = 0.9)
+                  label_y = 1.02,
+                  scale = 1)
 row1 <- plot_grid(p3, p5,
                   ncol = 2,
                   rel_widths = c(1, 1.4),
@@ -444,18 +455,16 @@ row1 <- plot_grid(p3, p5,
                   label_size = 18,
                   label_y = 1.02,
                   label_x = -0.02,
-                  scale = 0.9)
-p4_padded <- plot_grid(NULL, p4,
-                       ncol = 1,
-                       rel_heights = c(0.1, 1),
-                       labels = c("", "D"),
+                  scale = 0.95)
+p4_padded <- plot_grid(p4,
+                       labels = c("D"),
                        label_size = 18,
-                       label_y = 1.02,
+                       label_y = 1.01,
                        label_x = -0.02,
                        scale = 0.95)
-col2 <- plot_grid(p4_padded, NULL, row1,
+col2 <- plot_grid(p4_padded, row1,
                   ncol = 1,
-                  rel_heights = c(1, 0.1, 0.75))
+                  rel_heights = c(1, 0.75))
 p <- plot_grid(col1, NULL, col2,
                ncol = 3,
                rel_widths = c(1, 0.05, 2))
