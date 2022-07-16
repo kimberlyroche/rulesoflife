@@ -17,7 +17,8 @@ plot_enrichment(
   rel_widths = c(1, 0.35, 1, 0, 4.5),
   labels = NULL,
   palette = NULL,
-  save_name = NULL
+  save_name = NULL,
+  suppress_y = FALSE
 )
 }
 \arguments{

@@ -51,8 +51,12 @@ plot_kernel_or_cov_matrix <- function(K, save_name = NULL) {
   K$sample2 <- as.numeric(K$sample2)
   p <- ggplot(K, aes(x = sample1, y = sample2)) +
     geom_raster(aes(fill = covariance)) +
-    scale_fill_gradient2(low = "navy", mid = "white", high = "red",
-                         midpoint = 0)
+    # scale_fill_gradient2(low = "navy", mid = "white", high = "red",
+    #                      midpoint = 0)
+    scale_fill_gradientn(limits = c(-1,1), colors = c("navy", "white", "red"),
+                         guide = guide_colorbar(frame.colour = "black",
+                                                ticks.colour = "black")) +
+    guides(fill = guide_colourbar(title.vjust = 0.8))
   if(is.null(save_name)) {
     return(p)
   } else {
@@ -773,7 +777,7 @@ plot_enrichment <- function(frequencies_subset1, frequencies_subset2 = NULL, fre
                             significant_families1, significant_families2 = NULL,
                             plot_height, plot_width, legend_topmargin, use_pairs = TRUE,
                             rel_widths = c(1, 0.35, 1, 0, 4.5), labels = NULL,
-                            palette = NULL, save_name = NULL) {
+                            palette = NULL, save_name = NULL, suppress_y = FALSE) {
   labeled_families <- sort(unique(c(significant_families1, significant_families2)))
 
   # Define a huge color palette over all observed family-family pairs
@@ -793,6 +797,7 @@ plot_enrichment <- function(frequencies_subset1, frequencies_subset2 = NULL, fre
   } else {
     fam_palette_colored <- palette
   }
+
   all_families <- sort(unique(c(names(frequencies))))
   fam_palette <- sample(c("#dddddd", "#d5d5d5", "#cccccc", "#c5c5c5"), replace = TRUE, size = length(all_families))
   names(fam_palette) <- all_families
@@ -844,6 +849,10 @@ plot_enrichment <- function(frequencies_subset1, frequencies_subset2 = NULL, fre
             legend.justification = c("top"),
             # legend.margin = margin(t = legend_topmargin, r = 0, b = 0, l = 0, unit = "pt"),
             legend.position = "none")
+    if(suppress_y) {
+      px <- px +
+        theme(axis.title.y = element_blank())
+    }
     x_label <- "selected set"
     if(!is.null(labels)) {
       x_label <- labels[i+1]
@@ -892,6 +901,10 @@ plot_enrichment <- function(frequencies_subset1, frequencies_subset2 = NULL, fre
   p1 <- p1 +
     labs(x = paste0("\n", x_label),
          y = y_label)
+
+  if(suppress_y) {
+    rel_widths[3] <- rel_widths[3]*0.75
+  }
 
   if(!is.null(frequencies_subset2)) {
     p <- plot_grid(p1, NULL, p2, NULL, p3, NULL, legend,

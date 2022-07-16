@@ -4,14 +4,7 @@ library(tidyverse)
 library(rulesoflife)
 library(driver)
 library(cowplot)
-
-# ------------------------------------------------------------------------------
-#
-#   Supplemental Figure S2 - relative abundance time courses for all 56 hosts
-#                            and PCA plots of samples and selected hosts from
-#                            2004-2009
-#
-# ------------------------------------------------------------------------------
+library(RColorBrewer)
 
 # ------------------------------------------------------------------------------
 #   Timecourse plots
@@ -116,9 +109,9 @@ for(host in ref_hosts) {
     mutate(combined_ra = sum(relative_abundance)) %>%
     filter(taxon != "domain Bacteria") %>%
     ungroup() %>%
-    select(-c(relative_abundance)) %>%
+    dplyr::select(-c(relative_abundance)) %>%
     mutate(relative_abundance = combined_ra) %>%
-    select(-c(combined_ra))
+    dplyr::select(-c(combined_ra))
   plot_df <- rbind(temp, temp2)
 
   plot_df <- plot_df %>%
@@ -129,13 +122,13 @@ for(host in ref_hosts) {
   p <- ggplot(plot_df, aes(x = sample, y = relative_abundance, fill = palette_value)) +
     geom_area() +
     scale_fill_manual(values = palette2) +
-    theme(legend.position = "bottom") +
+    theme(legend.position = "bottom",
+          legend.text = element_text(size = 11)) +
     labs(fill = "")
   if(is.null(legend)) {
     legend <- get_legend(p)
   }
   p <- p +
-    # geom_area(linetype = 1, size = 0.3, color = "black") +
     theme_nothing() +
     scale_x_continuous(expand = c(0, 0)) +
     scale_y_continuous(expand = c(0, 0)) +
@@ -156,79 +149,84 @@ p <- plot_grid(plotlist = plots[order(labels2$host_label)],
                labels = labels2$host_label[order(labels2$host_label)],
                scale = 0.95,
                label_x = -0.1,
-               label_y = 1,
-               label_size = 8)
+               label_y = 1.03,
+               label_size = 12)
 
 p1 <- plot_grid(p, legend, ncol = 1, rel_heights = c(1, 0.15))
 
 # ------------------------------------------------------------------------------
-#   PCA plots
+#   Sample alignment
 # ------------------------------------------------------------------------------
 
-# Reload ASV-level data!
-data <- load_data(tax_level = "ASV")
-clr_counts <- clr_array(data$counts + 0.5, parts = 1)
+hosts_dates <- data$metadata %>%
+  dplyr::select(sname, collection_date)
+hosts_dates$sname <- factor(hosts_dates$sname,
+                            levels = sort(unique(hosts_dates$sname), decreasing = TRUE))
+baseline_time <- min(hosts_dates$collection_date)
+hosts_dates$time <- as.numeric(sapply(hosts_dates$collection_date, function(x) difftime(x, baseline_time, units = "days")))
 
-PCA <- prcomp(t(clr_counts))
-PoV <- PCA$sdev^2 / sum(PCA$sdev^2)
+# xticks <- seq(from = 0, to = 5000, length = 10)
+# xlabs <- character(length(xticks))
+# for(i in 1:length(xticks)) {
+#   xlabs[i] <- as.character(as.Date(baseline_time) + xticks[i])
+# }
+xlabs <- c("2001", "2002", "2003", "2004", "2005",
+           "2006", "2007", "2008", "2009", "2010",
+           "2011", "2012", "2013")
+xticks <- numeric(length(xlabs))
+for(i in 1:length(xticks)) {
+  xticks[i] <- as.numeric(as.Date(paste0(xlabs[i], "-01-01")) - as.Date(baseline_time))
+}
 
-rgb_colors <- matrix(c(240, 7, 7,
-                       227, 125, 16,
-                       68, 194, 10,
-                       90, 141, 242,
-                       200, 90, 242), 5, 3, byrow = TRUE)/255
-hex_colors <- apply(rgb_colors, 1, function(x) {
-  rgb(x[1], x[2], x[3])
-})
+anon_labels <- read.delim(file.path("output", "host_labels.tsv"),
+                          header = TRUE,
+                          sep = "\t")
 
-ref_hosts <- c("DUI", "DUX", "LIW", "PEB", "VET")
-year_range <- seq(from = 2003, to = 2008, by = 1)
+hosts_dates <- hosts_dates %>%
+  left_join(anon_labels, by = "sname")
+hosts_dates$host_label <- factor(hosts_dates$host_label)
+levels(hosts_dates$host_label) <- rev(levels(hosts_dates$host_label))
 
-labels_years <- data$metadata %>%
-  mutate(year = substr(collection_date, 1, 4)) %>%
-  mutate(label = ifelse(sname %in% ref_hosts & year %in% year_range,
-                        sname,
-                        "other")) %>%
-  select(label, year)
-labels <- factor(labels_years$label, levels = c(ref_hosts, "other"))
-years <- as.numeric(labels_years$year)
+p2 <- ggplot(hosts_dates, aes(x = time, y = host_label)) +
+  geom_point(size = 1.25, shape = 21, fill = "#000000") +
+  theme_bw() +
+  labs(x = "sample collection date",
+       y = "host") +
+  scale_x_continuous(breaks = xticks, labels = xlabs) +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 14),
+        axis.ticks.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.title.x = element_text(size = 16),
+        axis.title.y = element_text(size = 16))
 
-plot_df <- data.frame(x = PCA$x[,1],
-                      y = PCA$x[,2],
-                      label = labels,
-                      year = years)
-plot_df <- plot_df[plot_df$year %in% year_range,]
+p1_padded <- plot_grid(NULL, p1, ncol = 2,
+                       rel_widths = c(0.04, 1))
 
-p2 <- ggplot(plot_df) +
-  geom_point(data = plot_df[plot_df$label == "other",], mapping = aes(x = x, y = y),
-             size = 2,
-             shape = 21,
-             fill = "#bbbbbb",
-             color = "#888888") +
-  geom_point(data = plot_df[plot_df$label != "other",], mapping = aes(x = x, y = y, fill = label),
-             size = 3,
-             shape = 21) +
-  scale_fill_manual(values = hex_colors) +
-  facet_wrap(. ~ year) +
-  labs(title = "Selected host samples (2004-2009)",
-       fill = "Host",
-       x = paste0("PC1 (", round(PoV[1], 3)*100 ,"% variance expl.)"),
-       y = paste0("PC2 (", round(PoV[2], 3)*100 ,"% variance expl.)")) +
-  theme_bw()
+prow2 <- plot_grid(p2,
+                   p1_padded,
+                   ncol = 2,
+                   rel_widths = c(0.8, 1.2),
+                   labels = c("B", "C"),
+                   label_size = 20,
+                   label_x = 0,
+                   label_y = 1.02,
+                   scale = 0.98)
 
-p1_padded <- plot_grid(p1, scale = 0.9)
-p <- plot_grid(p1_padded, NULL, p2,
-               ncol = 1,
-               rel_heights = c(1, 0.05, 1),
-               labels = c("A", "B"),
-               label_size = 18,
-               label_x = 0,
-               label_y = 1,
-               scale = 0.95)
+prow1 <- plot_grid(ggdraw() +
+                     draw_image(file.path("output", "figures", "placeholder_overview.png")),
+                   ncol = 1,
+                   labels = c("A"),
+                   label_size = 20,
+                   label_x = 0,
+                   label_y = 1.02,
+                   scale = 1.00)
 
-ggsave(file.path("output", "figures", "S2.png"),
+p <- plot_grid(prow1, prow2, ncol = 1,
+               rel_heights = c(1, 1))
+
+ggsave(file.path("output", "figures", "overview.svg"),
        p,
        units = "in",
        dpi = 100,
        height = 10,
-       width = 8)
+       width = 13)
