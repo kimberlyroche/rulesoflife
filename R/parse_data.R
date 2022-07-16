@@ -1,3 +1,96 @@
+#' Description TBD
+#'
+#' @param seq_similarity_threshold percent upper limit on sequence similarity;
+#' for ASV pairs strictly more similar than this, the less abundant partner in
+#' the pair will be removed from the data as it's likely these partners ID the
+#' same taxon
+#' @param host_sample_min minimum sample number for host inclusion in the
+#' filtered data set
+#' @param count_threshold minimum count for taxon inclusion in the filtered data
+#' set
+#' @param sample_threshold minimum proportion of samples within each host at
+#' which a taxon must be observed at or above count_threshold
+#' @details Typically, ASV pairs with >99% similarity differ by 1-2 bases only
+#' @return phyloseq object
+#' @import driver
+#' @import phyloseq
+#' @importFrom phyloseq sample_data
+#' @import dplyr
+#' @import ape
+#' @import magrittr
+#' @importFrom stringr str_split
+#' @export
+prune_data <- function(seq_similarity_threshold = 0.99) {
+  filename <- file.path("input", "ps0.rds")
+  if(file.exists(filename)) {
+    data <- readRDS(filename)
+  } else {
+    stop(paste0("Input data file ", filename, " does not exist!\n"))
+  }
+
+  tax <- tax_table(data)
+
+  # 5) Check for extremely closely related sequences (>99% sequence identity)
+  # between pairs of taxa. We'll remove the less abundant partner in these pairs
+  # as it's possible they represent hits on the same ASVs.
+
+  OTUs <- rownames(tax)
+  OTUs <- OTUs[1:length(OTUs)]
+  OTUs <- unname(sapply(OTUs, tolower))
+
+  # Split these up into a list of character vectors; that's apparently the input
+  # format dist.dna() wants
+  OTU_list <- list()
+  for(i in 1:length(OTUs)) {
+    OTU_list[[i]] <- str_split(OTUs[i], "")[[1]][1:252]
+  }
+  OTU_list <- as.DNAbin(OTU_list)
+  d <- dist.dna(OTU_list, model = "raw") # takes ~1 min.
+  d <- 1 - as.matrix(d) # similarity
+
+  closely_related <- as.data.frame(which(d > seq_similarity_threshold,
+                                         arr.ind = T)) %>%
+    filter(row != col) %>%
+    arrange(row, col)
+  if(nrow(closely_related) > 0) {
+    rownames(closely_related) <- NULL
+    # Get unique pairs
+    for(i in 1:nrow(closely_related)) {
+      if(closely_related[i,1] > closely_related[i,2]) {
+        x <- closely_related[i,1]
+        closely_related[i,1] <- closely_related[i,2]
+        closely_related[i,2] <- x
+      }
+    }
+    closely_related %<>%
+      distinct()
+
+    # Get average abundance of each partner in these pairs; we'll axe the less
+    # abundant partner
+    counts <- otu_table(data)
+    mean_abundance <- apply(counts, 2, mean)
+    closely_related %<>%
+      mutate(remove = case_when(
+        mean_abundance[row] < mean_abundance[col] ~ row,
+        TRUE ~ col
+      ))
+
+    # Prune taxa
+    kept_taxa <- rep(TRUE, nrow(tax))
+    kept_taxa[closely_related$remove] <- FALSE
+    pruned_data <- prune_taxa(kept_taxa, data)
+  } else {
+    pruned_data <- data
+  }
+
+  filename <- file.path("input", paste0("pruned_",
+                                        round(seq_similarity_threshold*100),
+                                        ".rds"))
+
+  saveRDS(pruned_data, file = filename)
+  return(pruned_data)
+}
+
 #' This function loads the raw ABRP data (as a phyloseq object) and 1) filters
 #' to a set of best-sampled hosts, 2) agglomerates taxa to the level specified,
 #' and 3) merges taxa below a specified minimum abundance across hosts
@@ -13,12 +106,17 @@
 #' representation for a taxon. Taxa below this threshold will be grouped
 #' together into an <NA> category.
 #' @return phyloseq object
+#' @import driver
 #' @import phyloseq
 #' @importFrom phyloseq sample_data
 #' @import dplyr
+#' @import ape
+#' @import magrittr
+#' @importFrom stringr str_split
 #' @export
 filter_data <- function(tax_level = "ASV", host_sample_min = 75,
-                      count_threshold = 1, sample_threshold = 0.2) {
+                      count_threshold = 1, sample_threshold = 0.2,
+                      seq_similarity_threshold = 0.99) {
   if(is.null(tax_level)) {
     tax_level <- "ASV"
   }
@@ -26,11 +124,15 @@ filter_data <- function(tax_level = "ASV", host_sample_min = 75,
                         "ASV"))) {
     stop("Unrecognized tax_level specified!")
   }
-  filename <- file.path("input", "ps0.rds")
+
+  # Load pruned data
+  filename <- file.path("input", paste0("pruned_",
+                                        round(seq_similarity_threshold*100),
+                                        ".rds"))
   if(file.exists(filename)) {
     data <- readRDS(filename)
   } else {
-    stop(paste0("Input data file ", filename, " does not exist!\n"))
+    data <- prune_data(seq_similarity_threshold)
   }
 
   # 1) Filter to hosts above a threshold
@@ -44,7 +146,7 @@ filter_data <- function(tax_level = "ASV", host_sample_min = 75,
   cat("Subsetting to", nsamples(data), "samples from",
       length(unique(metadata$sname)), "hosts...\n")
 
-  # 2) Agglomerate taxa; from ASV level to family level this takes ~5 min (FYI)
+  # 2) Agglomerate taxa; from ASV to family this takes ~5 min.
   if(tax_level == "ASV") {
     agglomerated_data <- data
   } else {
@@ -53,7 +155,8 @@ filter_data <- function(tax_level = "ASV", host_sample_min = 75,
 
   cat("Agglomerated from", ntaxa(data), "to", ntaxa(agglomerated_data), "...\n")
 
-  # 3) Filter to taxa above a minimum prevalence
+  # 3) Filter to taxa above a minimum prevalence; note: this takes 5+ min. at
+  # the ASV level!
   counts <- otu_table(agglomerated_data)@.Data
   binary_counts <- apply(counts, c(1,2), function(x) {
     ifelse(x >= count_threshold, 1, 0)
@@ -66,12 +169,12 @@ filter_data <- function(tax_level = "ASV", host_sample_min = 75,
 
   taxa_passed <- rep(TRUE, ntaxa(agglomerated_data))
   for(sname in unique(sname_map)) {
-    host_bin_counts <- binary_counts[sname_map == sname,]
+    host_bin_counts <- binary_counts[sname_map == sname,,drop=F]
     host_sample_sums <- colSums(host_bin_counts) / nrow(host_bin_counts)
     taxa_passed <- taxa_passed & host_sample_sums >= sample_threshold
   }
 
-  # It doesn't look like there are instances of family Mitochondria or order
+  # 4) It doesn't look like there are instances of family Mitochondria or order
   # Chloroplast in this data set. Remove archaea though.
   tax <- tax_table(agglomerated_data)@.Data
   archaea_rowidx <- which(tax[taxa_passed,] == "Archaea", arr.ind = TRUE)
@@ -90,7 +193,9 @@ filter_data <- function(tax_level = "ASV", host_sample_min = 75,
   tax <- tax_table(merged_data)@.Data
   merge_OTU <- rownames(tax)[merge_idx]
 
-  merge_obj <- list(merged_data = merged_data, merge_OTU = merge_OTU)
+  dim(otu_table(merged_data))
+
+  save_obj <- list(merged_data = pruned_data, merge_OTU = merge_OTU)
 
   filename <- file.path("input", paste0("filtered_",
                                         tax_level,
@@ -100,8 +205,8 @@ filter_data <- function(tax_level = "ASV", host_sample_min = 75,
                                         round(sample_threshold*100),
                                         ".rds"))
 
-  saveRDS(merge_obj, file = filename)
-  return(merge_obj)
+  saveRDS(save_obj, file = filename)
+  return(save_obj)
 }
 
 #' This function wrangles the filtered ABRP data and metadata
