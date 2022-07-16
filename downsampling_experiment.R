@@ -11,7 +11,8 @@ T <- 1000
 D <- 135
 
 prop_agree <- NULL
-for(i in 1:1) {
+for(i in 1:100) {
+  cat(paste0("Performing downsampling simulation, iteration: ", i, " / 100\n"))
   global_baseline <- LaplacesDemon::rdirichlet(1, rep(100/D, D))
   taxon_dynamics <- cov2cor(matrixsampling::rinvwishart(1, D + 2, diag(D))[,,1])
   taxon_dynamics_alr <- clrvar2alrvar(taxon_dynamics, D)
@@ -38,6 +39,7 @@ for(i in 1:1) {
   })
 
   for(j in c(10, 20, 30, 40, 50, 75, 100, 200)) {
+    cat(paste0("\tDownsampling to ", j, "\n"))
     # Downsample
     X2 <- matrix(sort(sample(1:ncol(Y), size = j)), 1, j)
     Y2 <- Y[,c(X2)]
@@ -54,7 +56,7 @@ for(i in 1:1) {
     Z1 <- sign(taxon_dynamics[upper.tri(taxon_dynamics, diag = FALSE)])
     Z2 <- sign(est_Sigma[upper.tri(est_Sigma, diag = FALSE)])
 
-    prop_agree <- rbind(NULL,
+    prop_agree <- rbind(prop_agree,
                         data.frame(prop = sum(Z1 == Z2) / length(Z1),
                                    n = T,
                                    n_subset = j))
