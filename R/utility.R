@@ -520,3 +520,35 @@ sequence_distance <- function(distance_type = "N") {
   }
   d
 }
+
+#' Gather all host ASV-ASV (MAP) correlation matrices into a 3D array
+#'
+#' @param output_dir specifies the subdirectory of the model fits directory in
+#' which to look for fitted model output
+#' @return D x D x H array of host ASV-ASV correlation matrices
+#' @import fido
+#' @export
+pull_Sigmas <- function(output_dir) {
+  # Get all fitted model objects
+  output_dir_full <- check_dir(c("output", "model_fits", output_dir, "MAP"))
+  file_list <- list.files(path = output_dir_full, pattern = "*.rds")
+  if(length(file_list) == 0) {
+    stop("No model output found!")
+  }
+  # Get taxa number and posterior sample number
+  fit <- readRDS(file.path(output_dir_full, file_list[1]))
+  D <- fit$D
+  Sigmas <- array(NA, dim = c(D-1, D-1, length(file_list)))
+  for(f in 1:length(file_list)) {
+    file <- file_list[f]
+    fit <- readRDS(file.path(output_dir_full, file))
+    # Convert to CLR
+    if(fit$coord_system != "clr") {
+      fit <- to_clr(fit)
+    }
+    Sigma_correlation <- cov2cor(fit$Sigma[,,1])
+    Sigma_correlation <- Sigma_correlation[1:(D-1),1:(D-1)]
+    Sigmas[,,f] <- Sigma_correlation
+  }
+  return(Sigmas)
+}

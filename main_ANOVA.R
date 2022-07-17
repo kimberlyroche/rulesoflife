@@ -33,20 +33,8 @@ hosts <- sort(unique(md$sname))
 groups <- get_host_social_groups(host_list = hosts)
 N <- length(hosts)
 
-Sigmas <- list()
-n_iter <- NULL
-for(host in hosts) {
-  cat(paste0("Parsing host ", host, "...\n"))
-  fit <- readRDS(file.path("output",
-                           "model_fits",
-                           output_dir,
-                           "MAP",
-                           paste0(host, ".rds")))
-  # CLR
-  fit <- to_clr(fit)
-  Sigmas[[host]] <- cov2cor(fit$Sigma[,,1])
-}
-D <- dim(Sigmas[[1]])[1]
+Sigmas <- pull_Sigmas(output_dir)
+D <- dim(Sigmas)[1] + 1
 
 # Calculate samples of the dynamics distance
 host_combos <- combn(length(hosts), m = 2)
@@ -72,8 +60,8 @@ for(i in 1:ncol(host_combos)) {
   }
   a <- host_combos[1,i]
   b <- host_combos[2,i]
-  d <- dist4cov(Sigmas[[a]] + diag(D)*1e-06,
-                Sigmas[[b]] + diag(D)*1e-06)$dist
+  d <- dist4cov(Sigmas[,,a] + diag(D-1)*1e-06,
+                Sigmas[,,b] + diag(D-1)*1e-06)$dist
   dynamics_distances[a,b] <- d
   dynamics_distances[b,a] <- d
 }
@@ -88,7 +76,7 @@ dynamics_dist_vec <- dynamics_distances[lower.tri(dynamics_distances)]
 
 # Load pedigree
 pedigree <- readRDS(file.path("input", "pedigree_56hosts.RDS"))
-mapping <- data.frame(sname = names(Sigmas)) %>%
+mapping <- data.frame(sname = sort(hosts)) %>%
   left_join(data.frame(sname = rownames(pedigree), order = 1:nrow(pedigree)), by = "sname")
 pedigree <- pedigree[mapping$order,mapping$order] # subset and order as Sigmas
 ped_dist <- 1 - pedigree
@@ -329,11 +317,11 @@ if(females_only) {
 }
 host_list <- lifespan %>% pull(sname)
 
-host_include <- names(Sigmas) %in% host_list
-use_Sigmas <- Sigmas[host_include]
+host_include <- sort(hosts) %in% host_list
+use_Sigmas <- Sigmas[,,host_include]
 
 # Load pedigree
-mapping <- data.frame(sname = names(use_Sigmas)) %>%
+mapping <- data.frame(sname = sort(hosts)) %>%
   left_join(data.frame(sname = host_list, order = 1:length(host_list)), by = "sname")
 
 lifespan <- lifespan$age_at_death_censor[mapping$order]
@@ -422,13 +410,15 @@ hosts <- sort(unique(md$sname))
 
 # Pull the already-parsed MAP estimates of dynamics from this object, calculated
 # by `analysis_compute_Frechets.R`
-F1 <- readRDS(file.path("output", "Frechet_1_corr.rds"))
+# F1 <- readRDS(file.path("output", "Frechet_1_corr.rds"))
 
 # Calculate the mean using the `frechet` package
-F1$mean <- CovFMean(F1$Sigmas)$Mout[[1]]
+# F1$mean <- CovFMean(F1$Sigmas)$Mout[[1]]
 
-D <- dim(F1$Sigmas)[1]
-N <- dim(F1$Sigmas)[3]
+# Compute frechet mean with `shapes` package
+cov_mean <- estcov(Sigmas, method = "Euclidean")
+
+N <- dim(Sigmas)[3]
 
 # ------------------------------------------------------------------------------
 #   Pull host social group / sex metadata
@@ -448,13 +438,15 @@ sexes <- unique(host_sex$sex)
 # Load group means
 group_means <- list()
 for(g in 1:length(groups)) {
-  group_means[[g]] <- CovFMean(F1$Sigmas[,,host_groups$grp == groups[g]])$Mout[[1]]
+  # group_means[[g]] <- CovFMean(F1$Sigmas[,,host_groups$grp == groups[g]])$Mout[[1]]
+  group_means[[g]] <- estcov(Sigmas[,,host_groups$grp == groups[g]], method = "Euclidean")$mean
 }
 
 # Load group means
 sex_means <- list()
 for(s in 1:length(sexes)) {
-  sex_means[[s]] <- CovFMean(F1$Sigmas[,,host_sex$sex == sexes[s]])$Mout[[1]]
+  # sex_means[[s]] <- CovFMean(F1$Sigmas[,,host_sex$sex == sexes[s]])$Mout[[1]]
+  sex_means[[s]] <- estcov(Sigmas[,,host_sex$sex == sexes[s]], method = "Euclidean")$mean
 }
 
 # ------------------------------------------------------------------------------
@@ -467,7 +459,7 @@ between_sum <- 0
 for(i in 1:K) {
   grp <- groups[i]
   n_i <- sum(host_groups == grp)
-  d <- dist4cov(group_means[[i]], F1$mean)$dist**2
+  d <- dist4cov(group_means[[i]], cov_mean$mean)$dist**2
   between_sum <- between_sum + (n_i * d)
 }
 numerator <- between_sum / (K-1)
@@ -477,7 +469,7 @@ for(i in 1:K) {
   grp <- groups[i]
   idx_i <- which(host_groups$grp == grp)
   for(j in idx_i) {
-    d <- dist4cov(F1$Sigmas[,,j], group_means[[i]])$dist**2
+    d <- dist4cov(Sigmas[,,j], group_means[[i]])$dist**2
     within_sum <- within_sum + d
   }
 }
@@ -501,7 +493,7 @@ between_sum <- 0
 for(i in 1:K) {
   sex <- sexes[i]
   n_i <- sum(host_sex == sex)
-  d <- dist4cov(sex_means[[i]], F1$mean)$dist**2
+  d <- dist4cov(sex_means[[i]], cov_mean$mean)$dist**2
   between_sum <- between_sum + (n_i * d)
 }
 numerator <- between_sum / (K-1)
@@ -511,7 +503,7 @@ for(i in 1:K) {
   sex <- sexes[i]
   idx_i <- which(host_sex$sex == sex)
   for(j in idx_i) {
-    d <- dist4cov(F1$Sigmas[,,j], sex_means[[i]])$dist**2
+    d <- dist4cov(Sigmas[,,j], sex_means[[i]])$dist**2
     within_sum <- within_sum + d
   }
 }

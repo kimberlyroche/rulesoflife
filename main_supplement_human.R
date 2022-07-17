@@ -554,63 +554,6 @@ all_scores <- rbind(all_scores,
                                n_subjects = 56))
 
 # ------------------------------------------------------------------------------
-#   Quick stats
-# ------------------------------------------------------------------------------
-
-cat(paste0("Median median corr. strength in Johnson et al.:",
-           round(all_scores %>% filter(dataset == "Johnson et al.") %>% summarize(x = median(X2)) %>% pull(x), 3),
-           "\n"))
-
-cor.test(all_scores %>% filter(dataset == "Amboseli") %>% pull(X1),
-         all_scores %>% filter(dataset == "Amboseli") %>% pull(X2), method = "spearman")
-
-cor.test(all_scores %>% filter(dataset == "DIABIMMUNE") %>% pull(X1),
-         all_scores %>% filter(dataset == "DIABIMMUNE") %>% pull(X2), method = "spearman")
-
-cor.test(all_scores %>% filter(dataset == "Johnson et al.") %>% pull(X1),
-         all_scores %>% filter(dataset == "Johnson et al.") %>% pull(X2), method = "spearman")
-
-temp <- all_scores %>%
-  mutate(score = X1*X2)
-
-temp %>%
-  filter(dataset == "Amboseli") %>%
-  summarize(med_mcs = round(median(X2), 3),
-            p50 = round(median(score), 3),
-            p90 = round(quantile(score, probs = c(0.9)), 3),
-            p95 = round(quantile(score, probs = c(0.95)), 3))
-
-temp %>%
-  filter(dataset == "DIABIMMUNE") %>%
-  summarize(med_mcs = round(median(X2), 3),
-            p50 = round(median(score), 3),
-            p90 = round(quantile(score, probs = c(0.9)), 3),
-            p95 = round(quantile(score, probs = c(0.95)), 3))
-
-temp %>%
-  filter(dataset == "Johnson et al.") %>%
-  summarize(med_mcs = round(median(X2), 3),
-            p50 = round(median(score), 3),
-            p90 = round(quantile(score, probs = c(0.9)), 3),
-            p95 = round(quantile(score, probs = c(0.95)), 3))
-
-temp2 <- temp %>%
-  filter(dataset == "Amboseli") %>%
-  arrange(desc(score)) %>%
-  dplyr::select(c(score, sign))
-
-table(temp2$sign[1:round(nrow(temp)*0.01)])
-table(temp2$sign[1:round(nrow(temp)*0.025)])
-
-temp2 <- temp %>%
-  filter(dataset == "DIABIMMUNE") %>%
-  arrange(desc(score)) %>%
-  dplyr::select(c(score, sign))
-
-table(temp2$sign[1:round(nrow(temp)*0.01)])
-table(temp2$sign[1:round(nrow(temp)*0.025)])
-
-# ------------------------------------------------------------------------------
 #   Figure panels
 # ------------------------------------------------------------------------------
 
@@ -874,11 +817,11 @@ ggsave(file.path("output", "figures", "human_studies.svg"),
 
 # Association -- ABRP x DIABIMMUNE
 summary(lm(score.y ~ score.x, data = comp_scores %>% filter(dataset != "Johnson et al.")))
-# beta = 0.456, p-value = 0.0152
+# beta = 0.449, p-value = 0.0226
 
 # Association -- ABRP x Johnson et al.
 summary(lm(score.y ~ score.x, data = comp_scores %>% filter(dataset != "DIABIMMUNE")))
-# beta = -0.222, p-value = 0.0628
+# beta = -0.222, p-value = 0.0708
 
 # ------------------------------------------------------------------------------
 #   Supplemental Figure 12 panels
@@ -979,14 +922,14 @@ p <- plot_grid(s1, s2, legend, ncol = 3,
                label_x = -0.01,
                scale = 0.95)
 
-ggsave("C:/Users/kimbe/Desktop/rug_johnson.svg",
+ggsave(file.path("output", "figures", "rug_johnson.svg"),
        s1,
        dpi = 100,
        units = "in",
        height = 4,
        width = 6)
 
-ggsave("C:/Users/kimbe/Desktop/rug_diabimmune.svg",
+ggsave(file.path("output", "figures", "rug_diabimmune.svg"),
        s2,
        dpi = 100,
        units = "in",
@@ -1000,12 +943,12 @@ ggsave(file.path("output", "figures", "S12.svg"),
        height = 4,
        width = 9)
 
-cat(paste0("Median host-level contribution (Amboseli): ",
-           round(median(minimizing_proportions %>% filter(dataset == "Amboseli") %>% pull(p)), 2), "\n"))
-cat(paste0("Median host-level contribution (DIABIMMUNE): ",
-           round(median(minimizing_proportions %>% filter(dataset == "DIABIMMUNE") %>% pull(p)), 2), "\n"))
-cat(paste0("Median host-level contribution (Johnson et al.): ",
-           round(median(minimizing_proportions %>% filter(dataset == "Johnson et al.") %>% pull(p)), 2), "\n"))
+# cat(paste0("Median host-level contribution (Amboseli): ",
+#            round(median(minimizing_proportions %>% filter(dataset == "Amboseli") %>% pull(p)), 2), "\n"))
+# cat(paste0("Median host-level contribution (DIABIMMUNE): ",
+#            round(median(minimizing_proportions %>% filter(dataset == "DIABIMMUNE") %>% pull(p)), 2), "\n"))
+# cat(paste0("Median host-level contribution (Johnson et al.): ",
+#            round(median(minimizing_proportions %>% filter(dataset == "Johnson et al.") %>% pull(p)), 2), "\n"))
 
 # ------------------------------------------------------------------------------
 #
@@ -1034,8 +977,9 @@ for(this_dataset in c("Johnson et al.", "DIABIMMUNE", "Amboseli")) {
 #               "universality"...
 # ------------------------------------------------------------------------------
 
-for(this_dataset in c("Johnson et al.", "DIABIMMUNE", "Amboseli")) {
-  subset_scores <- all_scores %>%
+# for(this_dataset in c("Johnson et al.", "DIABIMMUNE", "Amboseli")) {
+for(this_dataset in c("Amboseli", "DIABIMMUNE")) {
+    subset_scores <- all_scores %>%
     filter(dataset == this_dataset) %>%
     mutate(score = X1*X2) %>%
     arrange(desc(score))

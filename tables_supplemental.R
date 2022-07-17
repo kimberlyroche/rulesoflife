@@ -4,7 +4,7 @@ library(rulesoflife)
 library(tidyverse)
 library(ape)
 
-source("ggplot_fix.R")
+# source("ggplot_fix.R")
 
 # ------------------------------------------------------------------------------
 #   Print table of all phyla / families / ASVs
@@ -46,6 +46,7 @@ K80 <- sequence_distance(distance_type = "K80")
 #   Print table of top universal pairs
 # ------------------------------------------------------------------------------
 
+data <- load_data(tax_level = "ASV")
 output_dir <- "asv_days90_diet25_scale1"
 rug_obj <- summarize_Sigmas(output_dir)
 
@@ -117,6 +118,6 @@ for(percent in percents) {
               quote = FALSE,
               row.names = FALSE)
 
-  print(k)
-  print(table(table_df$consensus_sign) / k)
+  # print(k)
+  # print(table(table_df$consensus_sign) / k)
 }
