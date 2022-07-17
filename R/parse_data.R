@@ -193,9 +193,7 @@ filter_data <- function(tax_level = "ASV", host_sample_min = 75,
   tax <- tax_table(merged_data)@.Data
   merge_OTU <- rownames(tax)[merge_idx]
 
-  dim(otu_table(merged_data))
-
-  save_obj <- list(merged_data = pruned_data, merge_OTU = merge_OTU)
+  save_obj <- list(merged_data = merged_data, merge_OTU = merge_OTU)
 
   filename <- file.path("input", paste0("filtered_",
                                         tax_level,

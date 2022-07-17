@@ -10,7 +10,8 @@ filter_data(
   tax_level = "ASV",
   host_sample_min = 75,
   count_threshold = 1,
-  sample_threshold = 0.2
+  sample_threshold = 0.2,
+  seq_similarity_threshold = 0.99
 )
 }
 \arguments{
