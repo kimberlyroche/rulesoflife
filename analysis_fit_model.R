@@ -41,6 +41,8 @@ if(!(opt$tax_level %in% c("phylum", "family", "ASV"))) {
   stop("Invalid taxonomic level!")
 }
 
+cat(paste0("Tax level is: ", opt$tax_level, "\n"))
+
 data <- load_data(tax_level = opt$tax_level)
 
 fit <- fit_GP(sname = opt$sname,
