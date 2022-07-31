@@ -81,21 +81,26 @@ p1 <- plot_grid(y_plot, m_plot, e_plot, c_plot,
 
 # Pull the already-parsed MAP estimates of dynamics from this object, calculated
 # by `analysis_compute_Frechets.R`
-F1 <- readRDS(file.path("output", "Frechet_1_corr.rds"))
+# F1 <- readRDS(file.path("output", "Frechet_1_corr.rds"))
 
 # Calculate the mean using the `frechet` package
-F1$mean <- CovFMean(F1$Sigmas)$Mout[[1]]
+# F1$mean <- CovFMean(F1$Sigmas)$Mout[[1]]
+# N <- dim(F1$Sigmas)[3]
+# global_mean <- F1$mean
 
-N <- dim(F1$Sigmas)[3]
+Sigmas <- pull_Sigmas("asv_days90_diet25_scale1")
+cov_mean <- estcov(Sigmas, method = "Euclidean")
 
-global_mean <- F1$mean
+N <- dim(Sigmas)[3]
+global_mean <- cov_mean$mean
 mix <- seq(from = 0, to = 1, by = 0.05)
 mins <- NULL
 p1_real <- NULL
 legend <- NULL
 # p1 <- NULL
 for(h in 1:N) {
-  host_obs <- F1$Sigmas[,,h]
+  # host_obs <- F1$Sigmas[,,h]
+  host_obs <- Sigmas[,,h]
   host_residual <- host_obs - global_mean
   diag(host_residual) <- 1
   if(is.null(p1)) {

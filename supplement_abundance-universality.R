@@ -151,19 +151,19 @@ fit <- wilcox.test(plot_df2 %>% filter(top == "Top 2.5%" & partner == "Lesser") 
                    plot_df2 %>% filter(top != "Top 2.5%" & partner == "Lesser") %>% pull(mean),
                    alternative = "two.sided",
                    conf.int = TRUE)
-cat(paste0("Difference in location (lesser): ", round(fit$estimate, 3), " (p-value = ",
+cat(paste0("Difference in location (panel B, lesser): ", round(fit$estimate, 3), " (p-value = ",
            round(fit$p.value, 5), ")\n"))
 
 fit <- wilcox.test(plot_df2 %>% filter(top == "Top 2.5%" & partner == "Greater") %>% pull(mean),
                    plot_df2 %>% filter(top != "Top 2.5%" & partner == "Greater") %>% pull(mean),
                    alternative = "two.sided",
                    conf.int = TRUE)
-cat(paste0("Difference in location (greater): ", round(fit$estimate, 3), " (p-value = ",
+cat(paste0("Difference in location (panel B, greater): ", round(fit$estimate, 3), " (p-value = ",
            round(fit$p.value, 5), ")\n"))
 
 fit <- wilcox.test(plot_df %>% filter(top_factor == "Top 2.5%") %>% pull(delta),
                    plot_df %>% filter(top_factor != "Top 2.5%") %>% pull(delta),
                    alternative = "two.sided",
                    conf.int = TRUE)
-cat(paste0("Difference in location (greater): ", round(fit$estimate, 3), " (p-value = ",
+cat(paste0("Difference in location (panel C): ", round(fit$estimate, 3), " (p-value = ",
            round(fit$p.value, 5), ")\n"))

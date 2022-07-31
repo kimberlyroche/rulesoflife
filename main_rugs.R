@@ -33,10 +33,6 @@ rug_obj <- summarize_Sigmas(output_dir = "asv_days90_diet25_scale1")
 #   Enrichment statistics for sign
 # ------------------------------------------------------------------------------
 
-# ASV
-# ASV_sign <- sign(c(rug_obj$rug))
-# binom.test(table(ASV_sign)[2], length(ASV_sign), 0.5)
-
 asv_column_order <- NULL
 legend <- NULL
 
@@ -80,9 +76,6 @@ plot_breaks <- names(name_map)
 
 p2 <- ggplot(rug, aes(x = pair, y = host)) +
   geom_raster(aes(fill = correlation)) +
-  # scale_fill_gradient2(low = "navy", mid = "white", high = "red", midpoint = 0,
-  #                      guide = guide_colorbar(frame.colour = "black",
-  #                                             ticks.colour = "black")) +
   scale_fill_gradientn(limits = c(-1,1), colors = c("navy", "white", "red"),
                        guide = guide_colorbar(frame.colour = "black",
                                               ticks.colour = "black")) +
@@ -92,11 +85,8 @@ p2 <- ggplot(rug, aes(x = pair, y = host)) +
        x = "ASV pairs",
        y = "hosts",
        title = "ASVs") +
-  # scale_y_continuous(expand = c(0, 0)) +
   theme(axis.text.x = element_blank(),
-        # axis.text.y = element_blank(),
         axis.ticks.x = element_blank(),
-        # axis.ticks.y = element_blank(),
         axis.title = element_text(size = 12, face = "plain"),
         plot.title = element_blank(),
         plot.margin = margin(t = 20, r = 10, b = 10, l = 10))
@@ -130,22 +120,8 @@ rug <- pivot_longer(as.data.frame(rug), !c(host_name, host), names_to = "pair", 
 rug$pair <- as.numeric(rug$pair)
 rug$correlation <- as.numeric(rug$correlation)
 
-# temp <- rug %>%
-#   dplyr::select(host, host_name) %>%
-#   distinct() %>%
-#   arrange(host_name)
-# name_map <- unlist(temp$host_name)
-# names(name_map) <- temp$host
-#
-# # Mute host names not in the shortlist
-# name_map <- name_map[name_map %in% use_labels]
-# plot_breaks <- names(name_map)
-
 p1 <- ggplot(rug, aes(x = pair, y = host)) +
   geom_raster(aes(fill = correlation)) +
-  # scale_fill_gradient2(low = "navy", mid = "white", high = "red", midpoint = 0,
-  #                      guide = guide_colorbar(frame.colour = "black",
-  #                                             ticks.colour = "black")) +
   scale_fill_gradientn(limits = c(-1,1), colors = c("navy", "white", "red"),
                        guide = guide_colorbar(frame.colour = "black",
                                               ticks.colour = "black")) +
@@ -155,11 +131,8 @@ p1 <- ggplot(rug, aes(x = pair, y = host)) +
        x = "ASV pairs",
        y = "hosts",
        title = "ASVs") +
-  # scale_y_continuous(expand = c(0, 0)) +
   theme(axis.text.x = element_blank(),
-        # axis.text.y = element_blank(),
         axis.ticks.x = element_blank(),
-        # axis.ticks.y = element_blank(),
         axis.title = element_text(size = 12, face = "plain"),
         plot.title = element_blank(),
         plot.margin = margin(t = 20, r = 10, b = 10, l = 10),
@@ -180,7 +153,6 @@ prow1 <- plot_grid(p, legend, ncol = 2, rel_widths = c(1, 0.13))
 # ------------------------------------------------------------------------------
 
 alpha <- 0.6
-# hosts <- c("DUI", "DUX", "LIW", "PEB", "VET")
 
 # Find common baseline
 pred_objs <- NULL
@@ -389,10 +361,7 @@ render_trajectories <- function(tax_indices, host_shortlist, host_labels, host_y
          y = "") +
     scale_x_continuous(expand = c(0.01, 0.01)) +
     scale_y_continuous(breaks = unlist(breaks$y_mean), labels = name_map) +
-    # scale_y_continuous(expand = c(0.01, 0.01)) +
     theme(panel.grid.major = element_blank(),
-          # axis.text.y = element_blank(),
-          # axis.ticks.y = element_blank(),
           panel.grid.minor = element_blank())
 
   p3
@@ -402,7 +371,7 @@ render_trajectories <- function(tax_indices, host_shortlist, host_labels, host_y
 # p_test <- render_trajectories(c(1,9), host_shortlist[c(2,3,4,5,1)], use_labels[c(1,5,3,4,2)], host_y_offset = 5, with_season = TRUE)
 
 p3 <- render_trajectories(c(2,3), host_shortlist[c(2,3,4,5,1)], use_labels[c(1,5,3,4,2)], host_y_offset = 5)
-p4 <- render_trajectories(c(31,114), host_shortlist[c(2,3,4,5,1)], use_labels[c(1,5,3,4,2)], host_y_offset = 10)
+p4 <- render_trajectories(c(15,107), host_shortlist[c(2,3,4,5,1)], use_labels[c(1,5,3,4,2)], host_y_offset = 10)
 
 prow2 <- plot_grid(p4, NULL, p3, NULL, ncol = 4,
                    labels = c("C", "", "D", ""),

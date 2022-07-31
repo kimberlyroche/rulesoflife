@@ -334,9 +334,9 @@ s1 <-  ggplot(rug, aes(x = pair, y = host)) +
         axis.text.y = element_blank(),
         axis.ticks.y = element_blank()) +
   labs(fill = "Correlation") +
-  theme(axis.text = element_text(size = 7),
-        axis.title = element_text(size = 12, face = "plain"),
-        legend.title = element_text(size = 12))
+  theme(axis.title = element_text(size = 14, face = "plain"),
+        legend.title = element_text(size = 14),
+        legend.text = element_text(size = 12))
 
 scores <- apply(johnson_vec, 2, function(x) calc_universality_score(x, return_pieces = TRUE))
 consensus_sign <- apply(johnson_vec, 2, calc_consensus_sign)
@@ -518,9 +518,9 @@ s2 <- ggplot(rug, aes(x = pair, y = host)) +
         axis.text.y = element_blank(),
         axis.ticks.y = element_blank()) +
   labs(fill = "Correlation") +
-  theme(axis.text = element_text(size = 7),
-        axis.title = element_text(size = 12, face = "plain"),
-        legend.title = element_text(size = 12))
+  theme(axis.title = element_text(size = 14, face = "plain"),
+        legend.title = element_text(size = 14),
+        legend.text = element_text(size = 12))
 
 scores <- apply(diabimmune_vec, 2, function(x) calc_universality_score(x, return_pieces = TRUE))
 consensus_sign <- apply(diabimmune_vec, 2, calc_consensus_sign)
@@ -577,7 +577,11 @@ row2 <- ggplot(all_scores %>% filter(sign %in% c(-1,1)),
        y = "median correlation strength",
        fill = "Consensus sign") +
   guides(alpha = "none",
-         color = "none")
+         color = "none") +
+  theme(axis.title.x = element_text(size = 14),
+        axis.title.y = element_text(size = 14),
+        legend.title = element_text(size = 14),
+        legend.text = element_text(size = 12))
 
 # ------------------------------------------------------------------------------
 #   Compare the most universal taxon pairs in DIABIMMUNE and ABRP
@@ -728,9 +732,10 @@ comp_scores$label <- comp_scores$friendly.x
 comp_scores$label[comp_scores$score.x*comp_scores$score.y < 0.05] <- "other family pairs"
 comp_scores$label <- factor(comp_scores$label)
 
-d_palette <- c(unname(pals::alphabet2())[-c(4,5,9)][1:13], "#dddddd")
+d_palette <- c(unname(pals::alphabet2())[-c(4,5,9)][1:11], "#dddddd")
 names(d_palette) <- levels(comp_scores$label)
 
+pt_sz <- 3
 s3 <- ggplot() +
   geom_smooth(data = comp_scores %>% filter(dataset.y == "DIABIMMUNE"),
               mapping = aes(x = score.x, y = score.y),
@@ -740,7 +745,7 @@ s3 <- ggplot() +
               size = 0.5) +
   geom_point(data = comp_scores %>% filter(dataset.y == "DIABIMMUNE"),
              mapping = aes(x = score.x, y = score.y, fill = label, color = dataset),
-             size =  3.5,
+             size =  pt_sz,
              shape = 21,
              stroke = 1.5) +
   geom_smooth(data = comp_scores %>% filter(dataset.y == "Johnson et al."),
@@ -751,7 +756,7 @@ s3 <- ggplot() +
               size = 0.5) +
   geom_point(data = comp_scores %>% filter(dataset.y == "Johnson et al."),
              mapping = aes(x = score.x, y = score.y, fill = label, color = dataset),
-             size =  3.5,
+             size =  pt_sz,
              shape = 21,
              stroke = 1.5) +
   scale_fill_manual(values = d_palette) +
@@ -762,7 +767,11 @@ s3 <- ggplot() +
   labs(x = "\nAmboseli score",
        y = "DIABIMMUNE or Johnson et al. score\n",
        fill = "Taxon pair",
-       color = "Data set")
+       color = "Data set") +
+  theme(axis.title.x = element_text(size = 14),
+        axis.title.y = element_text(size = 14),
+        legend.title = element_text(size = 14),
+        legend.text = element_text(size = 12))
 
 s12 <- plot_grid(s2 + theme(legend.position = "none"),
                  NULL,
@@ -795,13 +804,14 @@ p <- plot_grid(s12,
                NULL,
                row2 + theme(text = element_text(size = 13)),
                NULL,
-               plot_grid(NULL, s3 + theme(text = element_text(size = 13)), NULL, ncol = 3,
-                         rel_widths = c(0.07, 1, 0.07),
+               plot_grid(NULL, s3 + theme(text = element_text(size = 14)), NULL, ncol = 3,
+                         rel_widths = c(0.03, 1, 0.03),
                          labels = c("", "D", ""),
                          label_size = 19,
-                         label_y = 1.02),
+                         label_x = -0.02,
+                         label_y = 1.05),
                ncol = 1,
-               rel_heights = c(0.9, 0.02, 0.85, 0.15, 1.2),
+               rel_heights = c(0.9, 0.01, 0.85, 0.05, 1.2),
                labels = c("", "", "C", "", ""),
                label_size = 18,
                label_y = 1.02,
@@ -812,7 +822,7 @@ ggsave(file.path("output", "figures", "human_studies.svg"),
        p,
        dpi = 100,
        units = "in",
-       height = 12,
+       height = 11.5,
        width = 10)
 
 # Association -- ABRP x DIABIMMUNE
@@ -908,40 +918,40 @@ summary(lm(score.y ~ score.x, data = comp_scores %>% filter(dataset != "DIABIMMU
 #                label_x = -0.01,
 #                scale = 0.95)
 
-legend <- get_legend(s1)
-s1 <- s1 +
-  theme(legend.position = "none")
-s2 <- s2 +
-  theme(legend.position = "none")
+# legend <- get_legend(s1)
+# s1 <- s1 +
+#   theme(legend.position = "none")
+# s2 <- s2 +
+#   theme(legend.position = "none")
+#
+# p <- plot_grid(s1, s2, legend, ncol = 3,
+#                rel_widths = c(1, 1, 0.25),
+#                labels = c("A", "B", ""),
+#                label_size = 18,
+#                label_y = 1.01,
+#                label_x = -0.01,
+#                scale = 0.95)
 
-p <- plot_grid(s1, s2, legend, ncol = 3,
-               rel_widths = c(1, 1, 0.25),
-               labels = c("A", "B", ""),
-               label_size = 18,
-               label_y = 1.01,
-               label_x = -0.01,
-               scale = 0.95)
-
-ggsave(file.path("output", "figures", "rug_johnson.svg"),
-       s1,
-       dpi = 100,
-       units = "in",
-       height = 4,
-       width = 6)
-
-ggsave(file.path("output", "figures", "rug_diabimmune.svg"),
-       s2,
-       dpi = 100,
-       units = "in",
-       height = 4,
-       width = 6)
-
-ggsave(file.path("output", "figures", "S12.svg"),
-       p,
-       dpi = 100,
-       units = "in",
-       height = 4,
-       width = 9)
+# ggsave(file.path("output", "figures", "rug_johnson.svg"),
+#        s1,
+#        dpi = 100,
+#        units = "in",
+#        height = 4,
+#        width = 6)
+#
+# ggsave(file.path("output", "figures", "rug_diabimmune.svg"),
+#        s2,
+#        dpi = 100,
+#        units = "in",
+#        height = 4,
+#        width = 6)
+#
+# ggsave(file.path("output", "figures", "S12.svg"),
+#        p,
+#        dpi = 100,
+#        units = "in",
+#        height = 4,
+#        width = 9)
 
 # cat(paste0("Median host-level contribution (Amboseli): ",
 #            round(median(minimizing_proportions %>% filter(dataset == "Amboseli") %>% pull(p)), 2), "\n"))

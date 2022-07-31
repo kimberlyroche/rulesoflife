@@ -8,6 +8,7 @@ library(RColorBrewer)
 library(fido)
 library(ape)
 library(scales)
+library(ggforce)
 
 data <- load_data(tax_level = "ASV")
 rug_asv <- summarize_Sigmas(output_dir = "asv_days90_diet25_scale1")
@@ -31,50 +32,31 @@ levels(plot_df$sign) <- c("positive", NA, "negative")
 phylo_neg_mean <- mean(phy_dist[signs < 0])
 phylo_pos_mean <- mean(phy_dist[signs > 0])
 
-p1 <- ggplot(plot_df %>% filter(sign == "positive"), aes(x = d, y = score)) +
-  geom_point(size = 2, shape = 21, fill = "#888888") +
-  theme_bw() +
-  labs(x = "phylogenetic distance",
-       y = "universality score",
-       fill = "Consensus\ncorrelation sign")
-
-# p1 <- ggplot(plot_df %>% filter(sign == "positive"), aes(x = d, y = score, fill = score)) +
-p1 <- ggplot(plot_df %>% filter(sign == "positive"), aes(x = d, y = score)) +
-  geom_point(size = 2, shape = 21, fill = "red") +
-  xlim(c(min(plot_df$d), max(plot_df$d))) +
-  ylim(c(min(plot_df$score), max(plot_df$score))) +
-  # scale_fill_gradient2(low = "white", high = "red") +
+p1 <- ggplot(plot_df %>%
+         filter(sign == "positive") %>%
+         mutate(binned_d = cut(d, seq(from = 0, to = 0.6, by = 0.1))),
+       aes(x = binned_d, y = score)) +
+  geom_sina(size = 2, shape = 21, fill = "red") +
+  geom_boxplot(width = 0.25, outlier.shape = NA) +
   theme_bw() +
   labs(x = "phylogenetic distance",
        y = "universality score",
        fill = "Consensus\ncorrelation sign") +
-  theme(legend.position = "none")
+  theme(legend.position = "none",
+        axis.text.x = element_text(angle = 45, vjust = 1, hjust=1))
 
-temp <- plot_df %>%
-  filter(sign == "positive")
-
-fit <- summary(lm(scale(temp$score) ~ scale(temp$d)))
-cat(paste0("Beta (distance x score): ", round(coef(fit)[2,1], 3), "\n"))
-cat(paste0("\tp-value: ", round(coef(fit)[2,4], 3), "\n"))
-
-# p2 <- ggplot(plot_df %>% filter(sign == "negative"), aes(x = d, y = score, fill = score)) +
-p2 <- ggplot(plot_df %>% filter(sign == "negative"), aes(x = d, y = score)) +
-  geom_point(size = 2, shape = 21, fill = muted("navy")) +
-  xlim(c(min(plot_df$d), max(plot_df$d))) +
-  ylim(c(min(plot_df$score), max(plot_df$score))) +
-  # scale_fill_gradient2(low = "white", high = muted("navy")) +
+p2 <- ggplot(plot_df %>%
+         filter(sign == "negative") %>%
+         mutate(binned_d = cut(d, seq(from = 0, to = 0.6, by = 0.1))),
+       aes(x = binned_d, y = score)) +
+  geom_sina(size = 2, shape = 21, fill = muted("navy")) +
+  geom_boxplot(width = 0.25, outlier.shape = NA) +
   theme_bw() +
   labs(x = "phylogenetic distance",
        y = "universality score",
        fill = "Consensus\ncorrelation sign") +
-  theme(legend.position = "none")
-
-temp <- plot_df %>%
-  filter(sign == "negative")
-
-fit <- summary(lm(scale(temp$score) ~ scale(temp$d)))
-cat(paste0("Beta (distance x score): ", round(coef(fit)[2,1], 3), "\n"))
-cat(paste0("\tp-value: ", round(coef(fit)[2,4], 3), "\n"))
+  theme(legend.position = "none",
+        axis.text.x = element_text(angle = 45, vjust = 1, hjust=1))
 
 legend <- get_legend(ggplot(data.frame(x = 1:2, y = 1:2, sign = factor(c("1", "-1"), levels = c("1", "-1"))),
                             aes(x = x, y = y, fill = sign)) +
@@ -125,115 +107,38 @@ all_pairs_noNA_tl <- all_pairs_noNA %>%
   filter(topleft == TRUE)
 frequencies_subset <- table(c(all_pairs_noNA_tl$tax1, all_pairs_noNA_tl$tax2))
 
-for(fam in names(frequencies_subset)) {
-  fam_in_sample <- unname(unlist(frequencies_subset[fam]))
-  sample_size <- unname(unlist(sum(frequencies_subset)))
-  fam_in_bg <- unname(unlist(frequencies[fam]))
-  bg_size <- unname(unlist(sum(frequencies)))
-  # ctab <- matrix(c(fam_in_sample,
-  #                  sample_size - fam_in_sample,
-  #                  fam_in_bg,
-  #                  bg_size - fam_in_bg),
-  #                2, 2, byrow = TRUE)
-  ctab <- matrix(c(fam_in_sample,
-                   fam_in_bg - fam_in_sample,
-                   sample_size - fam_in_sample,
-                   bg_size - fam_in_bg),
-                 2, 2, byrow = TRUE)
-  prob <- fisher.test(ctab, alternative = "greater")$p.value
-  enrichment <- rbind(enrichment,
-                      data.frame(name = fam,
-                                 type = "family",
-                                 location = "Low phylogenetic distance, high median association strength",
-                                 pvalue = prob,
-                                 qvalue = NA))
-}
-
-# Multiple test correction
-sel_idx <- which(enrichment$type == "family" & enrichment$location == "Low phylogenetic distance, high median association strength")
-enrichment$qvalue[sel_idx] <- p.adjust(enrichment$pvalue[sel_idx], method = "BH")
-
-signif <- c()
-for(i in sel_idx) {
-  q <- enrichment$qvalue[i]
-  if(q < 0.05) {
-    signif <- c(signif, enrichment$name[i])
-    cat(paste0("ASV family: ", enrichment$name[i], ", adj. p-value: ", round(q, 3), "\n"))
-  }
-}
-
-p3 <- plot_enrichment(frequencies_subset1 = frequencies_subset,
-                      frequencies_subset2 = NULL,
-                      frequencies = frequencies,
-                      significant_families1 = signif,
-                      significant_families2 = NULL,
-                      plot_height = 6,
-                      plot_width = 3,
-                      legend_topmargin = 100,
-                      use_pairs = FALSE,
-                      rel_widths = c(1, 0.35, 1, 0.4, 2),
-                      labels = c("overall\n", "low distance\nhigh univ."),
-                      save_name = NULL,
-                      suppress_y = TRUE)
+e_obj <- plot_enrichment(frequencies,
+                         frequencies_subset,
+                         type_label = "family",
+                         location_label = "Low phylogenetic distance, high median association strength",
+                         enrichment = enrichment,
+                         cap_size = 5,
+                         pt_sz = 3,
+                         title_text_sz = 14,
+                         text_sz = 12,
+                         stroke_sz = 1.25)
+p3 <- e_obj$p
+enrichment <- e_obj$enrichment
 
 # ------------------------------------------------------------------------------
 #   Family-pair enrichment
 # ------------------------------------------------------------------------------
 
 frequencies <- table(all_pairs_noNA$taxpair)
-
 frequencies_subset <- table(all_pairs_noNA$taxpair[all_pairs_noNA$topleft == TRUE])
 
-for(fam in names(frequencies_subset)) {
-  fam_in_sample <- unname(unlist(frequencies_subset[fam]))
-  sample_size <- unname(unlist(sum(frequencies_subset)))
-  fam_in_bg <- unname(unlist(frequencies[fam]))
-  bg_size <- unname(unlist(sum(frequencies)))
-  # ctab <- matrix(c(fam_in_sample,
-  #                  sample_size - fam_in_sample,
-  #                  fam_in_bg,
-  #                  bg_size - fam_in_bg),
-  #                2, 2, byrow = TRUE)
-  ctab <- matrix(c(fam_in_sample,
-                   fam_in_bg - fam_in_sample,
-                   sample_size - fam_in_sample,
-                   bg_size - fam_in_bg),
-                 2, 2, byrow = TRUE)
-  prob <- fisher.test(ctab, alternative = "greater")$p.value
-  enrichment <- rbind(enrichment,
-                      data.frame(name = fam,
-                                 type = "family-pair",
-                                 location = "Low phylogenetic distance, high median association strength",
-                                 pvalue = prob,
-                                 qvalue = NA))
-}
-
-# Multiple test correction
-sel_idx <- which(enrichment$type == "family-pair" & enrichment$location == "Low phylogenetic distance, high median association strength")
-enrichment$qvalue[sel_idx] <- p.adjust(enrichment$pvalue[sel_idx], method = "BH")
-
-signif <- c()
-for(i in sel_idx) {
-  q <- enrichment$qvalue[i]
-  if(q < 0.05) {
-    signif <- c(signif, enrichment$name[i])
-    cat(paste0("ASV family: ", enrichment$name[i], ", adj. p-value: ", round(q, 3), "\n"))
-  }
-}
-
-p4 <- plot_enrichment(frequencies_subset1 = frequencies_subset,
-                      frequencies_subset2 = NULL,
-                      frequencies = frequencies,
-                      significant_families1 = signif,
-                      significant_families2 = NULL,
-                      plot_height = 6,
-                      plot_width = 6,
-                      legend_topmargin = 100,
-                      use_pairs = TRUE,
-                      rel_widths = c(1, 0.3, 1, 1, 2.8),
-                      labels = c("overall\n", "low distance\nhigh univ."),
-                      save_name = NULL,
-                      suppress_y = TRUE)
+e_obj <- plot_enrichment(frequencies,
+                         frequencies_subset,
+                         type_label = "family-pair",
+                         location_label = "Low phylogenetic distance, high median association strength",
+                         enrichment = enrichment,
+                         cap_size = 5,
+                         pt_sz = 3,
+                         title_text_sz = 14,
+                         text_sz = 12,
+                         stroke_sz = 1.25)
+p4 <- e_obj$p
+enrichment <- e_obj$enrichment
 
 # ------------------------------------------------------------------------------
 #   Plot all panels
@@ -251,33 +156,44 @@ prow1 <- plot_grid(p1,
                label_size = 18,
                scale = common_scale,
                rel_widths = c(1, 1, 0.3))
-prow2 <- plot_grid(NULL, p3, NULL, p4, NULL, ncol = 5,
-               labels = c("", "C", "", "D", ""),
-               label_size = 18,
-               label_x = -0.03,
-               label_y = 1.02,
-               scale = common_scale,
-               rel_widths = c(0.45, 0.85, 0.1, 1.1, 0.5))
+# prow2 <- plot_grid(NULL, p3, NULL, p4, NULL, ncol = 5,
+#                labels = c("", "C", "", "D", ""),
+#                label_size = 18,
+#                label_x = -0.03,
+#                label_y = 1.02,
+#                scale = common_scale,
+#                rel_widths = c(0.45, 0.85, 0.1, 1.1, 0.5))
+prow2 <- plot_grid(p3, p4, NULL, ncol = 3,
+                   labels = c("C", "D", ""),
+                   label_size = 18,
+                   label_x = 0,
+                   label_y = 1.02,
+                   scale = common_scale,
+                   rel_widths = c(1, 1, 0.3))
 p <- plot_grid(prow1, prow2, ncol = 1,
-               rel_heights = c(1, 0.9))
+               rel_heights = c(1, 0.5))
 ggsave(file.path("output", "figures", "phylogenetic.svg"),
        p,
        dpi = 100,
        units = "in",
-       height = 8,
+       height = 7,
        width = 11)
 
 # ------------------------------------------------------------------------------
 #   Write out enrichment results
 # ------------------------------------------------------------------------------
 
-enrichment <- enrichment %>%
-  arrange(location, type, name)
-colnames(enrichment) <- c("ASV family or pair name",
-                          "Type",
-                          "Enrichment evaluated in",
-                          "P-value (Fisher's exact test)",
-                          "Adj. p-value (Benjamini-Hochberg)")
+enrichment %<>%
+  arrange(type, name) %>%
+  dplyr::select(name, type, location, oddsratio, lower95, upper95, pvalue, qvalue) %>%
+  rename(`ASV family or pair name` = name,
+         `Type` = type,
+         `Enrichment evaluated in` = location,
+         `Odds ratio` = oddsratio,
+         `Lower 95% CI` = lower95,
+         `Upper 95% CI` = upper95,
+         `P-value (Fisher's exact test)` = pvalue,
+         `Adj. p-value (Benjamini-Hochberg)` = qvalue)
 write.table(enrichment,
             file = file.path("output", "enrichment_closely-related.tsv"),
             sep = "\t",

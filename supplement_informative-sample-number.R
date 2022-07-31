@@ -10,7 +10,7 @@ library(LaplacesDemon)
 save_fn <- file.path("output", "downsampling_experiment.rds")
 if(!file.exists(save_fn)) {
   T <- 1000
-  D <- 135
+  D <- 126
 
   prop_agree <- NULL
   for(i in 1:1) {
@@ -40,6 +40,7 @@ if(!file.exists(save_fn)) {
     })
 
     for(j in c(10, 20, 30, 40, 50, 75, 100, 200)) {
+      cat(paste0("Downsapling to ", j, " samples\n"))
       # Downsample
       X2 <- matrix(sort(sample(1:ncol(Y), size = j)), 1, j)
       Y2 <- Y[,c(X2)]

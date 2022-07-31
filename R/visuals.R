@@ -773,7 +773,7 @@ plot_clr_vs_diet <- function(sname, tax_idx, counts, metadata) {
 #' @import ggplot2
 #' @import cowplot
 #' @export
-plot_enrichment <- function(frequencies_subset1, frequencies_subset2 = NULL, frequencies,
+plot_enrichment_old <- function(frequencies_subset1, frequencies_subset2 = NULL, frequencies,
                             significant_families1, significant_families2 = NULL,
                             plot_height, plot_width, legend_topmargin, use_pairs = TRUE,
                             rel_widths = c(1, 0.35, 1, 0, 4.5), labels = NULL,
@@ -928,4 +928,127 @@ plot_enrichment <- function(frequencies_subset1, frequencies_subset2 = NULL, fre
   }
 }
 
+#' Plot relative representation of ASV pairs (using family labels)
+#'
+#' @param frequencies table of ASV pairs (labeled as "Family - Family")
+#' and their pverall frequency
+#' @param frequencies_subset table of ASVs or ASV pairs (labeled as
+#' "Family - Family") and their frequency in some subset of case of interest
+#' @param type_label either "family" or "family-pair"
+#' @param location_label a label for the subset, e.g. "high universality, low
+#' synchrony taxon pairs"
+#' @param enrichment optional data.frame onto which enrichment results will be
+#' appended
+#' @param count_threshold minimum abundance at which to evaluate taxon families
+#' or family pairs for enrichment
+#' @param cap_size log2 minimum or maximum value to plot; plotted intervals will
+#' be truncated here
+#' @param pt_sz optional geom_point size
+#' @param title_text_sz optional axis title text size
+#' @param text_sz optional axis text size
+#' @param stroke_sz optional geom_linerange stroke size
+#' @return list containing the plot and enrichment data.frame
+#' @import ggplot2
+#' @import cowplot
+#' @import magrittr
+#' @import dplyr
+#' @export
+plot_enrichment <- function(frequencies,
+                             frequencies_subset,
+                             type_label,
+                             location_label,
+                             enrichment = NULL,
+                             count_threshold = 10,
+                             cap_size = 5,
+                             pt_sz = 3,
+                             title_text_sz = 12,
+                             text_sz = 10,
+                             stroke_sz = 1.25) {
 
+  all_family_palette <- readRDS(file.path("output", "family_palette.rds"))
+  all_family_pair_palette <- readRDS(file.path("output", "family-family_palette.rds"))
+
+  # Test for enrichment statistically
+  for(fam in names(frequencies_subset)) {
+    fam_in_sample <- unname(unlist(frequencies_subset[fam]))
+    sample_size <- unname(unlist(sum(frequencies_subset)))
+    fam_in_bg <- unname(unlist(frequencies[fam]))
+    bg_size <- unname(unlist(sum(frequencies)))
+    ctab <- matrix(c(fam_in_sample,
+                     fam_in_bg - fam_in_sample,
+                     sample_size - fam_in_sample,
+                     bg_size - fam_in_bg),
+                   2, 2, byrow = TRUE)
+    fit <- fisher.test(ctab, alternative = "two.sided")
+    enrichment <- rbind(enrichment,
+                        data.frame(name = fam,
+                                   type = type_label,
+                                   location = location_label,
+                                   oddsratio = unname(fit$estimate),
+                                   pvalue = fit$p.value,
+                                   lower95 = fit$conf.int[1],
+                                   upper95 = fit$conf.int[2],
+                                   threshold = (fam_in_sample < count_threshold &
+                                                  fam_in_bg < count_threshold),
+                                   qvalue = NA))
+  }
+
+  # Multiple test correction
+  sel_idx <- which(enrichment$type == type_label & enrichment$location == location_label)
+  enrichment$qvalue[sel_idx] <- p.adjust(enrichment$pvalue[sel_idx], method = "BH")
+
+  temp_df <- enrichment %>%
+    filter(type == type_label &
+             location == location_label &
+             qvalue < 0.05 &
+             !threshold) %>%
+    mutate(
+      name_short = str_replace(name, " - ", "\n"),
+      capped = case_when(
+        log2(oddsratio) > cap_size |
+          log2(upper95) > cap_size | log2(lower95) < -cap_size ~ TRUE,
+        TRUE ~ FALSE
+      )
+    )
+  temp_df %<>%
+    mutate(
+      oddsratio = case_when(
+        log2(oddsratio) > cap_size ~ 2**cap_size,
+        log2(oddsratio) < -cap_size ~ 2**(-cap_size),
+        TRUE ~ oddsratio
+      ),
+      upper95 = case_when(
+        log2(upper95) > cap_size ~ 2**cap_size,
+        TRUE ~ upper95
+      ),
+      lower95 = case_when(
+        log2(lower95) < -cap_size ~ 2**(-cap_size),
+        TRUE ~ lower95
+      )
+    )
+  temp_df$name_short <- factor(temp_df$name_short)
+
+  if(type_label == "family") {
+    use_palette <- all_family_palette
+  } else {
+    use_palette <- all_family_pair_palette
+  }
+  p <- ggplot(temp_df, aes(x = name_short, y = log2(oddsratio), ymin = log2(lower95),
+                           ymax = log2(upper95),
+                           fill = name)) +
+    geom_hline(yintercept = 0, linetype = "dashed") +
+    geom_linerange(size = 0.75) +
+    geom_point(size = pt_sz, shape = 21, color = "black", stroke = stroke_sz) +
+    scale_x_discrete(limits = rev(levels(temp_df$name_short))) +
+    scale_fill_manual(values = use_palette) +
+    coord_flip() +
+    theme_bw() +
+    theme(axis.title.x = element_text(size = title_text_sz),
+          axis.title.y = element_blank(),
+          axis.text.x = element_text(size = text_sz),
+          axis.text.y = element_text(size = text_sz),
+          legend.position = "none") +
+    labs(y = "log2 odds ratio")
+
+  return(list(p = p, enrichment = enrichment))
+}

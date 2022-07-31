@@ -8,6 +8,7 @@ library(gridGraphics)
 library(doParallel)
 library(foreach)
 library(fido)
+library(magrittr)
 
 palette_fn <- file.path("output", "family_palette.rds")
 fpalette <- readRDS(palette_fn)
@@ -153,7 +154,7 @@ if(!file.exists(save_fn)) {
 #   This uses ~27-28 samples per host on average. We could further thin this.
 # ------------------------------------------------------------------------------
 
-save_fn <- file.path("output", "figures", "saved_synchrony_samples.rds")
+save_fn <- file.path("output", "saved_synchrony_samples.rds")
 if(!file.exists(save_fn)) {
   # Pull host Etas
   # This takes < 30 sec.
@@ -241,8 +242,7 @@ scores <- apply(rug_asv$rug, 2, calc_universality_score)
 mcs <- apply(rug_asv$rug, 2, function(x) median(abs(x)))
 consensus_signs <- apply(rug_asv$rug, 2, calc_consensus_sign)
 
-# The loop below takes ~5-10 minutes to run if `null_cases = TRUE`
-save_fn <- file.path("output", "figures", "saved_synchrony_correlations.rds")
+save_fn <- file.path("output", "saved_synchrony_correlations.rds")
 if(!file.exists(save_fn)) {
   paired_samples_x <- c()
   paired_samples_y <- c()
@@ -256,7 +256,7 @@ if(!file.exists(save_fn)) {
     y <- sampled_list %>%
       filter(partner == 2 & tax_idx == i) %>%
       pull(Eta)
-    if(i == 23) {
+    if(i == 21) {
       paired_samples_x <- c(paired_samples_x, x)
       paired_samples_y <- c(paired_samples_y, y)
     }
@@ -404,8 +404,8 @@ p0 <- ggplot() +
             size = 5,
             hjust = 1,
             color = "black") +
-  scale_fill_manual(values = c("#F25250", "#34CCDE")) +
   theme_bw() +
+  theme(legend.position = "bottom") +
   labs(fill = "Consensus\ncorrelation sign",
        x = "synchrony score",
        y = "universality score")
@@ -675,7 +675,9 @@ if(FALSE) {
 #   Barplots
 # ------------------------------------------------------------------------------
 
-temp <- data.frame(index = 1:134, fam = tax$family[1:134], synchrony = correlations)
+# D here is really D - 1
+D <- n_tax - 1
+temp <- data.frame(index = 1:D, fam = tax$family[1:D], synchrony = correlations)
 temp$seasonal <- "none"
 temp$seasonal[temp$fam %in% seasonal_families$wet] <- "wet"
 temp$seasonal[temp$fam %in% seasonal_families$dry] <- "dry"
@@ -739,7 +741,7 @@ ggsave(file.path("output", "figures", "season_vs_synchrony.svg"),
 # Test for significant enrichment of labeled things and highly synchronous things
 temp$seasonal[temp$fam %in% unlist(seasonal_families)] <- "seasonal"
 summary(aov(temp$synchrony ~ temp$seasonal))
-# p = 0.18
+# p = 0.358
 
 # ------------------------------------------------------------------------------
 #   Boxplots
@@ -848,7 +850,6 @@ for(i in 1:length(topright_pairs)) {
                        all_pairs$idx2 == rug_asv$tax_idx2[topright_pairs[i]]] <- TRUE
 }
 
-# 6105 of 8911 family-family pairs don't involve "NA" families
 all_pairs_noNA <- all_pairs %>%
   filter(tax1 != "NA" & tax2 != "NA")
 
@@ -858,6 +859,9 @@ all_pairs_noNA <- all_pairs_noNA %>%
 # ------------------------------------------------------------------------------
 #   Family enrichment
 # ------------------------------------------------------------------------------
+
+all_family_palette <- readRDS(file.path("output", "family_palette.rds"))
+all_family_pair_palette <- readRDS(file.path("output", "family-family_palette.rds"))
 
 enrichment <- NULL
 
@@ -869,188 +873,69 @@ all_pairs_noNA_tc <- all_pairs_noNA %>%
   filter(topcenter == TRUE)
 frequencies_subset1 <- table(c(all_pairs_noNA_tc$tax1, all_pairs_noNA_tc$tax2))
 
-for(fam in names(frequencies_subset1)) {
-  fam_in_sample <- unname(unlist(frequencies_subset1[fam]))
-  sample_size <- unname(unlist(sum(frequencies_subset1)))
-  fam_in_bg <- unname(unlist(frequencies[fam]))
-  bg_size <- unname(unlist(sum(frequencies)))
-  ctab <- matrix(c(fam_in_sample,
-                   fam_in_bg - fam_in_sample,
-                   sample_size - fam_in_sample,
-                   bg_size - fam_in_bg),
-                 2, 2, byrow = TRUE)
-  prob <- fisher.test(ctab, alternative = "greater")$p.value
-  enrichment <- rbind(enrichment,
-                      data.frame(name = fam,
-                                 type = "family",
-                                 location = "Low synchrony, high universality",
-                                 pvalue = prob,
-                                 qvalue = NA))
-}
-
-# Multiple test correction
-sel_idx <- which(enrichment$type == "family" & enrichment$location == "Low synchrony, high universality")
-enrichment$qvalue[sel_idx] <- p.adjust(enrichment$pvalue[sel_idx], method = "BH")
-
-signif1 <- c()
-for(i in sel_idx) {
-  q <- enrichment$qvalue[i]
-  if(q < 0.05) {
-    signif1 <- c(signif1, enrichment$name[i])
-    cat(paste0("ASV family: ", enrichment$name[i], ", adj. p-value: ", round(q, 3), "\n"))
-  }
-}
+e_obj <- plot_enrichment(frequencies,
+                         frequencies_subset1,
+                         type_label = "family",
+                         location_label = "Low synchrony, high universality",
+                         pt_sz = 2.5,
+                         stroke_sz = 0.8)
+p2a <- e_obj$p
+enrichment <- e_obj$enrichment
 
 # Observed frequency in this region
 all_pairs_noNA_tr <- all_pairs_noNA %>%
   filter(topright == TRUE)
 frequencies_subset2 <- table(c(all_pairs_noNA_tr$tax1, all_pairs_noNA_tr$tax2))
 
-for(fam in names(frequencies_subset2)) {
-  fam_in_sample <- unname(unlist(frequencies_subset2[fam]))
-  sample_size <- unname(unlist(sum(frequencies_subset2)))
-  fam_in_bg <- unname(unlist(frequencies[fam]))
-  bg_size <- unname(unlist(sum(frequencies)))
-  ctab <- matrix(c(fam_in_sample,
-                   fam_in_bg - fam_in_sample,
-                   sample_size - fam_in_sample,
-                   bg_size - fam_in_bg),
-                 2, 2, byrow = TRUE)
-  prob <- fisher.test(ctab, alternative = "greater")$p.value
-  enrichment <- rbind(enrichment,
-                      data.frame(name = fam,
-                                 type = "family",
-                                 location = "High synchrony, high universality",
-                                 pvalue = prob,
-                                 qvalue = NA))
-}
-
-# Multiple test correction
-sel_idx <- which(enrichment$type == "family" & enrichment$location == "High synchrony, high universality")
-enrichment$qvalue[sel_idx] <- p.adjust(enrichment$pvalue[sel_idx], method = "BH")
-
-signif2 <- c()
-for(i in sel_idx) {
-  q <- enrichment$qvalue[i]
-  if(q < 0.05) {
-    signif2 <- c(signif2, enrichment$name[i])
-    cat(paste0("ASV family: ", enrichment$name[i], ", adj. p-value: ", round(q, 3), "\n"))
-  }
-}
-
-p2 <- plot_enrichment(frequencies_subset1 = frequencies_subset1,
-                      frequencies_subset2 = frequencies_subset2,
-                      frequencies = frequencies,
-                      significant_families1 = signif1,
-                      significant_families2 = signif2,
-                      plot_height = 6,
-                      plot_width = 6.5,
-                      legend_topmargin = 100,
-                      use_pairs = FALSE,
-                      rel_widths = c(1, 0.35, 1, 0.35, 0.75, 0.2, 2),
-                      labels = c("overall\n", "high univ.\nlow synch.", "high univ.\nhigh synch."),
-                      save_name = NULL,
-                      suppress_y = TRUE)
+e_obj <- plot_enrichment(frequencies,
+                         frequencies_subset2,
+                         type_label = "family",
+                         location_label = "High synchrony, high universality",
+                         enrichment = enrichment,
+                         pt_sz = 2.5,
+                         stroke_sz = 0.8)
+p2b <- e_obj$p
+enrichment <- e_obj$enrichment
 
 # ------------------------------------------------------------------------------
 #   Family-pair enrichment
 # ------------------------------------------------------------------------------
 
 frequencies <- table(all_pairs_noNA$taxpair)
-
 frequencies_subset1 <- table(all_pairs_noNA$taxpair[all_pairs_noNA$topcenter == TRUE])
 
-for(fam in names(frequencies_subset1)) {
-  fam_in_sample <- unname(unlist(frequencies_subset1[fam]))
-  sample_size <- unname(unlist(sum(frequencies_subset1)))
-  fam_in_bg <- unname(unlist(frequencies[fam]))
-  bg_size <- unname(unlist(sum(frequencies)))
-  # ctab <- matrix(c(fam_in_sample,
-  #                  sample_size - fam_in_sample,
-  #                  fam_in_bg,
-  #                  bg_size - fam_in_bg),
-  #                2, 2, byrow = TRUE)
-  ctab <- matrix(c(fam_in_sample,
-                   fam_in_bg - fam_in_sample,
-                   sample_size - fam_in_sample,
-                   bg_size - fam_in_bg),
-                 2, 2, byrow = TRUE)
-  prob <- fisher.test(ctab, alternative = "greater")$p.value
-  enrichment <- rbind(enrichment,
-                      data.frame(name = fam,
-                                 type = "family-pair",
-                                 location = "Low synchrony, high universality",
-                                 pvalue = prob,
-                                 qvalue = NA))
-}
-
-# Multiple test correction
-sel_idx <- which(enrichment$type == "family-pair" & enrichment$location == "Low synchrony, high universality")
-enrichment$qvalue[sel_idx] <- p.adjust(enrichment$pvalue[sel_idx], method = "BH")
-
-signif1 <- c()
-for(i in sel_idx) {
-  q <- enrichment$qvalue[i]
-  if(q < 0.05) {
-    signif1 <- c(signif1, enrichment$name[i])
-    cat(paste0("ASV family: ", enrichment$name[i], ", adj. p-value: ", round(q, 3), "\n"))
-  }
-}
+e_obj <- plot_enrichment(frequencies,
+                         frequencies_subset1,
+                         type_label = "family-pair",
+                         location_label = "Low synchrony, high universality",
+                         enrichment = enrichment,
+                         pt_sz = 2.5,
+                         stroke_sz = 0.8)
+p3a <- e_obj$p
+enrichment <- e_obj$enrichment
 
 frequencies_subset2 <- table(all_pairs_noNA$taxpair[all_pairs_noNA$topright == TRUE])
 
-for(fam in names(frequencies_subset2)) {
-  fam_in_sample <- unname(unlist(frequencies_subset2[fam]))
-  sample_size <- unname(unlist(sum(frequencies_subset2)))
-  fam_in_bg <- unname(unlist(frequencies[fam]))
-  bg_size <- unname(unlist(sum(frequencies)))
-  ctab <- matrix(c(fam_in_sample,
-                   fam_in_bg - fam_in_sample,
-                   sample_size - fam_in_sample,
-                   bg_size - fam_in_bg),
-                 2, 2, byrow = TRUE)
-  prob <- fisher.test(ctab, alternative = "greater")$p.value
-  enrichment <- rbind(enrichment,
-                      data.frame(name = fam,
-                                 type = "family-pair",
-                                 location = "High synchrony, high universality",
-                                 pvalue = prob,
-                                 qvalue = NA))
-}
-
-# Multiple test correction
-sel_idx <- which(enrichment$type == "family-pair" & enrichment$location == "High synchrony, high universality")
-enrichment$qvalue[sel_idx] <- p.adjust(enrichment$pvalue[sel_idx], method = "BH")
-
-signif2 <- c()
-for(i in sel_idx) {
-  q <- enrichment$qvalue[i]
-  if(q < 0.05) {
-    signif2 <- c(signif2, enrichment$name[i])
-    cat(paste0("ASV family: ", enrichment$name[i], ", adj. p-value: ", round(q, 3), "\n"))
-  }
-}
-
-p3 <- plot_enrichment(frequencies_subset1 = frequencies_subset1,
-                frequencies_subset2 = frequencies_subset2,
-                frequencies = frequencies,
-                significant_families1 = signif1,
-                significant_families2 = signif2,
-                plot_height = 6,
-                plot_width = 10,
-                legend_topmargin = 100,
-                use_pairs = TRUE,
-                rel_widths = c(1, 0.3, 1, 0.3, 0.75, 0.2, 7),
-                labels = c("overall\n", "high univ.\nlow synch.", "high univ.\nhigh synch."),
-                save_name = NULL,
-                suppress_y = TRUE)
+e_obj <- plot_enrichment(frequencies,
+                         frequencies_subset2,
+                         type_label = "family-pair",
+                         location_label = "High synchrony, high universality",
+                         enrichment = enrichment,
+                         pt_sz = 2.5,
+                         stroke_sz = 0.8)
+p3b <- e_obj$p
+enrichment <- e_obj$enrichment
 
 enrichment <- enrichment %>%
   arrange(location, type, name)
 colnames(enrichment) <- c("ASV family or pair name",
                           "Type",
                           "Enrichment evaluated in",
+                          "Odds ratio",
                           "P-value (Fisher's exact test)",
+                          "Lower 95% CI",
+                          "Upper 95% CI",
+                          "Threshold for small counts",
                           "Adj. p-value (Benjamini-Hochberg)")
 write.table(enrichment,
             file = file.path("output", "enrichment-synchrony.tsv"),
@@ -1058,31 +943,40 @@ write.table(enrichment,
             quote = FALSE,
             row.names = FALSE)
 
-p4 <- plot_grid(p2, NULL, p3, ncol = 3, rel_widths = c(1, 0.05, 2),
-               labels = c("B", "", "C"),
-               label_size = 20,
-               label_x = -0.04,
-               label_y = 1.02,
-               scale = 0.95)
+pcol1 <- plot_grid(p2a, p3a, ncol = 1,
+                   rel_heights = c(1,2.25),
+                   labels = c("B", "C"),
+                   label_size = 20,
+                   label_x = -0.06,
+                   label_y = 1.04,
+                   scale = 0.95)
+pcol2 <- plot_grid(p2b, p3b, ncol = 1,
+                   rel_heights = c(1,2.25),
+                   labels = c("D", "E"),
+                   label_size = 20,
+                   label_x = -0.06,
+                   label_y = 1.04,
+                   scale = 0.95)
 
-p5 <- plot_grid(NULL, p0, NULL, ncol = 3,
-                rel_widths = c(0.3, 1, 0.3),
-                labels = c("", "A", ""),
+pcol3 <- plot_grid(pcol1, NULL, pcol2, ncol = 3,
+                   rel_widths = c(1, 0.05, 1))
+
+p5 <- plot_grid(NULL, p0, ncol = 1, rel_heights = c(0.05, 1),
+                labels = c("", "A"),
                 label_size = 20,
-                label_x = -0.04,
-                label_y = 1.02,
-                scale = 1)
+                label_x = -0.01,
+                label_y = 1.07)
 
-p <- plot_grid(p5, NULL, p4, ncol = 1,
-               rel_heights = c(1, 0.05, 1),
+p <- plot_grid(p5, pcol3, ncol = 2,
+               rel_heights = c(1, 1),
                scale = 0.95)
 
 ggsave(file.path("output", "figures", "synchrony_vs_universality.svg"),
        p,
        dpi = 100,
        units = "in",
-       height = 12,
-       width = 14)
+       height = 6,
+       width = 12)
 
 # ------------------------------------------------------------------------------
 #   Synchrony calculation "cartoon" figure
@@ -1142,7 +1036,7 @@ p2 <- ggplot(data.frame(x = paired_samples_x, y = paired_samples_y),
 # ------------------------------------------------------------------------------
 
 alpha <- 0.6
-tax_idx <- 23
+tax_idx <- 21
 hosts <- c("DUI", "DUX", "LIW", "PEB", "VET")
 host_y_offset <- 10
 
@@ -1256,7 +1150,7 @@ p4 <- ggplot(data.frame(x = c(correlations, correlations_permuted),
 cutoff <- quantile(correlations_permuted, probs = c(0.025, 0.975))
 cat(paste0(sum(correlations > cutoff[2]), " / ",
            length(correlations),
-           " taxa exceed the 95% interval\n"))
+           " taxa exceed the 95% interval (", round(cutoff[1],3), ", ", round(cutoff[2],3), ")\n"))
 
 # ------------------------------------------------------------------------------
 #   Assemble panels

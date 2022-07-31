@@ -6,6 +6,7 @@ library(tidyverse)
 library(cowplot)
 library(frechet)
 library(ggridges)
+library(shapes)
 
 # ------------------------------------------------------------------------------
 #   Functions
@@ -74,6 +75,7 @@ if(file.exists(save_fn)) {
 } else {
   # This takes up to 30 minutes
   fits_ar <- list()
+  clr_ar <- matrix(NA, nrow(clr_counts), ncol(clr_counts))
   for(i in 1:nrow(clr_counts)) {
     cat(paste0("Taxon ", i, " / ", nrow(clr_counts), "\n"))
     x.quant <- model.matrix(~ factor(md_full$sname))
@@ -122,6 +124,7 @@ if(file.exists(save_fn)) {
   # Now fit a fuller model with AR component
   # This takes 30 minutes!
   fits_aper <- list()
+  clr_aper <- matrix(NA, nrow(clr_counts), ncol(clr_counts))
   for(i in 1:nrow(clr_counts)) {
     cat(paste0("Taxon ", i, " / ", nrow(clr_counts), "\n"))
     x.quant <- model.matrix(~ factor(md_full$sname) + sin_f(offsets[i], days))
@@ -186,16 +189,24 @@ p2 <- plot_ac(scores_aper)
 # ------------------------------------------------------------------------------
 
 # Pull ASV-ASV consensus correlations derived from fido models
-F1 <- readRDS(file.path("output", "Frechet_1_corr.rds"))
-F1$mean <- CovFMean(F1$Sigmas)$Mout[[1]]
+# F1 <- readRDS(file.path("output", "Frechet_1_corr.rds"))
+# F1$mean <- CovFMean(F1$Sigmas)$Mout[[1]]
+
+Sigmas <- pull_Sigmas("asv_days90_diet25_scale1")
+F1 <- estcov(Sigmas, method = "Euclidean")
+D <- dim(F1$mean)[1]
 
 # Estimate correlation from aperiodic/season-less joint model
 cov_after <- cov(t(clr_aper))
 cor_after <- cov2cor(cov_after)
+cor_after <- cor_after[1:D,1:D] # omit "other"
+
+x <- c(cor_after[upper.tri(cor_after, diag = FALSE)])
+y <- c(F1$mean[upper.tri(F1$mean, diag = FALSE)])
 
 # Plot correlation of CLR correlation estimates
-p3 <- ggplot(data.frame(x = c(F1$mean[1:134,1:134]),
-                        y = c(cor_after[1:134,1:134])),
+p3 <- ggplot(data.frame(x = x,
+                        y = y),
              aes(x = x, y = y)) +
   geom_point(size = 2, shape = 21, fill = "#bbbbbb") +
   theme_bw() +
@@ -217,11 +228,9 @@ ggsave(file.path("output", "figures", "lmer_results.svg"),
        height = 4,
        width = 13)
 
-x <- scale(c(cor_after[upper.tri(cor_after, diag = FALSE)]))
-y <- scale(c(F1$mean[upper.tri(cor_after, diag = FALSE)]))
 summary(lm(y ~ x))
 
-# cat(paste0("R^2 of estimates: ", round(cor(c(F1$mean), c(cor_after))**2, 2), "\n"))
+cat(paste0("R^2 of estimates: ", round(cor(c(F1$mean), c(cor_after)), 3)**2, "\n"))
 
 # ------------------------------------------------------------------------------
 #   Is R^2 different for Johannes' "seasonal" taxa? (Ans: No)
@@ -243,18 +252,18 @@ if(FALSE) {
                                     "Syntrophomonadaceae"))
 
   # What's the R^2 for Johannes' seasonal families?
-  pairs <- combn(1:135, m = 2)
-  include_pairs <- which(pairs[1,] != 135 & pairs[2,] != 135)
+  pairs <- combn(1:D, m = 2)
+  include_pairs <- which(pairs[1,] != D+1 & pairs[2,] != D+1)
   pair1 <- pairs[1,include_pairs]
   pair2 <- pairs[2,include_pairs]
   # MAP estimates
-  sigma <- F1$mean[1:134,1:134]
+  sigma <- F1$mean[1:D,1:D]
   vsigma <- sigma[lower.tri(sigma,diag = FALSE)]
   vec_sigmas <- data.frame(rho = vsigma,
                            type = "original",
                            tax_idx1 = pair1,
                            tax_idx2 = pair2)
-  sigma <- cor_after[1:134,1:134]
+  sigma <- cor_after[1:D,1:D]
   vsigma <- sigma[lower.tri(sigma,diag = FALSE)]
   vec_sigmas <- rbind(vec_sigmas,
                       data.frame(rho = vsigma,

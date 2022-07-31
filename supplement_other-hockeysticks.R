@@ -37,9 +37,9 @@ plot_hockeystick <- function(rug) {
   score_df$sign <- factor(score_df$sign, levels = c(1, -1))
   levels(score_df$sign) <- c("positive", "negative")
   # 2) Percent significant observations for this taxon pair
-  score_df$signif <- apply(rug, 2, function(x) {
-    sum(x < thresholds %>% filter(type == "ASV") %>% pull(lower) | x > thresholds %>% filter(type == "ASV") %>% pull(upper))/length(x)
-  })
+  # score_df$signif <- apply(rug, 2, function(x) {
+  #   sum(x < thresholds %>% filter(type == "ASV") %>% pull(lower) | x > thresholds %>% filter(type == "ASV") %>% pull(upper))/length(x)
+  # })
 
   sign_palette <- c("red", "#0047AB")
   names(sign_palette) <- c(1, -1)
@@ -82,7 +82,7 @@ plot_hockeystick <- function(rug) {
 p_fam_pieces <- plot_hockeystick(rug_fam)
 p_phy_pieces <- plot_hockeystick(rug_phy)
 
-row1 <- plot_grid(p_fam_pieces$p, p_phy_pieces$p, legend,
+row1 <- plot_grid(p_fam_pieces$p, p_phy_pieces$p, p_fam_pieces$legend,
                   ncol = 3,
                   rel_widths = c(1, 1, 0.3),
                   labels = c("A", "B"),

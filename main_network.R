@@ -46,15 +46,9 @@ p1a <- ggplot(score_df %>% filter(sign == "negative") %>% mutate(overall = "Cons
              size = 2,
              shape = 21,
              fill = muted("navy")) +
-  # scale_fill_distiller(palette = "PuRd", direction = 1,
-  #                      guide = guide_colorbar(frame.colour = "black",
-  #                                             ticks.colour = "black")) +
-  # scale_color_manual(values = c("#000000", "#888888")) +
-  # scale_fill_gradient2(low = "white", high = "#0047AB") +
   theme_bw() +
   ylim(c(0,1)) +
   facet_wrap(~ overall) +
-  # theme(legend.title = element_text(margin = margin(b = 5))) +
   theme(legend.position = "none",
         axis.text.x = element_text(size = 11),
         axis.title.x = element_text(size = 13),
@@ -66,20 +60,13 @@ p1a <- ggplot(score_df %>% filter(sign == "negative") %>% mutate(overall = "Cons
        color = "Consensus\ncorrelation sign")
 
 p1b <- ggplot(score_df %>% filter(sign == "positive") %>% mutate(overall = "Consensus positively associated pairs")) +
-  # geom_point(mapping = aes(x = x, y = y, fill = y),
   geom_point(mapping = aes(x = x, y = y),
              size = 2,
              shape = 21,
              fill = "red") +
-  # scale_fill_distiller(palette = "PuRd", direction = 1,
-  #                      guide = guide_colorbar(frame.colour = "black",
-  #                                             ticks.colour = "black")) +
-  # scale_color_manual(values = c("#000000", "#888888")) +
-  # scale_fill_gradient2(low = "white", high = "red") +
   theme_bw() +
   ylim(c(0,1)) +
   facet_wrap(~ overall) +
-  # theme(legend.title = element_text(margin = margin(b = 5))) +
   theme(legend.position = "none",
         axis.text.x = element_text(size = 11),
         axis.title.x = element_text(size = 13),
@@ -99,11 +86,6 @@ plot_df <- data.frame(score = scores, type = "ASV")
 p2 <- ggplot(data.frame(score = apply(rug, 2, calc_universality_score)),
              aes(x = score, y = 1)) +
   geom_density_ridges(stat = "binline", bins = 20, scale = 0.9, draw_baseline = TRUE) +
-  # geom_segment(data = thresholds_scores %>% filter(type == "ASV"),
-  #              aes(x = x0, xend = x0, y = as.numeric(type), yend = 6),
-  #              color = "black",
-  #              size = 1,
-  #              linetype = "dashed") +
   theme_bw() +
   labs(x = "universality score",
        y = "") +
@@ -116,22 +98,6 @@ p2 <- ggplot(data.frame(score = apply(rug, 2, calc_universality_score)),
   scale_fill_brewer(palette = "Blues") +
   theme(axis.text = element_text(size = 9),
         axis.title = element_text(size = 11))
-
-# p1_padded <- plot_grid(p1, NULL, ncol = 1, rel_heights = c(1, 0.02))
-#
-# p <- plot_grid(p1_padded, p2, ncol = 2,
-#                rel_widths = c(1.5, 1.25),
-#                labels = c("A", "B"),
-#                label_size = 18,
-#                # label_x = -0.02,
-#                scale = 0.95)
-#
-# ggsave("output/figures/3ab.png",
-#        p,
-#        dpi = 100,
-#        units = "in",
-#        height = 4,
-#        width = 9)
 
 # ------------------------------------------------------------------------------
 #   Enrichment bar plots
@@ -165,52 +131,18 @@ frequencies <- table(families_all)
 
 enrichment <- NULL
 
-# Test for enrichment statistically
-for(fam in names(frequencies_subset)) {
-  fam_in_sample <- unname(unlist(frequencies_subset[fam]))
-  sample_size <- unname(unlist(sum(frequencies_subset)))
-  fam_in_bg <- unname(unlist(frequencies[fam]))
-  bg_size <- unname(unlist(sum(frequencies)))
-  ctab <- matrix(c(fam_in_sample,
-                   fam_in_bg - fam_in_sample,
-                   sample_size - fam_in_sample,
-                   bg_size - fam_in_bg),
-                 2, 2, byrow = TRUE)
-  prob <- fisher.test(ctab, alternative = "greater")$p.value
-  enrichment <- rbind(enrichment,
-                      data.frame(name = fam,
-                                 type = "family",
-                                 location = "top ASVs",
-                                 pvalue = prob,
-                                 qvalue = NA))
-}
-
-# Multiple test correction
-sel_idx <- which(enrichment$type == "family" & enrichment$location == "top ASVs")
-enrichment$qvalue[sel_idx] <- p.adjust(enrichment$pvalue[sel_idx], method = "BH")
-
-signif <- c()
-for(i in sel_idx) {
-  q <- enrichment$qvalue[i]
-  if(q < 0.05) {
-    signif <- c(signif, enrichment$name[i])
-    cat(paste0("ASV family: ", enrichment$name[i], ", adj. p-value: ", round(q, 3), "\n"))
-  }
-}
-
-p3 <- plot_enrichment(frequencies_subset1 = frequencies_subset,
-                      frequencies_subset2 = NULL,
-                      frequencies = frequencies,
-                      significant_families1 = signif,
-                      significant_families2 = NULL,
-                      plot_height = 6,
-                      plot_width = 3.5, # was 5
-                      legend_topmargin = 100,
-                      use_pairs = FALSE,
-                      rel_widths = c(1, 0.35, 1, 0.4, 2),
-                      labels = c("overall", "top ASVs"),
-                      save_name = NULL,
-                      suppress_y = TRUE)
+e_obj <- plot_enrichment(frequencies,
+                         frequencies_subset,
+                         type_label = "family",
+                         location_label = "top ASVs",
+                         enrichment = enrichment,
+                         cap_size = 5,
+                         pt_sz = 3,
+                         title_text_sz = 14,
+                         text_sz = 12,
+                         stroke_sz = 1.25)
+p4 <- e_obj$p
+enrichment <- e_obj$enrichment
 
 # ------------------------------------------------------------------------------
 #   Family-family version
@@ -234,79 +166,30 @@ family_pairs_all <- paste0(fam1, " - ", fam2)
 frequencies_subset <- table(family_pairs_top)
 frequencies <- table(family_pairs_all)
 
-# Detour for Lachno-Lachno numbers
-# cat(paste0("Expected number of Lachno-Lachno pairs (2.5% of all Lachno-Lachno pairs): ",
-#            round(frequencies[names(frequencies) == "Lachnospiraceae - Lachnospiraceae"]*0.025, 1),
-#            "\n"))
-# cat(paste0("Observed number of Lachno-Lachno pairs (2.5% of all Lachno-Lachno pairs): ",
-#            round(frequencies_subset[names(frequencies_subset) == "Lachnospiraceae - Lachnospiraceae"], 1),
-#            "\n"))
+e_obj <- plot_enrichment(frequencies,
+                         frequencies_subset,
+                         type_label = "family-pair",
+                         location_label = "top ASVs",
+                         enrichment = enrichment,
+                         cap_size = 5,
+                         pt_sz = 3,
+                         title_text_sz = 14,
+                         text_sz = 12,
+                         stroke_sz = 1.25)
+p5 <- e_obj$p
+enrichment <- e_obj$enrichment
 
-# Test for enrichment statistically
-for(fam in names(frequencies_subset)) {
-  fam_in_sample <- unname(unlist(frequencies_subset[fam]))
-  sample_size <- unname(unlist(sum(frequencies_subset)))
-  fam_in_bg <- unname(unlist(frequencies[fam]))
-  bg_size <- unname(unlist(sum(frequencies)))
-  # I think this orientation was wrong
-  # ctab <- matrix(c(fam_in_sample,
-  #                  sample_size - fam_in_sample,
-  #                  fam_in_bg,
-  #                  bg_size - fam_in_bg),
-  #                2, 2, byrow = TRUE)
-  ctab <- matrix(c(fam_in_sample,
-                   fam_in_bg - fam_in_sample,
-                   sample_size - fam_in_sample,
-                   bg_size - fam_in_bg),
-                 2, 2, byrow = TRUE)
-  prob <- fisher.test(ctab, alternative = "greater")$p.value
-  # This should be almost equivalent to:
-  # phyper(sample_size - fam_in_sample,
-  #        (bg_size + sample_size) - (fam_in_bg + fam_in_sample),
-  #        fam_in_bg + fam_in_sample,
-  #        sample_size)
-  enrichment <- rbind(enrichment,
-                      data.frame(name = fam,
-                                 type = "family-pair",
-                                 location = "top ASVs",
-                                 pvalue = prob,
-                                 qvalue = NA))
-}
-
-# Multiple test correction
-sel_idx <- which(enrichment$type == "family-pair" & enrichment$location == "top ASVs")
-enrichment$qvalue[sel_idx] <- p.adjust(enrichment$pvalue[sel_idx], method = "BH")
-
-signif <- c()
-for(i in sel_idx) {
-  q <- enrichment$qvalue[i]
-  if(q < 0.05) {
-    signif <- c(signif, enrichment$name[i])
-    cat(paste0("ASV family: ", enrichment$name[i], ", adj. p-value: ", round(q, 3), "\n"))
-  }
-}
-
-p5 <- plot_enrichment(frequencies_subset1 = frequencies_subset,
-                      frequencies_subset2 = NULL,
-                      frequencies = frequencies,
-                      significant_families1 = signif,
-                      significant_families2 = NULL,
-                      plot_height = 6,
-                      plot_width = 6,
-                      legend_topmargin = 100,
-                      use_pairs = TRUE,
-                      rel_widths = c(1, 0.35, 1, 0.5, 3.75),
-                      labels = c("overall", "top ASVs"),
-                      save_name = NULL,
-                      suppress_y = TRUE)
-
-enrichment <- enrichment %>%
-  arrange(type, name)
-colnames(enrichment) <- c("ASV family or pair name",
-                          "Type",
-                          "Enrichment evaluated in",
-                          "P-value (Fisher's exact test)",
-                          "Adj. p-value (Benjamini-Hochberg)")
+enrichment %<>%
+  arrange(type, name) %>%
+  dplyr::select(name, type, location, oddsratio, lower95, upper95, pvalue, qvalue) %>%
+  rename(`ASV family or pair name` = name,
+         `Type` = type,
+         `Enrichment evaluated in` = location,
+         `Odds ratio` = oddsratio,
+         `Lower 95% CI` = lower95,
+         `Upper 95% CI` = upper95,
+         `P-value (Fisher's exact test)` = pvalue,
+         `Adj. p-value (Benjamini-Hochberg)` = qvalue)
 write.table(enrichment,
             file = file.path("output", "enrichment_top-pairs.tsv"),
             sep = "\t",
@@ -358,7 +241,7 @@ family_palette <- readRDS(file.path("output", "family_palette.rds"))
 
 # Not specifying the layout - defaults to "auto"
 # fr and kk layouts are ok here
-p4 <- ggraph(graph, layout = "fr") +
+p3 <- ggraph(graph, layout = "fr") +
   geom_edge_link(aes(color = Sign), width = 1.5, alpha = 1) +
   geom_node_point(aes(color = Family), size = 5) +
   geom_node_label(aes(label = taxon_idx), size = 4, label.size = NA, repel = TRUE, label.padding = unit(0.08, "lines")) +
@@ -380,67 +263,6 @@ p4 <- ggraph(graph, layout = "fr") +
     axis.ticks.y = element_blank(),
     axis.title.y = element_blank())
 
-# Label-free
-# p4_alt <- ggraph(graph, layout = "fr") +
-#   geom_edge_link(aes(color = Sign), width = 1.5, alpha = 1) +
-#   geom_node_point(aes(color = Family), size = 5) +
-#   # geom_node_label(aes(label = taxon_idx), size = 4, label.size = NA, repel = TRUE, label.padding = unit(0.08, "lines")) +
-#   scale_colour_manual(values = family_palette[order(names(family_palette))]) +
-#   scale_edge_colour_manual(values = c(negative = "gray", positive = "black")) +
-#   labs(x = "dimension 1",
-#        y = "dimension 2") +
-#   theme_bw() +
-#   guides(edge_color = "none") +
-#   theme(
-#     panel.grid.major.x = element_blank(),
-#     panel.grid.minor.x = element_blank(),
-#     panel.grid.major.y = element_blank(),
-#     panel.grid.minor.y = element_blank(),
-#     axis.text.x = element_blank(),
-#     axis.ticks.x = element_blank(),
-#     axis.title.x = element_blank(),
-#     axis.text.y = element_blank(),
-#     axis.ticks.y = element_blank(),
-#     axis.title.y = element_blank())
-
-# p1a_padded <- plot_grid(NULL, p1a, ncol = 2,
-#                         rel_widths = c(0.05, 1))
-# p1b_padded <- plot_grid(NULL, p1b, ncol = 2,
-#                         rel_widths = c(0.05, 1))
-#
-# psegment1 <- plot_grid(p1b_padded, NULL, p1a_padded, ncol = 1,
-#                        rel_heights = c(1, 0.1, 1),
-#                        scale = 1,
-#                        labels = c("A", "", "B"),
-#                        label_size = 18,
-#                        label_x = -0.04,
-#                        label_y = 1.08)
-#
-# p4_padded <- plot_grid(p4, NULL, ncol = 1,
-#                        rel_heights = c(1, 0.05))
-#
-# psegment2 <- plot_grid(psegment1, NULL, p4_padded, ncol = 3,
-#                        rel_widths = c(0.5, 0.02, 1),
-#                        scale = 0.95,
-#                        labels = c("", "", "D"),
-#                        label_size = 18,
-#                        label_x = -0.02,
-#                        label_y = 1.01)
-#
-# p2_padded <- plot_grid(NULL, p2, ncol = 1,
-#                        rel_heights = c(0.25, 1))
-#
-# psegment3 <- plot_grid(p2_padded, NULL, p3, NULL, p5, ncol = 5,
-#                        rel_widths = c(0.6, 0.01, 0.7, 0.05, 1),
-#                        scale = 0.95,
-#                        labels = c("C", "", "E", "", "F"),
-#                        label_size = 18,
-#                        label_x = -0.02,
-#                        label_y = 1.08)
-#
-# p <- plot_grid(psegment2, NULL, psegment3, ncol = 1,
-#                rel_heights = c(1, 0.05, 0.6))
-
 col1 <- plot_grid(p1b, p1a, p2,
                   ncol = 1,
                   rel_heights = c(1, 1, 0.8),
@@ -448,15 +270,15 @@ col1 <- plot_grid(p1b, p1a, p2,
                   label_size = 18,
                   label_y = 1.02,
                   scale = 1)
-row1 <- plot_grid(p3, p5,
+row1 <- plot_grid(p4, p5,
                   ncol = 2,
-                  rel_widths = c(1, 1.4),
+                  rel_widths = c(1, 1),
                   labels = c("E", "F"),
                   label_size = 18,
                   label_y = 1.02,
                   label_x = -0.02,
                   scale = 0.95)
-p4_padded <- plot_grid(p4,
+p4_padded <- plot_grid(p3,
                        labels = c("D"),
                        label_size = 18,
                        label_y = 1.01,

@@ -99,10 +99,13 @@ p1_ped <- ggplot() +
               color = "black", alpha = 0.2, method = "lm") +
   scale_fill_brewer(palette = "Spectral") +
   theme_bw() +
-  theme(legend.position = "none") +
-  labs(x = "kinship dissimilarity (1 - % relatedness)",
-       y = "host-host dynamics distance",
-       fill = "Paired social group")
+  theme(legend.position = "none",
+        axis.title.y = element_text(size = 10)) +
+  labs(#x = "kinship dissimilarity (1 - % relatedness)",
+    x = "coefficient of relatedness",
+    # y = "host-host dynamics distance",
+    y = "microbe-microbe correlation matrix distances",
+    fill = "Paired social group")
 
 # ------------------------------------------------------------------------------
 #   Mantel test
@@ -124,63 +127,65 @@ cat(paste0("P-value from Mantel test (kinship): ", round(res1_ped$signif, 3), "\
 # specified, this is drawn from a Poisson distribution. A smaller number of
 # founders makes the population more related.
 
-simulate_K <- function(g) {
-  # Simulate a random pedigree
-  temp <- randomPed(g = g)
-  # Combine components
-  if(any(str_detect(names(temp), "^_comp"))) {
-    temp2 <- NULL
-    for(i in 1:length(temp)) {
-      temp2 <- rbind(as.data.frame(temp2),
-                     as.data.frame(temp[[i]]))
+if(FALSE) {
+  simulate_K <- function(g) {
+    # Simulate a random pedigree
+    temp <- randomPed(g = g)
+    # Combine components
+    if(any(str_detect(names(temp), "^_comp"))) {
+      temp2 <- NULL
+      for(i in 1:length(temp)) {
+        temp2 <- rbind(as.data.frame(temp2),
+                       as.data.frame(temp[[i]]))
+      }
+      temp2 <- temp2[order(as.numeric(temp2$id)),]
+    } else {
+      temp2 <- as.data.frame(temp)
     }
-    temp2 <- temp2[order(as.numeric(temp2$id)),]
-  } else {
-    temp2 <- as.data.frame(temp)
+    # Convert it to a kinship matrix
+    temp3 <- data.frame(id = temp2$id,
+                        mom = temp2$mid,
+                        dad = temp2$fid,
+                        sex = temp2$sex)
+    f <- sum(temp3$dad == 0 | temp3$mom == 0)
+    temp3$mom[1:f] <- NA
+    temp3$dad[1:f] <- NA
+    K <- kinship(with(temp3, pedigree(id, dad, mom, sex)))*2
+    K <- K[(f+1):nrow(K),(f+1):ncol(K)]
+    K
   }
-  # Convert it to a kinship matrix
-  temp3 <- data.frame(id = temp2$id,
-                      mom = temp2$mid,
-                      dad = temp2$fid,
-                      sex = temp2$sex)
-  f <- sum(temp3$dad == 0 | temp3$mom == 0)
-  temp3$mom[1:f] <- NA
-  temp3$dad[1:f] <- NA
-  K <- kinship(with(temp3, pedigree(id, dad, mom, sex)))*2
-  K <- K[(f+1):nrow(K),(f+1):ncol(K)]
-  K
+
+  draw_random_Rsq_ped <- function(g) {
+    K <- simulate_K(g)
+    ped_dist <- 1 - K
+    ped_vec <- ped_dist[lower.tri(ped_dist, diag = FALSE)]
+    c(cor(scale(ped_vec), scale(dynamics_dist_vec))**2)
+  }
+
+  null_Rsq_ped <- sapply(1:p, function(pp) draw_random_Rsq_ped(56))
+
+  # Calculate a pseudo pvalue from quantiles
+  res2 <- sum(null_Rsq_ped > obs_Rsq_ped) / p
+  cat(paste0("Observed R^2: ", round(obs_Rsq_ped, 3), "\n"))
+  cat(paste0("P-value from random null test: ", round(res2, 3), "\n"))
+
+  p2_ped <- ggplot() +
+    geom_density(data = data.frame(x = null_Rsq_ped),
+                 mapping = aes(x = x)) +
+    geom_point(data = data.frame(x = obs_Rsq_ped, y = 1),
+               mapping = aes(x = x, y = y),
+               size = 4,
+               shape = 21,
+               fill = "#d99e57") +
+    theme_bw() +
+    labs(x = "R-squared (random kinship dissimilarity x dynamics distance)",
+         y = "density")
+
+  p3_ped <- plot_grid(p1_ped, p2_ped, ncol = 2,
+                      rel_widths = c(1,1), labels = c("A", "B"),
+                      scale = 0.9,
+                      label_size = 18)
 }
-
-draw_random_Rsq_ped <- function(g) {
-  K <- simulate_K(g)
-  ped_dist <- 1 - K
-  ped_vec <- ped_dist[lower.tri(ped_dist, diag = FALSE)]
-  c(cor(scale(ped_vec), scale(dynamics_dist_vec))**2)
-}
-
-null_Rsq_ped <- sapply(1:p, function(pp) draw_random_Rsq_ped(56))
-
-# Calculate a pseudo pvalue from quantiles
-res2 <- sum(null_Rsq_ped > obs_Rsq_ped) / p
-cat(paste0("Observed R^2: ", round(obs_Rsq_ped, 3), "\n"))
-cat(paste0("P-value from random null test: ", round(res2, 3), "\n"))
-
-p2_ped <- ggplot() +
-  geom_density(data = data.frame(x = null_Rsq_ped),
-               mapping = aes(x = x)) +
-  geom_point(data = data.frame(x = obs_Rsq_ped, y = 1),
-             mapping = aes(x = x, y = y),
-             size = 4,
-             shape = 21,
-             fill = "#d99e57") +
-  theme_bw() +
-  labs(x = "R-squared (random kinship dissimilarity x dynamics distance)",
-       y = "density")
-
-p3_ped <- plot_grid(p1_ped, p2_ped, ncol = 2,
-                    rel_widths = c(1,1), labels = c("A", "B"),
-                    scale = 0.9,
-                    label_size = 18)
 
 # ------------------------------------------------------------------------------
 #
@@ -217,9 +222,11 @@ p1_comp <- ggplot() +
               color = "black", alpha = 0.2, method = "lm") +
   scale_fill_brewer(palette = "Spectral") +
   theme_bw() +
-  theme(legend.position = "bottom") +
+  theme(legend.position = "bottom",
+        axis.title.y = element_text(size = 10)) +
   labs(x = "Aitchison distance over baselines",
-       y = "host-host dynamics distance",
+       # y = "host-host dynamics distance",
+       y = "microbe-microbe correlation matrix distances",
        fill = "Paired social group")
 legend <- get_legend(p1_comp)
 p1_comp <- p1_comp +
@@ -262,22 +269,24 @@ res2 <- sum(null_Rsq_comp > obs_Rsq_comp) / p
 cat(paste0("Observed R^2: ", round(obs_Rsq_comp, 3), "\n"))
 cat(paste0("P-value from random null test: ", round(res2, 3), "\n"))
 
-p2_comp <- ggplot() +
-  geom_density(data = data.frame(x = null_Rsq_comp),
-               mapping = aes(x = x)) +
-  geom_point(data = data.frame(x = obs_Rsq_comp, y = 1),
-             mapping = aes(x = x, y = y),
-             size = 4,
-             shape = 21,
-             fill = "#d99e57") +
-  theme_bw() +
-  labs(x = "R-squared (random baseline x dynamics distance)",
-       y = "density")
+if(FALSE) {
+  p2_comp <- ggplot() +
+    geom_density(data = data.frame(x = null_Rsq_comp),
+                 mapping = aes(x = x)) +
+    geom_point(data = data.frame(x = obs_Rsq_comp, y = 1),
+               mapping = aes(x = x, y = y),
+               size = 4,
+               shape = 21,
+               fill = "#d99e57") +
+    theme_bw() +
+    labs(x = "R-squared (random baseline x dynamics distance)",
+         y = "density")
 
-p3_comp <- plot_grid(p1_comp, p2_comp, ncol = 2,
-                    rel_widths = c(1,1), labels = c("C", "D"),
-                    scale = 0.9,
-                    label_size = 18)
+  p3_comp <- plot_grid(p1_comp, p2_comp, ncol = 2,
+                       rel_widths = c(1,1), labels = c("C", "D"),
+                       scale = 0.9,
+                       label_size = 18)
+}
 
 # p_all <- plot_grid(p3_ped, p3_comp, ncol = 1)
 

@@ -594,10 +594,10 @@ for(ttype in unique(score_distros$type)) {
   cat(paste0("Significant after FDR (", ttype, "): ", round(prop, 3), "\n"))
   higher_than_chance <- signif_vec & values > median(values)
   prop <- sum(higher_than_chance) / length(pvalues_adj)
-  cat(paste0("\tHIGHER than chance): ", round(prop, 3), "\n"))
+  cat(paste0("\tHIGHER than chance: ", round(prop, 3), "\n"))
   lower_than_chance <- signif_vec & values < median(values)
   prop <- sum(lower_than_chance) / length(pvalues_adj)
-  cat(paste0("\tLOWER than chance): ", round(prop, 3), "\n"))
+  cat(paste0("\tLOWER than chance: ", round(prop, 3), "\n"))
 
   asv_scores_piecewise <- apply(rug_asv$rug[,lower_than_chance], 2, function(x) calc_universality_score(x, return_pieces = TRUE))
 

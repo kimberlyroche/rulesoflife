@@ -19,8 +19,8 @@ source("COAT.R")
 
 data <- load_data()
 hosts <- unique(data$metadata$sname)
-rug_basset <- matrix(NA, length(hosts), 8911)
-rug_coat <- matrix(NA, length(hosts), 8911)
+rug_basset <- matrix(NA, length(hosts), 7750)
+rug_coat <- matrix(NA, length(hosts), 7750)
 saved_matrix_basset <- NULL
 saved_matrix_coat <- NULL
 for(h in 1:length(hosts)) {
@@ -52,8 +52,8 @@ for(h in 1:length(hosts)) {
   saved_matrix_coat <- coat_estimate
 
   # Exclude "other"
-  basset_estimate <- basset_estimate[1:134,1:134]
-  coat_estimate <- coat_estimate[1:134,1:134]
+  basset_estimate <- basset_estimate[1:125,1:125]
+  coat_estimate <- coat_estimate[1:125,1:125]
 
   x <- basset_estimate[upper.tri(basset_estimate, diag = FALSE)]
   y <- coat_estimate[upper.tri(coat_estimate, diag = FALSE)]

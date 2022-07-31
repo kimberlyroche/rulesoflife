@@ -5,54 +5,50 @@
 \title{Plot relative representation of ASV pairs (using family labels)}
 \usage{
 plot_enrichment(
-  frequencies_subset1,
-  frequencies_subset2 = NULL,
   frequencies,
-  significant_families1,
-  significant_families2 = NULL,
-  plot_height,
-  plot_width,
-  legend_topmargin,
-  use_pairs = TRUE,
-  rel_widths = c(1, 0.35, 1, 0, 4.5),
-  labels = NULL,
-  palette = NULL,
-  save_name = NULL,
-  suppress_y = FALSE
+  frequencies_subset,
+  type_label,
+  location_label,
+  enrichment = NULL,
+  count_threshold = 10,
+  cap_size = 5,
+  pt_sz = 3,
+  title_text_sz = 12,
+  text_sz = 10,
+  stroke_sz = 1.25
 )
 }
 \arguments{
-\item{frequencies_subset1}{table of ASVs or ASV pairs (labeled as
-"Family - Family") and their frequency in some subset of case of interest}
-
-\item{frequencies_subset2}{an optional second set of frequencies for another
-subset}
-
 \item{frequencies}{table of ASV pairs (labeled as "Family - Family")
 and their pverall frequency}
 
-\item{significant_families1}{labels associated with significant families in
-subset 1; only these families will be colored on the plot}
+\item{frequencies_subset}{table of ASVs or ASV pairs (labeled as
+"Family - Family") and their frequency in some subset of case of interest}
 
-\item{significant_families2}{optional labels for coloring families in subset
-2}
+\item{type_label}{either "family" or "family-pair"}
 
-\item{plot_height}{plot height in inches}
+\item{location_label}{a label for the subset, e.g. "high universality, low
+synchrony taxon pairs"}
 
-\item{plot_width}{plot width in inches}
+\item{enrichment}{optional data.frame onto which enrichment results will be
+appended}
 
-\item{legend_topmargin}{top margin of legend in points}
+\item{count_threshold}{minimum abundance at which to evaluate taxon families
+or family pairs for enrichment}
 
-\item{use_pairs}{if TRUE, renders relative abundances of pairs of taxa,
-otherwise, renders families}
+\item{cap_size}{log2 minimum or maximum value to plot; plotted intervals will
+be truncated here}
 
-\item{rel_widths}{relative width of frequencies, frequencies_subset1,
-(optionally) frequencies_subset2, the legend, and a spacer between each of
-these elements}
+\item{pt_sz}{optional geom_point size}
 
-\item{labels}{optional labels for each set of frequencies}
+\item{title_text_sz}{optional axis title text size}
 
-\item{save_name}{if NULL, ggplot object is returned}
+\item{text_sz}{optional axis text size}
+
+\item{stroke_sz}{optional geom_linerange stroke size}
+}
+\value{
+list containing the plot and enrichment data.frame
 }
 \description{
 Plot relative representation of ASV pairs (using family labels)
