@@ -86,6 +86,7 @@ plot_df <- data.frame(score = scores, type = "ASV")
 p2 <- ggplot(data.frame(score = apply(rug, 2, calc_universality_score)),
              aes(x = score, y = 1)) +
   geom_density_ridges(stat = "binline", bins = 20, scale = 0.9, draw_baseline = TRUE) +
+  geom_vline(aes(xintercept = 0.14239), size = 1) +
   theme_bw() +
   labs(x = "universality score",
        y = "") +
@@ -111,10 +112,31 @@ consensus_signs <- apply(rug, 2, calc_consensus_sign)
 percent <- 2.5
 k <- round(length(scores)*(percent/100))
 top_pairs <- order(scores, decreasing = TRUE)[1:k]
+bottom_pairs <- order(scores, decreasing = TRUE)[(k+1):length(scores)]
 
 # Get the taxon indices of each partner in these top pairs
 pair_idx1 <- rug_obj$tax_idx1[top_pairs]
 pair_idx2 <- rug_obj$tax_idx2[top_pairs]
+
+pair_idx1_bottom <- rug_obj$tax_idx1[bottom_pairs]
+pair_idx2_bottom <- rug_obj$tax_idx2[bottom_pairs]
+
+# ------------------------------------------------------------------------------
+#   Get most connected pairs
+# ------------------------------------------------------------------------------
+
+pair_ids <- data.frame(id = c(pair_idx1, pair_idx2),
+                       count = 1)
+pair_ids %>%
+  group_by(id) %>%
+  tally() %>%
+  arrange(desc(n)) %>%
+  left_join(data$taxonomy %>%
+              mutate(id = 1:n()) %>%
+              select(id, family, genus), by = "id") %>%
+  as.data.frame() %>%
+  filter(n > 10) %>%
+  arrange(desc(n))
 
 # ------------------------------------------------------------------------------
 #   Family version
@@ -195,6 +217,159 @@ write.table(enrichment,
             sep = "\t",
             quote = FALSE,
             row.names = FALSE)
+
+# ------------------------------------------------------------------------------
+#   Enrichment of same-family pairs
+# ------------------------------------------------------------------------------
+
+families <- data$taxonomy$family
+families <- families[!is.na(families)]
+
+f_combo <- unlist(apply(combn(families, m = 2), 2, function(pair) {
+  if(!any(is.na(pair))) {
+    if(pair[1] == pair[2]) {
+      1
+    } else {
+      0
+    }
+  } else {
+    NA
+  }
+}))
+
+# Same-family enrichment outside the top pairs
+families_inside <- unlist(sapply(1:length(pair_idx1), function(i) {
+  f1 <- data$taxonomy$family[pair_idx1[i]]
+  f2 <- data$taxonomy$family[pair_idx2[i]]
+  if(!is.na(f1) & !is.na(f2)) {
+    if(f1 == f2) {
+      1
+    } else {
+      0
+    }
+  } else {
+    NA
+  }
+}))
+families_inside <- families_inside[!is.na(families_inside)]
+
+# Same-family enrichment outside the top pairs
+families_outside <- unlist(sapply(1:length(pair_idx1_bottom), function(i) {
+  f1 <- data$taxonomy$family[pair_idx1_bottom[i]]
+  f2 <- data$taxonomy$family[pair_idx2_bottom[i]]
+  if(!is.na(f1) & !is.na(f2)) {
+    if(f1 == f2) {
+      1
+    } else {
+      0
+    }
+  } else {
+    NA
+  }
+}))
+families_outside <- families_outside[!is.na(families_outside)]
+
+# Enrichment vs. overall
+matched_in_sample <- sum(families_inside == 1)
+sample_size <- length(families_inside)
+matched_in_bg <- sum(f_combo == 1)
+bg_size <- length(f_combo)
+ctab <- matrix(c(matched_in_sample,
+                 matched_in_bg - matched_in_sample,
+                 sample_size - matched_in_sample,
+                 bg_size - matched_in_bg),
+               2, 2, byrow = TRUE)
+fit <- fisher.test(ctab, alternative = "two.sided")
+cat(paste0("Odds ratio of same-family enrichment in top 2.5%: ", round(fit$estimate,3),
+           " (", round(fit$conf.int[1],3), ", ", round(fit$conf.int[2],3), ")\n"))
+cat(paste0("\tp-value (Fisher's exact): ", round(fit$p.value,3), "\n"))
+
+# Empirically
+# (sum(families_inside == 1)/length(families_inside))/(sum(families_outside == 1)/length(families_outside))
+
+# Enrichment vs. bottom 97.5%
+matched_in_sample <- sum(families_inside == 1)
+sample_size <- length(families_inside)
+matched_in_bg <- sum(families_outside == 1)
+bg_size <- length(families_outside)
+ctab <- matrix(c(matched_in_sample,
+                 matched_in_bg - matched_in_sample,
+                 sample_size - matched_in_sample,
+                 bg_size - matched_in_bg),
+               2, 2, byrow = TRUE)
+fit <- fisher.test(ctab, alternative = "two.sided")
+cat(paste0("Odds ratio of same-family enrichment in top 2.5%: ", round(fit$estimate,3),
+           " (", round(fit$conf.int[1],3), ", ", round(fit$conf.int[2],3), ")\n"))
+cat(paste0("\tp-value (Fisher's exact): ", round(fit$p.value,3), "\n"))
+
+# ------------------------------------------------------------------------------
+#   Enrichment of Lachno-Lachno pairs
+# ------------------------------------------------------------------------------
+
+families <- data$taxonomy$family
+families <- families[!is.na(families)]
+
+f_combo <- unlist(apply(combn(families, m = 2), 2, function(pair) {
+  if(!any(is.na(pair))) {
+    if(pair[1] == "Lachnospiraceae" & pair[2] == "Lachnospiraceae") {
+      1
+    } else {
+      0
+    }
+  } else {
+    NA
+  }
+}))
+
+# Same-family enrichment outside the top pairs
+families_inside <- unlist(sapply(1:length(pair_idx1), function(i) {
+  f1 <- data$taxonomy$family[pair_idx1[i]]
+  f2 <- data$taxonomy$family[pair_idx2[i]]
+  if(!is.na(f1) & !is.na(f2)) {
+    if(f1 == "Lachnospiraceae" & f2 == "Lachnospiraceae") {
+      1
+    } else {
+      0
+    }
+  } else {
+    NA
+  }
+}))
+families_inside <- families_inside[!is.na(families_inside)]
+
+# Same-family enrichment outside the top pairs
+families_outside <- unlist(sapply(1:length(pair_idx1_bottom), function(i) {
+  f1 <- data$taxonomy$family[pair_idx1_bottom[i]]
+  f2 <- data$taxonomy$family[pair_idx2_bottom[i]]
+  if(!is.na(f1) & !is.na(f2)) {
+    if(f1 == "Lachnospiraceae" & f2 == "Lachnospiraceae") {
+      1
+    } else {
+      0
+    }
+  } else {
+    NA
+  }
+}))
+families_outside <- families_outside[!is.na(families_outside)]
+
+(sum(families_inside == 1)/length(families_inside))/(sum(families_outside == 1)/length(families_outside))
+
+matched_in_sample <- sum(families_inside == 1)
+sample_size <- length(families_inside)
+matched_in_bg <- sum(f_combo == 1)
+bg_size <- length(f_combo)
+ctab <- matrix(c(matched_in_sample,
+                 matched_in_bg - matched_in_sample,
+                 sample_size - matched_in_sample,
+                 bg_size - matched_in_bg),
+               2, 2, byrow = TRUE)
+fit <- fisher.test(ctab, alternative = "two.sided")
+cat(paste0("Odds ratio of same-family enrichment in top 2.5%: ", round(fit$estimate,3),
+           " (", round(fit$conf.int[1],3), ", ", round(fit$conf.int[2],3), ")\n"))
+cat(paste0("\tp-value (Fisher's exact): ", round(fit$p.value,3), "\n"))
+cat(paste("\tExpected number: ", round((matched_in_bg/bg_size)*(bg_size*0.025)), "\n"))
+cat(paste("\tObserved number: ", matched_in_sample, "\n"))
 
 # ------------------------------------------------------------------------------
 #   Network plot

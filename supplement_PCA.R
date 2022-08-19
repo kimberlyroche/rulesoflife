@@ -43,6 +43,13 @@ plot_df <- data.frame(x = PCA$x[,1],
                       year = years)
 plot_df <- plot_df[plot_df$year %in% year_range,]
 
+plot_df$label <- factor(plot_df$label, levels = c("DUI", "DUX", "LIW", "PEB", "VET", "other"))
+levels(plot_df$label) <- c("F09", "F20", "F35", "F27", "F31", "other")
+
+# Label significantly predicts
+# summary(aov(x ~ label, plot_df))
+# summary(aov(y ~ label, plot_df))
+
 p <- ggplot(plot_df) +
   geom_point(data = plot_df[plot_df$label == "other",], mapping = aes(x = x, y = y),
              size = 2,

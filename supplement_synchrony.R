@@ -735,12 +735,13 @@ ggsave(file.path("output", "figures", "season_vs_synchrony.svg"),
        p,
        dpi = 100,
        units = "in",
-       height = 7,
-       width = 14)
+       height = 14,
+       width = 7)
 
 # Test for significant enrichment of labeled things and highly synchronous things
 temp$seasonal[temp$fam %in% unlist(seasonal_families)] <- "seasonal"
-summary(aov(temp$synchrony ~ temp$seasonal))
+temp$seasonal <- factor(temp$seasonal)
+# base::summary(aov(synchrony ~ seasonal, temp))
 # p = 0.358
 
 # ------------------------------------------------------------------------------
@@ -1147,10 +1148,14 @@ p4 <- ggplot(data.frame(x = c(correlations, correlations_permuted),
 #   estimated synchrony distribution?
 # ------------------------------------------------------------------------------
 
-cutoff <- quantile(correlations_permuted, probs = c(0.025, 0.975))
-cat(paste0(sum(correlations > cutoff[2]), " / ",
+# cutoff <- quantile(correlations_permuted, probs = c(0.025, 0.975))
+# cat(paste0(sum(correlations > cutoff[2]), " / ",
+#            length(correlations),
+#            " taxa exceed the 95% interval (", round(cutoff[1],3), ", ", round(cutoff[2],3), ")\n"))
+cutoff <- quantile(correlations_permuted, probs = c(0.95))
+cat(paste0(sum(correlations > cutoff[1]), " / ",
            length(correlations),
-           " taxa exceed the 95% interval (", round(cutoff[1],3), ", ", round(cutoff[2],3), ")\n"))
+           " taxa exceed the 95% interval (", round(cutoff[1],3), ")\n"))
 
 # ------------------------------------------------------------------------------
 #   Assemble panels

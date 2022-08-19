@@ -102,7 +102,7 @@ p1_ped <- ggplot() +
   theme(legend.position = "none",
         axis.title.y = element_text(size = 10)) +
   labs(#x = "kinship dissimilarity (1 - % relatedness)",
-    x = "coefficient of relatedness",
+    x = "1 - coefficient of relatedness",
     # y = "host-host dynamics distance",
     y = "microbe-microbe correlation matrix distances",
     fill = "Paired social group")

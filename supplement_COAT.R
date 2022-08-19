@@ -72,7 +72,8 @@ for(h in 1:length(hosts)) {
 p1 <- plot_kernel_or_cov_matrix(saved_matrix_basset) +
   theme(legend.position = "none") +
   labs(x = "ASV 1",
-       y = "ASV 2") +
+       y = "ASV 2",
+       title = "basset estimate") +
   scale_x_continuous(expand = c(0, 0)) +
   scale_y_continuous(expand = c(0, 0)) +
   theme(axis.text.x = element_blank(),
@@ -82,7 +83,8 @@ p1 <- plot_kernel_or_cov_matrix(saved_matrix_basset) +
 
 p2 <- plot_kernel_or_cov_matrix(saved_matrix_coat) +
   labs(x = "ASV 1",
-       y = "ASV 2") +
+       y = "ASV 2",
+       title = "COAT estimate") +
   scale_x_continuous(expand = c(0, 0)) +
   scale_y_continuous(expand = c(0, 0)) +
   theme(axis.text.x = element_blank(),
@@ -142,5 +144,5 @@ ggsave(file.path("output", "figures", "alternative-COAT.svg"),
 
 # Calculate correlation
 cat(paste0("Correlation of basset, COAT estimates: ",
-           round(cor(x, y)**2, 3),
+           round(cor(x, y), 3),
            "\n"))

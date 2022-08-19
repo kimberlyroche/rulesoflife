@@ -6,6 +6,7 @@ library(driver)
 library(fido)
 library(rulesoflife)
 library(LaplacesDemon)
+library(ggplot2)
 
 save_fn <- file.path("output", "downsampling_experiment.rds")
 if(!file.exists(save_fn)) {
@@ -57,16 +58,16 @@ if(!file.exists(save_fn)) {
       Z1 <- sign(taxon_dynamics[upper.tri(taxon_dynamics, diag = FALSE)])
       Z2 <- sign(est_Sigma[upper.tri(est_Sigma, diag = FALSE)])
 
-      prop_agree <- rbind(NULL,
+      prop_agree <- rbind(prop_agree,
                           data.frame(prop = sum(Z1 == Z2) / length(Z1),
                                      n = T,
                                      n_subset = j))
     }
   }
   saveRDS(prop_agree, save_fn)
+} else {
+  prop_agree <- readRDS(save_fn)
 }
-
-prop_agree <- readRDS(save_fn)
 
 p <- ggplot(prop_agree, aes(x = factor(n_subset), y = prop)) +
   geom_boxplot() +

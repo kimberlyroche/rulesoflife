@@ -5,6 +5,7 @@ library(rulesoflife)
 library(driver)
 library(RColorBrewer)
 library(ggridges)
+library(cowplot)
 
 # Pull top 2.5% most universal pairs
 rug_asv <- summarize_Sigmas(output_dir = "asv_days90_diet25_scale1")
@@ -50,13 +51,19 @@ for(i in 1:nrow(plot_df)) {
 fit <- lm(mcs ~ mean1*mean2, data = plot_df)
 cat(paste0("Mean CLR abundance of partner 1 is positively associated with median correlation strength: ",
            "beta = ", round(coef(summary(fit))[2,1], 3), ", p-value = ", round(coef(summary(fit))[2,4], 3), "\n"))
+var_expl <- (var(plot_df$mcs) - var(fit$residuals))/var(plot_df$mcs)
+cat(paste0("\tPercent variance explained: ", round(var_expl*100,3), "%\n"))
 
 p1 <- ggplot(plot_df, aes(x = mean1, y = mcs)) +
   geom_point(size = 3, shape = 21, fill = "#999999") +
   geom_smooth(color = "black", alpha = 0.66, method = "lm") +
   theme_bw() +
   labs(x = "CLR ASV mean",
-       y = "median correlation strength")
+       y = "median correlation strength") +
+  theme(axis.text.x = element_text(size = 12),
+        axis.text.y = element_text(size = 12),
+        axis.title.x = element_text(size = 14),
+        axis.title.y = element_text(size = 14))
 
 # ------------------------------------------------------------------------------
 #
@@ -72,7 +79,7 @@ plot_df$top_factor <- factor(plot_df$top)
 levels(plot_df$top_factor) <- c("Bottom 97.5%", "Top 2.5%")
 
 p2 <- ggplot(plot_df, aes(x = delta, y = top_factor, fill = top_factor)) +
-  geom_density_ridges() +
+  geom_density_ridges(quantile_lines = TRUE) +
   theme_bw() +
   labs(x = "difference in mean CLR abundance") +
   scale_fill_manual(values = brewer.pal(n = 4, name = "RdPu")[1:2]) +
@@ -81,7 +88,10 @@ p2 <- ggplot(plot_df, aes(x = delta, y = top_factor, fill = top_factor)) +
   theme(axis.title.y = element_blank(),
         legend.position = "none",
         legend.background = element_rect(fill='transparent')) +
-  guides(fill = guide_legend(reverse = TRUE))
+  guides(fill = guide_legend(reverse = TRUE)) +
+  theme(axis.text.x = element_text(size = 12),
+        axis.text.y = element_text(size = 12),
+        axis.title.x = element_text(size = 14))
 
 top_df <- plot_df %>%
   filter(top)
@@ -106,7 +116,7 @@ plot_df2$top <- factor(plot_df2$top)
 levels(plot_df2$top) <- c("Bottom 97.5%", "Top 2.5%")
 
 p3 <- ggplot(plot_df2, aes(x = mean, y = top, fill = partner)) +
-  geom_density_ridges(alpha = 0.5, scale = 1.2) +
+  geom_density_ridges(alpha = 0.65, scale = 1.2, quantile_lines = TRUE) +
   theme_bw() +
   labs(x = "mean CLR abundance",
        fill = "Partner\nabundance") +
@@ -116,8 +126,11 @@ p3 <- ggplot(plot_df2, aes(x = mean, y = top, fill = partner)) +
   theme(axis.title.y = element_blank(),
         legend.position = c(0.8, 0.8),
         legend.background = element_rect(fill = 'transparent')) +
-  guides(fill = guide_legend(reverse = TRUE))
-p3
+  guides(fill = guide_legend(reverse = TRUE)) +
+  theme(axis.text.x = element_text(size = 12),
+        axis.text.y = element_text(size = 12),
+        axis.title.x = element_text(size = 14))
+
 prow1 <- plot_grid(NULL, NULL, p1, NULL, ncol = 4,
                    scale = 0.95,
                    rel_widths = c(0.2, 0.1, 1, 0.2),

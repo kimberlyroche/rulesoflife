@@ -23,47 +23,47 @@ e <- y - m
 diag(e) <- 1
 
 y_plot <- plot_kernel_or_cov_matrix(y) +
-  labs(title = "observed host dynamics\n(y)") +
+  labs(title = "observed host\ndynamics\n(y)") +
   geom_text(aes(label = round(covariance, 2))) +
   theme(legend.position = "none",
         axis.title.x = element_blank(),
         axis.title.y = element_blank(),
         axis.ticks = element_blank(),
         axis.text = element_blank(),
-        plot.title = element_text(size = 10, hjust = 0.5)) +
+        plot.title = element_text(size = 12, hjust = 0.5)) +
   scale_x_continuous(expand = c(0, 0)) +
   scale_y_continuous(expand = c(0, 0))
 m_plot <- plot_kernel_or_cov_matrix(m) +
-  labs(title = "population mean dynamics\n(m)") +
+  labs(title = "population mean\ndynamics\n(m)") +
   geom_text(aes(label = round(covariance, 2))) +
   theme(legend.position = "none",
         axis.title.x = element_blank(),
         axis.title.y = element_blank(),
         axis.ticks = element_blank(),
         axis.text = element_blank(),
-        plot.title = element_text(size = 10, hjust = 0.5)) +
+        plot.title = element_text(size = 12, hjust = 0.5)) +
   scale_x_continuous(expand = c(0, 0)) +
   scale_y_continuous(expand = c(0, 0))
 e_plot <- plot_kernel_or_cov_matrix(e) +
   geom_text(aes(label = round(covariance, 2))) +
-  labs(title = "residual host dynamics\n(e)") +
+  labs(title = "residual host\ndynamics\n(e)") +
   theme(legend.position = "none",
         axis.title.x = element_blank(),
         axis.title.y = element_blank(),
         axis.ticks = element_blank(),
         axis.text = element_blank(),
-        plot.title = element_text(size = 10, hjust = 0.5)) +
+        plot.title = element_text(size = 12, hjust = 0.5)) +
   scale_x_continuous(expand = c(0, 0)) +
   scale_y_continuous(expand = c(0, 0))
 c_plot <- plot_kernel_or_cov_matrix(0.5*m + 0.5*e) +
   geom_text(aes(label = round(covariance, 2))) +
-  labs(title = "composite dynamics\n(0.5 m + 0.5 e)") +
+  labs(title = "composite\ndynamics\n(0.5 m + 0.5 e)") +
   theme(legend.position = "none",
         axis.title.x = element_blank(),
         axis.title.y = element_blank(),
         axis.ticks = element_blank(),
         axis.text = element_blank(),
-        plot.title = element_text(size = 10, hjust = 0.5)) +
+        plot.title = element_text(size = 12, hjust = 0.5)) +
   scale_x_continuous(expand = c(0, 0)) +
   scale_y_continuous(expand = c(0, 0))
 

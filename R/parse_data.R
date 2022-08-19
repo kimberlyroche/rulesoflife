@@ -121,7 +121,7 @@ filter_data <- function(tax_level = "ASV", host_sample_min = 75,
     tax_level <- "ASV"
   }
   if(!(tax_level %in% c("domain", "phylum", "class", "order", "family", "genus",
-                        "ASV"))) {
+                        "species", "ASV"))) {
     stop("Unrecognized tax_level specified!")
   }
 
@@ -266,20 +266,20 @@ load_data <- function(tax_level = "ASV", host_sample_min = 75,
 
   ordered_data <- long_data %>%
     arrange(sname, collection_date) %>%
-    select(c("OTU",
-           "Sample",
-           "Abundance",
-           "plate",
-           "extract_dna_conc_ng",
-           "sample_status",
-           "sname",
-           "matgrp",
-           "grp",
-           "sex",
-           "age",
-           "collection_date",
-           "season",
-           "sample_id"))
+    dplyr::select(c("OTU",
+                    "Sample",
+                    "Abundance",
+                    "plate",
+                    "extract_dna_conc_ng",
+                    "sample_status",
+                    "sname",
+                    "matgrp",
+                    "grp",
+                    "sex",
+                    "age",
+                    "collection_date",
+                    "season",
+                    "sample_id"))
 
   ordered_data <- pivot_wider(ordered_data,
                               names_from = "OTU",

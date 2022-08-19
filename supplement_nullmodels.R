@@ -27,9 +27,10 @@ for(i in 1:psamples) {
   fits <- list.files(file.path("output", "model_fits", pdir, "MAP"), full.names = TRUE)
   for(j in 1:length(fits)) {
     Sigma <- cov2cor(to_clr(readRDS(fits[j]))$Sigma[,,1])
+    D <- nrow(Sigma)
+    Sigma <- Sigma[1:(D-1),1:(D-1)]
     if(is.null(D_combos)) {
-      D <- nrow(Sigma)
-      D_combos <- (D^2 - D)/2
+      D_combos <- ((D-1)^2 - (D-1))/2
       permuted_correlation_phy <- matrix(NA, D_combos, length(fits)*psamples)
     }
     offset <- length(fits)*(i-1) + j
@@ -42,9 +43,10 @@ pdir <- "phy_days90_diet25_scale1"
 fits <- list.files(file.path("output", "model_fits", pdir, "MAP"), full.names = TRUE)
 for(j in 1:length(fits)) {
   Sigma <- cov2cor(to_clr(readRDS(fits[j]))$Sigma[,,1])
+  D <- nrow(Sigma)
+  Sigma <- Sigma[1:(D-1),1:(D-1)]
   if(is.null(correlation_phy)) {
-    D <- nrow(Sigma)
-    D_combos <- (D^2 - D)/2
+    D_combos <- ((D-1)^2 - (D-1))/2
     correlation_phy <- matrix(NA, D_combos, length(fits))
   }
   correlation_phy[,j] <- Sigma[upper.tri(Sigma)]
@@ -73,9 +75,10 @@ for(i in 1:psamples) {
   fits <- list.files(file.path("output", "model_fits", pdir, "MAP"), full.names = TRUE)
   for(j in 1:length(fits)) {
     Sigma <- cov2cor(to_clr(readRDS(fits[j]))$Sigma[,,1])
+    D <- nrow(Sigma)
+    Sigma <- Sigma[1:(D-1),1:(D-1)]
     if(is.null(D_combos)) {
-      D <- nrow(Sigma)
-      D_combos <- (D^2 - D)/2
+      D_combos <- ((D-1)^2 - (D-1))/2
       permuted_correlation_fam <- matrix(NA, D_combos, length(fits)*psamples)
     }
     offset <- length(fits)*(i-1) + j
@@ -88,9 +91,10 @@ pdir <- "fam_days90_diet25_scale1"
 fits <- list.files(file.path("output", "model_fits", pdir, "MAP"), full.names = TRUE)
 for(j in 1:length(fits)) {
   Sigma <- cov2cor(to_clr(readRDS(fits[j]))$Sigma[,,1])
+  D <- nrow(Sigma)
+  Sigma <- Sigma[1:(D-1),1:(D-1)]
   if(is.null(correlation_fam)) {
-    D <- nrow(Sigma)
-    D_combos <- (D^2 - D)/2
+    D_combos <- ((D-1)^2 - (D-1))/2
     correlation_fam <- matrix(NA, D_combos, length(fits))
   }
   correlation_fam[,j] <- Sigma[upper.tri(Sigma)]
@@ -120,9 +124,10 @@ for(i in 1:psamples) {
   fits <- list.files(file.path("output", "model_fits", pdir, "MAP"), full.names = TRUE)
   for(j in 1:length(fits)) {
     Sigma <- cov2cor(to_clr(readRDS(fits[j]))$Sigma[,,1])
+    D <- nrow(Sigma)
+    Sigma <- Sigma[1:(D-1),1:(D-1)]
     if(is.null(D_combos)) {
-      D <- nrow(Sigma)
-      D_combos <- (D^2 - D)/2
+      D_combos <- ((D-1)^2 - (D-1))/2
       permuted_correlation_asv <- matrix(NA, D_combos, length(fits)*psamples)
     }
     offset <- length(fits)*(i-1) + j
@@ -135,9 +140,10 @@ pdir <- "asv_days90_diet25_scale1"
 fits <- list.files(file.path("output", "model_fits", pdir, "MAP"), full.names = TRUE)
 for(j in 1:length(fits)) {
   Sigma <- cov2cor(to_clr(readRDS(fits[j]))$Sigma[,,1])
+  D <- nrow(Sigma)
+  Sigma <- Sigma[1:(D-1),1:(D-1)]
   if(is.null(correlation_asv)) {
-    D <- nrow(Sigma)
-    D_combos <- (D^2 - D)/2
+    D_combos <- ((D-1)^2 - (D-1))/2
     correlation_asv <- matrix(NA, D_combos, length(fits))
   }
   correlation_asv[,j] <- Sigma[upper.tri(Sigma)]
@@ -532,12 +538,20 @@ for(ttype in unique(corr_distros$type)) {
   pvalues_adj <- p.adjust(pvalues, method = "BH")
   signif_vec <- pvalues_adj < 0.05
 
+  cat(paste0("LEVEL: ", toupper(ttype), "\n"))
+
+  cat(paste0("Overall:\n"))
+  cat(paste0("\tMedian: ", round(median(values), 3), "\n"))
+  cat(paste0("\tPercent positive: ", round(sum(values > 0)/length(values), 3), "\n"))
+  cat(paste0("\tPercent negative: ", round(sum(values < 0)/length(values), 3), "\n"))
+
   prop <- sum(signif_vec) / length(pvalues_adj)
-  cat(paste0("Significant after FDR (", ttype, "): ", round(prop, 3), "\n"))
+  cat(paste0("Significant after FDR: ", round(prop, 3), " (", sum(signif_vec), " / ", length(pvalues_adj), ")\n"))
   cat(paste0("\tMedian values (signif pairs): ", round(median(abs(values[signif_vec])), 3), "\n"))
   x <- sum(values[signif_vec] > 0)
   n <- sum(signif_vec)
-  cat(paste0("\tPercent positive (of signif pairs): ", round(x/n, 3), "\n"))
+  cat(paste0("\tPercent positive (signif pairs): ", round(x/n, 3), "\n"))
+  cat(paste0("\tPercent negative (signif pairs): ", round((n-x)/n, 3), "\n\n"))
   # binom.test(x, n, p = 0.5)
 }
 
@@ -583,12 +597,15 @@ for(ttype in unique(score_distros$type)) {
 
   values <- score_distros %>% filter(type == ttype & scheme == "observed") %>% pull(x)
   pvalues <- sapply(values, function(x) {
-    # 1-f(x)
-    2*min(f(x), 1-f(x))
+    1-f(x) # one-sided
+    # 2*min(f(x), 1-f(x)) # two-sided
   })
 
   pvalues_adj <- p.adjust(pvalues, method = "BH")
   signif_vec <- pvalues_adj < 0.05
+
+  min_signif <- min(values[signif_vec])
+  cat(paste0("Minimum significant value (cutoff): ", round(min_signif, 5), "\n"))
 
   prop <- sum(signif_vec) / length(pvalues_adj)
   cat(paste0("Significant after FDR (", ttype, "): ", round(prop, 3), "\n"))

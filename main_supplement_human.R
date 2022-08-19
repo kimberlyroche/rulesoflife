@@ -15,6 +15,8 @@ library(ggrepel)
 library(pals)
 library(lme4)
 
+genus_level <- FALSE
+
 # ------------------------------------------------------------------------------
 #   Functions
 # ------------------------------------------------------------------------------
@@ -195,8 +197,7 @@ for(i in 1:(length(tax_johnson)-1)) {
                          class = NA,
                          order = NA,
                          family = NA,
-                         genus = NA,
-                         species = NA)
+                         genus = NA)
   for(j in 1:length(piece)) {
     piece_df[,j] <- str_split(piece[j], "__")[[1]][2]
     if(!is.na(piece_df[,j]) & (piece_df[,j] == "" | piece_df[,j] == "unclassified")) {
@@ -211,32 +212,41 @@ for(i in 1:(length(tax_johnson)-1)) {
                              piece_df)
 }
 tax_johnson_df <- rbind(tax_johnson_df,
-                           data.frame(kingdom = NA,
-                                      phylum = NA,
-                                      class = NA,
-                                      order = NA,
-                                      family = NA,
-                                      genus = NA,
-                                      species = NA))
+                        data.frame(kingdom = NA,
+                                   phylum = NA,
+                                   class = NA,
+                                   order = NA,
+                                   family = NA,
+                                   genus = NA))
 tax_johnson_df <- cbind(idx = as.numeric(rownames(tax_johnson_df)),
                            tax_johnson_df)
 tax_johnson <- tax_johnson_df
 rm(tax_johnson_df)
 
-# Collapse to family
 temp_tax <- tax_johnson
-temp_tax$species[is.na(temp_tax$species)] <- "missing"
+if(genus_level) {
+  temp_tax$genus[is.na(temp_tax$genus)] <- "missing"
+}
 temp_tax$family[is.na(temp_tax$family)] <- "missing"
 temp_tax$class[is.na(temp_tax$class)] <- "missing"
 temp_tax$order[is.na(temp_tax$order)] <- "missing"
 temp_tax$phylum[is.na(temp_tax$phylum)] <- "missing"
 temp_tax$kingdom[is.na(temp_tax$kingdom)] <- "missing"
 
-temp <- temp_tax %>%
-  group_by(kingdom, phylum, class, order, family) %>%
-  mutate(index_list = paste(idx, collapse = ",")) %>%
-  dplyr::select(c(kingdom, phylum, class, order, family, index_list)) %>%
-  distinct()
+if(genus_level) {
+  temp <- temp_tax %>%
+    group_by(kingdom, phylum, class, order, family, genus) %>%
+    mutate(index_list = paste(idx, collapse = ",")) %>%
+    dplyr::select(c(kingdom, phylum, class, order, family, genus, index_list)) %>%
+    distinct()
+} else {
+  # Collapse to family
+  temp <- temp_tax %>%
+    group_by(kingdom, phylum, class, order, family) %>%
+    mutate(index_list = paste(idx, collapse = ",")) %>%
+    dplyr::select(c(kingdom, phylum, class, order, family, index_list)) %>%
+    distinct()
+}
 
 new_counts <- matrix(NA, nrow(temp), ncol(counts))
 new_tax <- NULL
@@ -247,17 +257,31 @@ for(i in 1:nrow(temp)) {
   } else {
     new_counts[i,] <- unname(unlist(counts[indices,]))
   }
-  new_tax <- rbind(new_tax,
-                   temp %>%
-                     filter(kingdom == temp$kingdom[i] &
-                              phylum == temp$phylum[i] &
-                              class == temp$class[i] &
-                              order == temp$order[i] &
-                              family == temp$family[i]) %>%
-                     dplyr::select(!index_list))
-  dim(new_counts)
+  if(genus_level) {
+    new_tax <- rbind(new_tax,
+                     temp %>%
+                       filter(kingdom == temp$kingdom[i] &
+                                phylum == temp$phylum[i] &
+                                class == temp$class[i] &
+                                order == temp$order[i] &
+                                family == temp$family[i] &
+                                genus == temp$genus[i]) %>%
+                       dplyr::select(!index_list))
+  } else {
+    new_tax <- rbind(new_tax,
+                     temp %>%
+                       filter(kingdom == temp$kingdom[i] &
+                                phylum == temp$phylum[i] &
+                                class == temp$class[i] &
+                                order == temp$order[i] &
+                                family == temp$family[i]) %>%
+                       dplyr::select(!index_list))
+  }
 }
 
+if(genus_level) {
+  new_tax$genus[new_tax$genus == "missing"] <- NA
+}
 new_tax$family[new_tax$family == "missing"] <- NA
 new_tax$class[new_tax$class == "missing"] <- NA
 new_tax$order[new_tax$order == "missing"] <- NA
@@ -296,7 +320,7 @@ study_stats <- rbind(study_stats,
                                 n_subjects = length(subjects),
                                 n_samples = ncol(counts),
                                 n_taxa = nrow(counts),
-                                tax_level = "species"))
+                                tax_level = ifelse(species_level, "species", "family")))
 
 saved_fn <- file.path("input", "johnson2019", "fitted_results.rds")
 if(file.exists(saved_fn)) {
@@ -398,17 +422,30 @@ rm(tax_diabimmune_df)
 
 # Collapse to family
 temp_tax <- tax_diabimmune
+if(genus_level) {
+  temp_tax$genus[is.na(temp_tax$genus)] <- "missing"
+}
 temp_tax$family[is.na(temp_tax$family)] <- "missing"
 temp_tax$class[is.na(temp_tax$class)] <- "missing"
 temp_tax$order[is.na(temp_tax$order)] <- "missing"
 temp_tax$phylum[is.na(temp_tax$phylum)] <- "missing"
 temp_tax$kingdom[is.na(temp_tax$kingdom)] <- "missing"
 
-temp <- temp_tax %>%
-  group_by(kingdom, phylum, class, order, family) %>%
-  mutate(index_list = paste(idx, collapse = ",")) %>%
-  dplyr::select(c(kingdom, phylum, class, order, family, index_list)) %>%
-  distinct()
+if(genus_level) {
+  # Collapse to species
+  temp <- temp_tax %>%
+    group_by(kingdom, phylum, class, order, family, genus) %>%
+    mutate(index_list = paste(idx, collapse = ",")) %>%
+    dplyr::select(c(kingdom, phylum, class, order, family, genus, index_list)) %>%
+    distinct()
+} else {
+  # Collapse to family
+  temp <- temp_tax %>%
+    group_by(kingdom, phylum, class, order, family) %>%
+    mutate(index_list = paste(idx, collapse = ",")) %>%
+    dplyr::select(c(kingdom, phylum, class, order, family, index_list)) %>%
+    distinct()
+}
 
 new_counts <- matrix(NA, nrow(temp), ncol(counts))
 new_tax <- NULL
@@ -419,16 +456,30 @@ for(i in 1:nrow(temp)) {
   } else {
     new_counts[i,] <- counts[indices,]
   }
-  new_tax <- rbind(new_tax,
-                   temp %>%
-                     filter(kingdom == temp$kingdom[i] &
-                            phylum == temp$phylum[i] &
-                            class == temp$class[i] &
-                            order == temp$order[i] &
-                            family == temp$family[i]) %>%
-                     dplyr::select(!index_list))
+  if(genus_level) {
+    new_tax <- rbind(new_tax,
+                     temp %>%
+                       filter(kingdom == temp$kingdom[i] &
+                                phylum == temp$phylum[i] &
+                                class == temp$class[i] &
+                                order == temp$order[i] &
+                                family == temp$family[i] &
+                                genus == temp$genus[i]) %>%
+                       dplyr::select(!index_list))
+  } else {
+    new_tax <- rbind(new_tax,
+                     temp %>%
+                       filter(kingdom == temp$kingdom[i] &
+                                phylum == temp$phylum[i] &
+                                class == temp$class[i] &
+                                order == temp$order[i] &
+                                family == temp$family[i]) %>%
+                       dplyr::select(!index_list))
+  }
 }
-
+if(genus_level) {
+  new_tax$genus[new_tax$genus == "missing"] <- NA
+}
 new_tax$family[new_tax$family == "missing"] <- NA
 new_tax$class[new_tax$class == "missing"] <- NA
 new_tax$order[new_tax$order == "missing"] <- NA
@@ -535,6 +586,44 @@ all_scores <- rbind(all_scores,
                                n_subjects = length(use_subjects)))
 
 # ------------------------------------------------------------------------------
+#   Show overlap
+# ------------------------------------------------------------------------------
+
+if(genus_level) {
+  tax_abrp <- load_data(tax_level = "genus")$taxonomy
+} else {
+  tax_abrp <- load_data(tax_level = "family")$taxonomy
+}
+abrp_flat <- unname(apply(tax_abrp[,2:ncol(tax_abrp)], 1, function(x) {
+  paste(replace_na(x, "Unknown"), collapse = "/")
+}
+))
+johnson_flat <- unname(apply(tax_johnson, 1, function(x) {
+  paste(replace_na(x, "Unknown"), collapse = "/")
+}
+))
+diab_flat <- unname(apply(tax_diabimmune, 1, function(x) {
+  paste(replace_na(x, "Unknown"), collapse = "/")
+}
+))
+
+x <- length(intersect(abrp_flat, johnson_flat))
+y <- length(unique(c(abrp_flat, johnson_flat)))
+cat(paste0("ABRP / Johnson overlap: ", round(x/y*100, 1), "% (", x, " / ", y, ")\n"))
+
+x <- length(intersect(abrp_flat, diab_flat))
+y <- length(unique(c(abrp_flat, diab_flat)))
+cat(paste0("ABRP / DIABIMMUNE overlap: ", round(x/y*100, 1), "% (", x, " / ", y, ")\n"))
+
+x <- length(intersect(johnson_flat, diab_flat))
+y <- length(unique(c(johnson_flat, diab_flat)))
+cat(paste0("Johnson / DIABIMMUNE overlap: ", round(x/y*100, 1), "% (", x, " / ", y, ")\n"))
+
+x <- length(intersect(intersect(johnson_flat, diab_flat), abrp_flat))
+y <- length(unique(c(johnson_flat, diab_flat, abrp_flat)))
+cat(paste0("All overlap: ", round(x/y*100, 1), "% (", x, " / ", y, ")\n"))
+
+# ------------------------------------------------------------------------------
 #   Amboseli baboons
 # ------------------------------------------------------------------------------
 
@@ -552,6 +641,30 @@ all_scores <- rbind(all_scores,
                                sign = consensus_sign,
                                dataset = "Amboseli",
                                n_subjects = 56))
+
+rug <- amboseli$rug[,order(colMeans(amboseli$rug))]
+rug <- cbind(1:nrow(rug), rug)
+colnames(rug) <- c("host", paste0(1:(ncol(rug)-1)))
+rug <- pivot_longer(as.data.frame(rug), !host, names_to = "pair", values_to = "correlation")
+rug$pair <- as.numeric(rug$pair)
+
+# Amboseli family-level "rug"
+s2_abrp <- ggplot(rug, aes(x = pair, y = host)) +
+  geom_raster(aes(fill = correlation)) +
+  scale_fill_gradientn(limits = c(-1,1), colors = c("navy", "white", "red"),
+                       guide = guide_colorbar(frame.colour = "black",
+                                              ticks.colour = "black")) +
+  labs(y = "host") +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_continuous(expand = c(0, 0)) +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank()) +
+  labs(fill = "Correlation") +
+  theme(axis.title = element_text(size = 14, face = "plain"),
+        legend.title = element_text(size = 14),
+        legend.text = element_text(size = 12))
 
 # ------------------------------------------------------------------------------
 #   Figure panels
@@ -736,6 +849,7 @@ d_palette <- c(unname(pals::alphabet2())[-c(4,5,9)][1:11], "#dddddd")
 names(d_palette) <- levels(comp_scores$label)
 
 pt_sz <- 3
+stroke_sz <- 1
 s3 <- ggplot() +
   geom_smooth(data = comp_scores %>% filter(dataset.y == "DIABIMMUNE"),
               mapping = aes(x = score.x, y = score.y),
@@ -747,7 +861,7 @@ s3 <- ggplot() +
              mapping = aes(x = score.x, y = score.y, fill = label, color = dataset),
              size =  pt_sz,
              shape = 21,
-             stroke = 1.5) +
+             stroke = stroke_sz) +
   geom_smooth(data = comp_scores %>% filter(dataset.y == "Johnson et al."),
               mapping = aes(x = score.x, y = score.y),
               method = "lm",
@@ -758,7 +872,7 @@ s3 <- ggplot() +
              mapping = aes(x = score.x, y = score.y, fill = label, color = dataset),
              size =  pt_sz,
              shape = 21,
-             stroke = 1.5) +
+             stroke = stroke_sz) +
   scale_fill_manual(values = d_palette) +
   scale_color_manual(values = c("black", "gray")) +
   theme_bw() +
@@ -773,12 +887,24 @@ s3 <- ggplot() +
         legend.title = element_text(size = 14),
         legend.text = element_text(size = 12))
 
-s12 <- plot_grid(s2 + theme(legend.position = "none"),
+# s12 <- plot_grid(s2 + theme(legend.position = "none"),
+#                  NULL,
+#                  s1,
+#                  ncol = 3,
+#                  rel_widths = c(1, 0.1, 1.3),
+#                  labels = c("A", "", "B"),
+#                  label_size = 18,
+#                  label_y = 1.03,
+#                  label_x = -0.05)
+
+s12 <- plot_grid(s2_abrp + theme(legend.position = "none"),
+                 NULL,
+                 s2 + theme(legend.position = "none"),
                  NULL,
                  s1,
-                 ncol = 3,
-                 rel_widths = c(1, 0.1, 1.3),
-                 labels = c("A", "", "B"),
+                 ncol = 5,
+                 rel_widths = c(1, 0.05, 1, 0.05, 1.3),
+                 labels = c("A", "", "B", " ", "C"),
                  label_size = 18,
                  label_y = 1.03,
                  label_x = -0.05)
@@ -806,13 +932,13 @@ p <- plot_grid(s12,
                NULL,
                plot_grid(NULL, s3 + theme(text = element_text(size = 14)), NULL, ncol = 3,
                          rel_widths = c(0.03, 1, 0.03),
-                         labels = c("", "D", ""),
+                         labels = c("", "E", ""),
                          label_size = 19,
                          label_x = -0.02,
                          label_y = 1.05),
                ncol = 1,
-               rel_heights = c(0.9, 0.01, 0.85, 0.05, 1.2),
-               labels = c("", "", "C", "", ""),
+               rel_heights = c(0.65, 0.01, 0.85, 0.05, 1.2),
+               labels = c("", "", "D", "", ""),
                label_size = 18,
                label_y = 1.02,
                label_x = 0,
@@ -822,7 +948,7 @@ ggsave(file.path("output", "figures", "human_studies.svg"),
        p,
        dpi = 100,
        units = "in",
-       height = 11.5,
+       height = 10.5,
        width = 10)
 
 # Association -- ABRP x DIABIMMUNE
