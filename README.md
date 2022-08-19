@@ -1,2 +1,9 @@
-### 2021/04/05
-This is a re-draft of the Rules of Life analyses, packaging up only the boilerplate data parsing and model fitting code. We're jettisoning lots of the exploratory analyses to focus on a streamlined narrative for the manuscript.
+# Universal gut microbial relationships in the gut microbiome of wild baboons
+
+## Fitting models
+
+Fitted model output has been omitted from this repository for file size considerations but is available upon request. The `fido::basset` model can be fit to the filtered 16S data using the script `analysis_fit_model.R`.
+
+## Recapitulating figures
+
+Code for figure generation and supporting analysis is in files labeled `main_*.R` and `supplement_*.R`.
