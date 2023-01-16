@@ -115,8 +115,8 @@ prune_data <- function(seq_similarity_threshold = 0.99) {
 #' @importFrom stringr str_split
 #' @export
 filter_data <- function(tax_level = "ASV", host_sample_min = 75,
-                      count_threshold = 1, sample_threshold = 0.2,
-                      seq_similarity_threshold = 0.99) {
+                        count_threshold = 1, sample_threshold = 0.2,
+                        seq_similarity_threshold = 0.99) {
   if(is.null(tax_level)) {
     tax_level <- "ASV"
   }
@@ -138,8 +138,8 @@ filter_data <- function(tax_level = "ASV", host_sample_min = 75,
   # 1) Filter to hosts above a threshold
   metadata <- sample_data(data)
   metadata <- suppressWarnings(metadata %>%
-    group_by(sname) %>%
-    filter(n() >= host_sample_min))
+                                 group_by(sname) %>%
+                                 filter(n() >= host_sample_min))
   filter_sample_ids <<- metadata$sample_id
   data <- subset_samples(data, sample_id %in% filter_sample_ids)
 
@@ -244,12 +244,12 @@ load_data <- function(tax_level = "ASV", host_sample_min = 75,
   # File not found; process data afresh
 
   filtered_filename <- file.path("input", paste0("filtered_",
-                                        tax_level,
-                                        "_",
-                                        count_threshold,
-                                        "_",
-                                        round(sample_threshold*100),
-                                        ".rds"))
+                                                 tax_level,
+                                                 "_",
+                                                 count_threshold,
+                                                 "_",
+                                                 round(sample_threshold*100),
+                                                 ".rds"))
   if(file.exists(filtered_filename)) {
     data <- readRDS(filtered_filename)
   } else {
@@ -363,7 +363,7 @@ load_data <- function(tax_level = "ASV", host_sample_min = 75,
 #' @return a named list of count table, taxonomy, and metadata components
 #' @export
 load_scrambled_data <- function(tax_level = "ASV", host_sample_min = 75,
-                                    count_threshold = 1, sample_threshold = 0.2) {
+                                count_threshold = 1, sample_threshold = 0.2) {
   scrambled_filename <- file.path("input", paste0("scrambled_",
                                                   tax_level,
                                                   "_",
@@ -517,3 +517,31 @@ get_reference_hosts <- function(host_sample_min = 75, n_per_group = 1) {
                                      select(grp, sname))
   return(grp_assignments)
 }
+
+#' Return a vector indicating whether the frequency of 0-0 observations for a
+#' given taxon pair is less than some threshold
+#'
+#' @param counts taxon-by-sample count matrix
+#' @param threshold_and ceiling on the proportion of allowable joint zero (0-0)
+#' observations for a given pair of taxa
+#' @param threshold_or ceiling on the proportion of allowable combined zero and
+#' non-zero observations for a given pair of taxa
+#' @return logical vector
+#' @export
+filter_joint_zeros <- function(counts, threshold_and = 0.05, threshold_or = 0.5) {
+  pairs <- combn(1:(nrow(counts)-1), m = 2)
+  freq_and_zeros <- sapply(1:ncol(pairs), function(i) {
+    sum(counts[pairs[1,i],] == 0 & counts[pairs[2,i],] == 0)/length(counts[pairs[1,i],])
+  })
+  freq_or_zeros <- sapply(1:ncol(pairs), function(i) {
+    sum(counts[pairs[1,i],] == 0 | counts[pairs[2,i],] == 0)/length(counts[pairs[1,i],])
+  })
+  data.frame(idx1 = pairs[1,],
+             idx2 = pairs[2,],
+             frequency_00 = freq_and_zeros,
+             frequency_01 = freq_or_zeros,
+             threshold = freq_and_zeros < threshold_and & freq_or_zeros < threshold_or)
+}
+
+
+

@@ -10,9 +10,20 @@ library(ggraph)
 library(igraph)
 library(scales)
 
-# source("thresholds.R")
+source("thresholds.R")
+
+data <- load_data(tax_level = "ASV")
 
 rug_obj <- summarize_Sigmas(output_dir = "asv_days90_diet25_scale1")
+# rug <- rug_obj$rug
+
+filtered_pairs <- filter_joint_zeros(data$counts, threshold_and = 0.05, threshold_or = 0.5)
+filtered_obj <- rug_obj
+filtered_obj$tax_idx1 <- filtered_obj$tax_idx1[filtered_pairs$threshold]
+filtered_obj$tax_idx2 <- filtered_obj$tax_idx2[filtered_pairs$threshold]
+filtered_obj$rug <- filtered_obj$rug[,filtered_pairs$threshold]
+
+rug_obj <- filtered_obj
 rug <- rug_obj$rug
 
 # ------------------------------------------------------------------------------
@@ -97,8 +108,8 @@ p2 <- ggplot(data.frame(score = apply(rug, 2, calc_universality_score)),
   theme(legend.position = "none") +
   xlim(c(-0.05, 0.65)) +
   scale_fill_brewer(palette = "Blues") +
-  theme(axis.text = element_text(size = 9),
-        axis.title = element_text(size = 11))
+  theme(axis.text = element_text(size = 11),
+        axis.title = element_text(size = 13))
 
 # ------------------------------------------------------------------------------
 #   Enrichment bar plots
@@ -109,7 +120,13 @@ data <- load_data(tax_level = "ASV")
 consensus_signs <- apply(rug, 2, calc_consensus_sign)
 
 # Pull top k percent most universal associations
-percent <- 2.5
+# percent <- 2.5
+
+# Nothing in the top 2.5 pairs (by universality) is significantly different in
+# terms of enrichment of edges. The top 5% finds a few enriched pairs. The top
+# 10% doesn't find any additional pairs!
+
+percent <- 5 #
 k <- round(length(scores)*(percent/100))
 top_pairs <- order(scores, decreasing = TRUE)[1:k]
 bottom_pairs <- order(scores, decreasing = TRUE)[(k+1):length(scores)]
@@ -135,7 +152,8 @@ pair_ids %>%
               mutate(id = 1:n()) %>%
               select(id, family, genus), by = "id") %>%
   as.data.frame() %>%
-  filter(n > 10) %>%
+  # filter(n > 10) %>%
+  filter(row_number() <= 5) %>%
   arrange(desc(n))
 
 # ------------------------------------------------------------------------------
@@ -213,7 +231,7 @@ enrichment %<>%
          `P-value (Fisher's exact test)` = pvalue,
          `Adj. p-value (Benjamini-Hochberg)` = qvalue)
 write.table(enrichment,
-            file = file.path("output", "enrichment_top-pairs.tsv"),
+            file = file.path("output", "enrichment_top-pairs_alt.tsv"),
             sep = "\t",
             quote = FALSE,
             row.names = FALSE)
@@ -270,24 +288,24 @@ families_outside <- unlist(sapply(1:length(pair_idx1_bottom), function(i) {
 families_outside <- families_outside[!is.na(families_outside)]
 
 # Enrichment vs. overall
-matched_in_sample <- sum(families_inside == 1)
-sample_size <- length(families_inside)
-matched_in_bg <- sum(f_combo == 1)
-bg_size <- length(f_combo)
-ctab <- matrix(c(matched_in_sample,
-                 matched_in_bg - matched_in_sample,
-                 sample_size - matched_in_sample,
-                 bg_size - matched_in_bg),
-               2, 2, byrow = TRUE)
-fit <- fisher.test(ctab, alternative = "two.sided")
-cat(paste0("Odds ratio of same-family enrichment in top 2.5%: ", round(fit$estimate,3),
-           " (", round(fit$conf.int[1],3), ", ", round(fit$conf.int[2],3), ")\n"))
-cat(paste0("\tp-value (Fisher's exact): ", round(fit$p.value,3), "\n"))
+# matched_in_sample <- sum(families_inside == 1)
+# sample_size <- length(families_inside)
+# matched_in_bg <- sum(f_combo == 1)
+# bg_size <- length(f_combo)
+# ctab <- matrix(c(matched_in_sample,
+#                  matched_in_bg - matched_in_sample,
+#                  sample_size - matched_in_sample,
+#                  bg_size - matched_in_bg),
+#                2, 2, byrow = TRUE)
+# fit <- fisher.test(ctab, alternative = "two.sided")
+# cat(paste0("Odds ratio of same-family enrichment in top 5%: ", round(fit$estimate,3),
+#            " (", round(fit$conf.int[1],3), ", ", round(fit$conf.int[2],3), ")\n"))
+# cat(paste0("\tp-value (Fisher's exact): ", round(fit$p.value,3), "\n"))
 
 # Empirically
 # (sum(families_inside == 1)/length(families_inside))/(sum(families_outside == 1)/length(families_outside))
 
-# Enrichment vs. bottom 97.5%
+# Enrichment vs. bottom 95% (was 97.5%)
 matched_in_sample <- sum(families_inside == 1)
 sample_size <- length(families_inside)
 matched_in_bg <- sum(families_outside == 1)
@@ -298,12 +316,12 @@ ctab <- matrix(c(matched_in_sample,
                  bg_size - matched_in_bg),
                2, 2, byrow = TRUE)
 fit <- fisher.test(ctab, alternative = "two.sided")
-cat(paste0("Odds ratio of same-family enrichment in top 2.5%: ", round(fit$estimate,3),
+cat(paste0("Odds ratio of same-family enrichment in top 5%: ", round(fit$estimate,3),
            " (", round(fit$conf.int[1],3), ", ", round(fit$conf.int[2],3), ")\n"))
 cat(paste0("\tp-value (Fisher's exact): ", round(fit$p.value,3), "\n"))
 
 # ------------------------------------------------------------------------------
-#   Enrichment of Lachno-Lachno pairs
+#   Enrichment of Prevotellaceae pairs
 # ------------------------------------------------------------------------------
 
 families <- data$taxonomy$family
@@ -311,7 +329,7 @@ families <- families[!is.na(families)]
 
 f_combo <- unlist(apply(combn(families, m = 2), 2, function(pair) {
   if(!any(is.na(pair))) {
-    if(pair[1] == "Lachnospiraceae" & pair[2] == "Lachnospiraceae") {
+    if(pair[1] == "Prevotellaceae" & pair[2] == "Prevotellaceae") {
       1
     } else {
       0
@@ -326,7 +344,7 @@ families_inside <- unlist(sapply(1:length(pair_idx1), function(i) {
   f1 <- data$taxonomy$family[pair_idx1[i]]
   f2 <- data$taxonomy$family[pair_idx2[i]]
   if(!is.na(f1) & !is.na(f2)) {
-    if(f1 == "Lachnospiraceae" & f2 == "Lachnospiraceae") {
+    if(f1 == "Prevotellaceae" & f2 == "Prevotellaceae") {
       1
     } else {
       0
@@ -342,7 +360,7 @@ families_outside <- unlist(sapply(1:length(pair_idx1_bottom), function(i) {
   f1 <- data$taxonomy$family[pair_idx1_bottom[i]]
   f2 <- data$taxonomy$family[pair_idx2_bottom[i]]
   if(!is.na(f1) & !is.na(f2)) {
-    if(f1 == "Lachnospiraceae" & f2 == "Lachnospiraceae") {
+    if(f1 == "Prevotellaceae" & f2 == "Prevotellaceae") {
       1
     } else {
       0
@@ -353,19 +371,19 @@ families_outside <- unlist(sapply(1:length(pair_idx1_bottom), function(i) {
 }))
 families_outside <- families_outside[!is.na(families_outside)]
 
-(sum(families_inside == 1)/length(families_inside))/(sum(families_outside == 1)/length(families_outside))
-
 matched_in_sample <- sum(families_inside == 1)
 sample_size <- length(families_inside)
-matched_in_bg <- sum(f_combo == 1)
-bg_size <- length(f_combo)
+# matched_in_bg <- sum(f_combo == 1) # vs overall
+# bg_size <- length(f_combo)
+matched_in_bg <- sum(families_outside == 1) # vs bottom 95%
+bg_size <- length(families_outside)
 ctab <- matrix(c(matched_in_sample,
                  matched_in_bg - matched_in_sample,
                  sample_size - matched_in_sample,
                  bg_size - matched_in_bg),
                2, 2, byrow = TRUE)
 fit <- fisher.test(ctab, alternative = "two.sided")
-cat(paste0("Odds ratio of same-family enrichment in top 2.5%: ", round(fit$estimate,3),
+cat(paste0("Odds ratio of same-family enrichment in top 5%: ", round(fit$estimate,3),
            " (", round(fit$conf.int[1],3), ", ", round(fit$conf.int[2],3), ")\n"))
 cat(paste0("\tp-value (Fisher's exact): ", round(fit$p.value,3), "\n"))
 cat(paste("\tExpected number: ", round((matched_in_bg/bg_size)*(bg_size*0.025)), "\n"))
@@ -438,38 +456,68 @@ p3 <- ggraph(graph, layout = "fr") +
     axis.ticks.y = element_blank(),
     axis.title.y = element_blank())
 
-col1 <- plot_grid(p1b, p1a, p2,
+# Previous 6-panel setup
+# col1 <- plot_grid(p1b, p1a, p2,
+#                   ncol = 1,
+#                   rel_heights = c(1, 1, 0.8),
+#                   labels = c("A", "B", "C"),
+#                   label_size = 18,
+#                   label_y = 1.02,
+#                   scale = 1)
+# row1 <- plot_grid(p4, p5,
+#                   ncol = 2,
+#                   rel_widths = c(1, 1),
+#                   labels = c("E", "F"),
+#                   label_size = 18,
+#                   label_y = 1.02,
+#                   label_x = -0.02,
+#                   scale = 0.95)
+# p4_padded <- plot_grid(p3,
+#                        labels = c("D"),
+#                        label_size = 18,
+#                        label_y = 1.01,
+#                        label_x = -0.02,
+#                        scale = 0.95)
+# col2 <- plot_grid(p4_padded, row1,
+#                   ncol = 1,
+#                   rel_heights = c(1, 0.75))
+# p <- plot_grid(col1, NULL, col2,
+#                ncol = 3,
+#                rel_widths = c(1, 0.05, 2))
+
+col1 <- plot_grid(p1b, NULL, p1a,
                   ncol = 1,
-                  rel_heights = c(1, 1, 0.8),
-                  labels = c("A", "B", "C"),
+                  rel_heights = c(1,0.05, 1),
+                  labels = c("A", "", "B"),
                   label_size = 18,
                   label_y = 1.02,
                   scale = 1)
-row1 <- plot_grid(p4, p5,
-                  ncol = 2,
-                  rel_widths = c(1, 1),
-                  labels = c("E", "F"),
-                  label_size = 18,
-                  label_y = 1.02,
-                  label_x = -0.02,
-                  scale = 0.95)
-p4_padded <- plot_grid(p3,
-                       labels = c("D"),
-                       label_size = 18,
-                       label_y = 1.01,
-                       label_x = -0.02,
-                       scale = 0.95)
-col2 <- plot_grid(p4_padded, row1,
+
+col2_bottom <- plot_grid(p2, p4,
+                         ncol = 2,
+                         rel_widths = c(1, 1),
+                         labels = c("D", "E"),
+                         label_size = 18,
+                         label_y = 1.02,
+                         scale = 1)
+
+col2 <- plot_grid(p3, NULL, col2_bottom,
                   ncol = 1,
-                  rel_heights = c(1, 0.75))
+                  rel_heights = c(1, 0.05, 0.5),
+                  labels = c("C", "", ""),
+                  label_size = 18,
+                  label_y = 1.01,
+                  scale = 0.95)
+
 p <- plot_grid(col1, NULL, col2,
                ncol = 3,
-               rel_widths = c(1, 0.05, 2))
+               rel_widths = c(1, 0.05, 1.8))
 
-ggsave(file.path("output", "figures", "network.svg"),
+ggsave(file.path("output", "figures", "network_alt2.png"),
        p,
        units = "in",
-       dpi = 100,
-       height = 11,
-       width = 12)
+       dpi = 200,
+       height = 9,
+       width = 12,
+       bg = "white")
 

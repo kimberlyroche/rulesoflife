@@ -14,6 +14,9 @@ fit_GP(
   diet_weight = 0,
   var_scale_taxa = 1,
   var_scale_samples = 1,
+  concentration = 10,
+  age_min = -Inf,
+  age_max = Inf,
   use_adam = FALSE,
   scramble_sample = FALSE,
   scramble_spacing = FALSE,
@@ -45,6 +48,15 @@ taxa}
 
 \item{var_scale_samples}{scale of the hyperparameter associated with the
 covariance over samples}
+
+\item{concentration}{optional concentration parameter for the prior over
+taxon-taxon covariance}
+
+\item{age_min}{optional mimimum age; samples collected before this age for
+this animal will be omitted}
+
+\item{age_max}{optional maximum age; samples collected after this age for
+this animal will be omitted}
 
 \item{use_adam}{optimize with Adam (occasionally this converges more reliably}
 

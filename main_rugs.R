@@ -29,6 +29,30 @@ for(this_host in host_shortlist[host_order]) {
 
 rug_obj <- summarize_Sigmas(output_dir = "asv_days90_diet25_scale1")
 
+filtered_pairs <- filter_joint_zeros(data$counts, threshold_and = 0.05, threshold_or = 0.5)
+filtered_obj <- rug_obj
+filtered_obj$tax_idx1 <- filtered_obj$tax_idx1[filtered_pairs$threshold]
+filtered_obj$tax_idx2 <- filtered_obj$tax_idx2[filtered_pairs$threshold]
+filtered_obj$rug <- filtered_obj$rug[,filtered_pairs$threshold]
+
+rug_obj <- filtered_obj
+
+# Most negatively correlated pair
+# idx <- which.min(apply(rug_obj$rug[rug_obj$hosts %in% host_shortlist,], 2, median))
+idx <- which.min(apply(rug_obj$rug, 2, median))
+rug_obj$tax_idx1[idx]
+rug_obj$tax_idx2[idx]
+median(rug_obj$rug[,idx])
+sd(rug_obj$rug[,idx])
+
+# Most positively correlated pair
+# idx <- which.max(apply(rug_obj$rug[rug_obj$hosts %in% host_shortlist,], 2, median))
+idx <- which.max(apply(rug_obj$rug, 2, median))
+rug_obj$tax_idx1[idx]
+rug_obj$tax_idx2[idx]
+median(rug_obj$rug[,idx])
+sd(rug_obj$rug[,idx])
+
 # ------------------------------------------------------------------------------
 #   Enrichment statistics for sign
 # ------------------------------------------------------------------------------
@@ -105,6 +129,7 @@ pdir <- paste0("asv_days90_diet25_scale1_scramble-sample-", sprintf("%02d", i))
 fits <- list.files(file.path("output", "model_fits", pdir, "MAP"), full.names = TRUE)
 for(j in 1:length(fits)) {
   Sigma <- cov2cor(to_clr(readRDS(fits[j]))$Sigma[,,1])
+  Sigma <- Sigma[1:(nrow(Sigma)-1),1:(ncol(Sigma)-1)]
   if(is.null(D_combos)) {
     D <- nrow(Sigma)
     D_combos <- (D^2 - D)/2
@@ -112,6 +137,9 @@ for(j in 1:length(fits)) {
   }
   rug[j,] <- Sigma[upper.tri(Sigma)]
 }
+
+# Cut this down to low 0-0 frequency pairs
+rug <- rug[,filtered_pairs$threshold]
 
 rug <- cbind(1:nrow(rug), rug[,asv_column_order])
 colnames(rug) <- c("host", paste0(1:(ncol(rug)-1)))
@@ -171,125 +199,6 @@ for(host in host_shortlist[host_order]) {
   }
   pred_objs[[host]] <- pred_obj
 }
-
-# Seasonally striped version - buggy bug I'm saving
-# render_trajectories <- function(tax_indices, host_shortlist, host_labels, host_y_offset = 5,
-#                                 with_season = FALSE) {
-#   plot_df <- NULL
-#   for(tax_idx in tax_indices) {
-#     y_offset_counter <- 0
-#     for(h in 1:length(host_shortlist)) {
-#       host <- host_shortlist[h]
-#       label <- host_labels[h]
-#       pred_obj <- pred_objs[[host]]
-#       pred_df <- suppressMessages(gather_array(pred_obj$predictions[[host]]$Eta,
-#                                                val,
-#                                                coord,
-#                                                sample,
-#                                                iteration) %>%
-#                                     filter(coord == tax_idx) %>%
-#                                     group_by(coord, sample) %>%
-#                                     summarize(p25 = quantile(val, probs = c(0.25)),
-#                                               mean = mean(val),
-#                                               p75 = quantile(val, probs = c(0.75))))
-#       pred_df$host <- label
-#
-#       # Calculate day from (shared) baseline
-#       addend <- as.numeric(difftime(min(pred_obj$dates[[host]]), min_date, units = "day"))
-#
-#       day_span <- pred_obj$predictions[[host]]$span
-#       pred_df <- pred_df %>%
-#         left_join(data.frame(sample = 1:length(day_span), day = day_span), by = "sample")
-#
-#       pred_df$day <- pred_df$day + addend
-#
-#       pred_df2 <- pred_df %>%
-#         group_by(coord, host) %>%
-#         mutate(mean = mean - mean(mean),
-#                p25 = p25 - mean(p25),
-#                p75 = p75 - mean(p75))
-#
-#       if(y_offset_counter > 0) {
-#         pred_df2$p25 <- pred_df2$p25 + host_y_offset*y_offset_counter
-#         pred_df2$mean <- pred_df2$mean + host_y_offset*y_offset_counter
-#         pred_df2$p75 <- pred_df2$p75 + host_y_offset*y_offset_counter
-#       }
-#
-#       y_offset_counter <- y_offset_counter + 1
-#
-#       plot_df <- rbind(plot_df, pred_df2)
-#     }
-#   }
-#
-#   p3 <- ggplot()
-#
-#   if(with_season) {
-#     first_day <- "2000-07-10"
-#     wet_intervals <- list()
-#     seasons <- md %>%
-#       select(collection_date, season) %>%
-#       arrange(collection_date) %>%
-#       distinct() %>%
-#       filter(collection_date >= first_day)
-#     # The lazy way
-#     wet <- FALSE
-#     wet_start <- NULL
-#     for(i in 1:nrow(seasons)) {
-#       if(seasons$season[i] == "Wet" & !wet) {
-#         wet <- TRUE
-#         wet_start <- as.numeric(difftime(seasons$collection_date[i], first_day, units = "days"))
-#       } else if(seasons$season[i] == "Dry" & wet) {
-#         wet <- FALSE
-#         wet_intervals[[length(wet_intervals)+1]] <- c(wet_start,
-#                                                       as.numeric(difftime(seasons$collection_date[i], first_day, units = "days")))
-#       }
-#     }
-#
-#     for(i in 1:length(wet_intervals)) {
-#       p3 <- p3 + geom_rect(data = data.frame(xmin = wet_intervals[[i]][1], xmax = wet_intervals[[i]][2],
-#                                              ymin = -5, ymax = Inf),
-#                            mapping = aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax), fill = "#eeeeee")
-#     }
-#
-#   }
-#
-#   swap_color <- FALSE
-#   for(tax_idx in tax_indices) {
-#     for(this_host in host_labels) {
-#       p3 <- p3 +
-#         geom_ribbon(data = plot_df %>% filter(host == this_host & coord == tax_idx),
-#                     mapping = aes(x = day, ymin = p25, ymax = p75),
-#                     fill = ifelse(swap_color, "#a6cee3", "#fdbf6f"),
-#                     alpha = alpha) +
-#         geom_line(data = plot_df %>% filter(host == this_host & coord == tax_idx),
-#                   mapping = aes(x = day, y = mean),
-#                   color = ifelse(swap_color, "#1f78b4", "#ff7f00"),
-#                   size = 1,
-#                   alpha = alpha)
-#     }
-#     swap_color <- TRUE
-#   }
-#
-#   breaks <- plot_df %>%
-#     group_by(host) %>%
-#     summarize(y_mean = mean(mean))
-#   name_map <- unlist(breaks$host)
-#   names(name_map) <- round(unlist(breaks$y_mean))
-#
-#   p3 <- p3 +
-#     theme_bw() +
-#     labs(x = paste0("days from first sample (", min_date, ")"),
-#          y = "") +
-#     scale_x_continuous(expand = c(0.01, 0.01)) +
-#     scale_y_continuous(breaks = unlist(breaks$y_mean), labels = name_map, expand = c(0, 0)) +
-#     # scale_y_continuous(expand = c(0.01, 0.01)) +
-#     theme(panel.grid.major = element_blank(),
-#           # axis.text.y = element_blank(),
-#           # axis.ticks.y = element_blank(),
-#           panel.grid.minor = element_blank())
-#
-#   p3
-# }
 
 render_trajectories <- function(tax_indices, host_shortlist, host_labels, host_y_offset = 5) {
   plot_df <- NULL
@@ -371,7 +280,8 @@ render_trajectories <- function(tax_indices, host_shortlist, host_labels, host_y
 # p_test <- render_trajectories(c(1,9), host_shortlist[c(2,3,4,5,1)], use_labels[c(1,5,3,4,2)], host_y_offset = 5, with_season = TRUE)
 
 p3 <- render_trajectories(c(2,3), host_shortlist[c(2,3,4,5,1)], use_labels[c(1,5,3,4,2)], host_y_offset = 5)
-p4 <- render_trajectories(c(15,107), host_shortlist[c(2,3,4,5,1)], use_labels[c(1,5,3,4,2)], host_y_offset = 10)
+# p4 <- render_trajectories(c(15,107), host_shortlist[c(2,3,4,5,1)], use_labels[c(1,5,3,4,2)], host_y_offset = 10)
+p4 <- render_trajectories(c(2, 105), host_shortlist[c(2,3,4,5,1)], use_labels[c(1,5,3,4,2)], host_y_offset = 10)
 
 prow2 <- plot_grid(p4, NULL, p3, NULL, ncol = 4,
                    labels = c("C", "", "D", ""),
@@ -383,9 +293,10 @@ prow2 <- plot_grid(p4, NULL, p3, NULL, ncol = 4,
 p_out <- plot_grid(prow1, prow2, ncol = 1,
                    rel_heights = c(1, 0.75))
 
-ggsave(file.path("output", "figures", "rugs.svg"),
+ggsave(file.path("output", "figures", "rugs_alt.png"),
        p_out,
-       dpi = 50,
+       # dpi = 50,
+       dpi = 200,
        units = "in",
        height = 9,
        width = 12)

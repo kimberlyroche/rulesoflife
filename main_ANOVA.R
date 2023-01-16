@@ -11,6 +11,7 @@ library(pedtools)
 library(kinship2)
 library(RColorBrewer)
 library(cowplot)
+library(ggridges)
 
 # ------------------------------------------------------------------------------
 #
@@ -36,6 +37,14 @@ N <- length(hosts)
 Sigmas <- pull_Sigmas(output_dir)
 D <- dim(Sigmas)[1] + 1
 
+# NA correlation pairs with low confidence (lots of joint 0-0 observations)
+rug_asv <- summarize_Sigmas(output_dir = "asv_days90_diet25_scale1")
+filtered_pairs <- filter_joint_zeros(data$counts, threshold_and = 0.05, threshold_or = 0.5)
+filtered_obj <- rug_asv
+filtered_obj$tax_idx1 <- filtered_obj$tax_idx1[filtered_pairs$threshold]
+filtered_obj$tax_idx2 <- filtered_obj$tax_idx2[filtered_pairs$threshold]
+filtered_obj$rug <- filtered_obj$rug[,filtered_pairs$threshold]
+
 # Calculate samples of the dynamics distance
 host_combos <- combn(length(hosts), m = 2)
 
@@ -60,8 +69,17 @@ for(i in 1:ncol(host_combos)) {
   }
   a <- host_combos[1,i]
   b <- host_combos[2,i]
-  d <- dist4cov(Sigmas[,,a] + diag(D-1)*1e-06,
-                Sigmas[,,b] + diag(D-1)*1e-06)$dist
+  # Just Euclidean distance
+  # d <- dist4cov(Sigmas[,,a] + diag(D-1)*1e-06,
+  #               Sigmas[,,b] + diag(D-1)*1e-06)$dist
+
+  # vec1 <- Sigmas[,,a][upper.tri(Sigmas[,,a])]
+  # vec1 <- vec1[!is.na(vec1)]
+  # vec2 <- Sigmas[,,b][upper.tri(Sigmas[,,b])]
+  # vec2 <- vec2[!is.na(vec2)]
+  # dmat <- matrix(c(vec1, vec2), byrow = T, 2, length(vec1))
+
+  d <- as.numeric(dist(filtered_obj$rug[c(a,b),]))
   dynamics_distances[a,b] <- d
   dynamics_distances[b,a] <- d
 }
@@ -303,9 +321,9 @@ p_all <- plot_grid(p_row, legend,
                    ncol = 1,
                    rel_heights = c(1, 0.1))
 
-ggsave(file.path("output", "figures", "anova.svg"),
+ggsave(file.path("output", "figures", "anova_alt.png"),
        plot = p_all,
-       dpi = 100,
+       dpi = 200,
        units = "in",
        height = 4,
        width = 8)
@@ -327,7 +345,8 @@ if(females_only) {
 host_list <- lifespan %>% pull(sname)
 
 host_include <- sort(hosts) %in% host_list
-use_Sigmas <- Sigmas[,,host_include]
+# use_Sigmas <- Sigmas[,,host_include]
+use_Sigmas <- filtered_obj$rug[host_include,]
 
 # Load pedigree
 mapping <- data.frame(sname = sort(hosts)) %>%
@@ -350,7 +369,7 @@ p1_life <- ggplot(data.frame(x = lifespan_vec, y = use_dd_vec),
   # geom_smooth(color = "gray", alpha = 0.5) +
   geom_point(size = 3, shape = 21, fill = "#999999") +
   theme_bw() +
-  labs(x = paste0("lifespance distance", ifelse(females_only, " (females only)", "")),
+  labs(x = paste0("lifespan distance", ifelse(females_only, " (females only)", "")),
        y = "host-host dynamics distance")
 
 # ------------------------------------------------------------------------------
@@ -413,7 +432,6 @@ heatmap_cov <- function(K, label) {
 # ------------------------------------------------------------------------------
 
 # Load a few posterior samples for a few hosts
-data <- load_data(tax_level = "ASV")
 md <- data$metadata
 hosts <- sort(unique(md$sname))
 
@@ -425,7 +443,8 @@ hosts <- sort(unique(md$sname))
 # F1$mean <- CovFMean(F1$Sigmas)$Mout[[1]]
 
 # Compute frechet mean with `shapes` package
-cov_mean <- estcov(Sigmas, method = "Euclidean")
+# cov_mean <- estcov(Sigmas, method = "Euclidean")
+cov_mean <- colMeans(filtered_obj$rug)
 
 N <- dim(Sigmas)[3]
 
@@ -448,14 +467,16 @@ sexes <- unique(host_sex$sex)
 group_means <- list()
 for(g in 1:length(groups)) {
   # group_means[[g]] <- CovFMean(F1$Sigmas[,,host_groups$grp == groups[g]])$Mout[[1]]
-  group_means[[g]] <- estcov(Sigmas[,,host_groups$grp == groups[g]], method = "Euclidean")$mean
+  # group_means[[g]] <- estcov(Sigmas[,,host_groups$grp == groups[g]], method = "Euclidean")$mean
+  group_means[[g]] <- colMeans(filtered_obj$rug[host_groups$grp == groups[g],])
 }
 
 # Load group means
 sex_means <- list()
 for(s in 1:length(sexes)) {
   # sex_means[[s]] <- CovFMean(F1$Sigmas[,,host_sex$sex == sexes[s]])$Mout[[1]]
-  sex_means[[s]] <- estcov(Sigmas[,,host_sex$sex == sexes[s]], method = "Euclidean")$mean
+  # sex_means[[s]] <- estcov(Sigmas[,,host_sex$sex == sexes[s]], method = "Euclidean")$mean
+  sex_means[[s]] <- colMeans(filtered_obj$rug[host_sex$sex == sexes[s],])
 }
 
 # ------------------------------------------------------------------------------
@@ -468,7 +489,10 @@ between_sum <- 0
 for(i in 1:K) {
   grp <- groups[i]
   n_i <- sum(host_groups == grp)
-  d <- dist4cov(group_means[[i]], cov_mean$mean)$dist**2
+  # d <- dist4cov(group_means[[i]], cov_mean$mean)$dist**2
+  d <- as.numeric(dist(matrix(c(group_means[[i]],
+                                cov_mean),
+                              byrow = T, 2, length(cov_mean))))**2
   between_sum <- between_sum + (n_i * d)
 }
 numerator <- between_sum / (K-1)
@@ -478,7 +502,10 @@ for(i in 1:K) {
   grp <- groups[i]
   idx_i <- which(host_groups$grp == grp)
   for(j in idx_i) {
-    d <- dist4cov(Sigmas[,,j], group_means[[i]])$dist**2
+    # d <- dist4cov(Sigmas[,,j], group_means[[i]])$dist**2
+    d <- as.numeric(dist(matrix(c(filtered_obj$rug[j,],
+                                  group_means[[i]]),
+                                byrow = T, 2, length(group_means[[i]]))))**2
     within_sum <- within_sum + d
   }
 }
@@ -492,6 +519,13 @@ cat(paste0("P-value for pseudo-ANOVA on GROUP (F=",
            round(1 - pf(ratio, K-1, N-K), 3),
            "\n"))
 
+# Visualize as boxplots
+# Get all distances
+coords <- cmdscale(dist(filtered_obj$rug))
+ggplot(data.frame(x = coords[,1], y = coords[,2], label = host_groups$grp),
+       aes(x = x, y = y, fill = factor(label))) +
+  geom_point(size = 2, shape = 21)
+
 # ------------------------------------------------------------------------------
 #   ANOVA on sex
 # ------------------------------------------------------------------------------
@@ -502,7 +536,10 @@ between_sum <- 0
 for(i in 1:K) {
   sex <- sexes[i]
   n_i <- sum(host_sex == sex)
-  d <- dist4cov(sex_means[[i]], cov_mean$mean)$dist**2
+  # d <- dist4cov(sex_means[[i]], cov_mean$mean)$dist**2
+  d <- as.numeric(dist(matrix(c(sex_means[[i]],
+                                cov_mean),
+                              byrow = T, 2, length(cov_mean))))**2
   between_sum <- between_sum + (n_i * d)
 }
 numerator <- between_sum / (K-1)
@@ -512,7 +549,10 @@ for(i in 1:K) {
   sex <- sexes[i]
   idx_i <- which(host_sex$sex == sex)
   for(j in idx_i) {
-    d <- dist4cov(Sigmas[,,j], sex_means[[i]])$dist**2
+    # d <- dist4cov(Sigmas[,,j], sex_means[[i]])$dist**2
+    d <- as.numeric(dist(matrix(c(filtered_obj$rug[j,],
+                                  sex_means[[i]]),
+                                byrow = T, 2, length(sex_means[[i]]))))**2
     within_sum <- within_sum + d
   }
 }
@@ -525,3 +565,10 @@ cat(paste0("P-value for pseudo-ANOVA on SEX (F=",
            "): ",
            round(1 - pf(ratio, K-1, N-K), 3),
            "\n"))
+
+# Visualize as boxplots
+# Get all distances
+ggplot(data.frame(x = coords[,1], y = coords[,2], label = host_sex$sex),
+       aes(x = x, y = y, fill = factor(label))) +
+  geom_point(size = 2, shape = 21)
+

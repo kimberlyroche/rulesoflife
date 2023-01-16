@@ -50,6 +50,8 @@ data <- load_data(tax_level = "ASV")
 output_dir <- "asv_days90_diet25_scale1"
 rug_obj <- summarize_Sigmas(output_dir)
 
+filtered_pairs <- filter_joint_zeros(data$counts, threshold_and = 0.05, threshold_or = 0.5)
+
 scores <- apply(rug_obj$rug, 2, calc_universality_score)
 piecewise_scores <- apply(rug_obj$rug, 2, function(x) {
   calc_universality_score(x, return_pieces = TRUE)
@@ -58,11 +60,16 @@ consensus_signs <- apply(rug_obj$rug, 2, calc_consensus_sign)
 
 scores_df <- data.frame(index = 1:length(scores),
                         score = scores,
+                        threshold = filtered_pairs$threshold,
                         prop_agree = piecewise_scores[1,],
                         med_assoc_strength = piecewise_scores[2,],
                         consensus_sign = consensus_signs)
 
-percents <- c(100, 5, 2.5, 1)
+scores_df %<>%
+  filter(threshold)
+
+# percents <- c(100, 5, 2.5, 1)
+percents <- c(100, 10, 5)
 for(percent in percents) {
   k <- percent_to_k(percent, nrow(scores_df))
   if(percent == 100) {
@@ -73,6 +80,16 @@ for(percent in percents) {
     slice(1:k) %>%
     arrange(desc(score))
   table_df$rank <- 1:k
+  table_df$percent <- table_df$rank/k
+  table_df$percent <- sapply(table_df$percent, function(x) {
+    if(x <= 0.05) {
+      "top 5%"
+    } else if(x <= 0.1) {
+      "top 10%"
+    } else {
+      "top 100%"
+    }
+  })
   table_df$tax_index1 <- sapply(table_df$index, function(x) {
     rug_obj$tax_idx1[x]
   })
@@ -109,11 +126,12 @@ for(percent in percents) {
                                 table_df$tax_index2[i]]
   }
 
-  write.table(table_df %>% dplyr::select(rank, tax_index1, tax_index2,
+  write.table(table_df %>%
+                dplyr::select(rank, tax_index1, tax_index2, percent,
                                          consensus_sign, prop_agree, med_assoc_strength, score,
                                          percent_identity, mismatches, K80_dist,
                                          taxonomy_1, taxonomy_2, sequence_1, sequence_2),
-              file = file.path("output", paste0("top_", percent, "_universal.tsv")),
+              file = file.path("output", paste0("top_", percent, "_universal_alt.tsv")),
               sep = "\t",
               quote = FALSE,
               row.names = FALSE)

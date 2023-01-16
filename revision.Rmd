@@ -1,0 +1,718 @@
+---
+title: "R Notebook"
+output:
+  html_document:
+    df_print: paged
+---
+
+This is me conceptually working through the joint-zeros-inducing-positive-correlation problem in ASVs.
+
+```{r}
+library(driver)
+library(rulesoflife)
+library(ggplot2)
+library(magrittr)
+library(dplyr)
+library(SpiecEasi)
+library(Matrix)
+library(propr)
+library(ggraph)
+library(igraph)
+library(matrixsampling)
+library(fido)
+library(LaCroixColoR)
+library(conflicted)
+
+conflict_prefer("filter", "dplyr")
+conflict_prefer("select", "dplyr")
+conflict_prefer("rename", "dplyr")
+conflict_prefer("alr", "driver")
+
+source("COAT.R")
+```
+
+There is a systematic issue where frequency of 0-0 observations is associated with increases in positive correlation. And there are some high universality pairs that seem to be affected by this!
+
+```{r}
+data <- load_data("ASV")
+
+sname <- "ACA"
+
+x <- data$counts[,data$metadata$sname == sname]
+clr_x <- clr_array(x + 0.5, parts = 1)
+
+z <- combn(1:(nrow(x)-1), m = 2)
+
+joint0 <- sapply(1:ncol(z), function(i) {
+  sum(x[z[1,i],] == 0 & x[z[2,i],] == 0)/length(x[z[1,i],])
+})
+
+either0 <- sapply(1:ncol(z), function(i) {
+  sum(x[z[1,i],] == 0 | x[z[2,i],] == 0)/length(x[z[1,i],])
+})
+
+y <- readRDS(paste0("C:/Users/kimbe/Documents/rulesoflife/output/model_fits/asv_days90_diet25_scale1/MAP/", sname, ".rds"))
+cormat <- cov2cor(y$Sigma[,,1])
+
+clr_y <- fido::to_clr(y)
+
+joint_cor <- sapply(1:ncol(z), function(i) {
+  cormat[z[1,i],z[2,i]]
+})
+
+amboseli <- summarize_Sigmas("asv_days90_diet25_scale1")
+scores <- apply(amboseli$rug, 2, function(x) calc_universality_score(x))
+rho <- apply(amboseli$rug, 2, median)
+
+plot_df_and <- data.frame(x = joint0,
+                          y = joint_cor,
+                          idx1 = amboseli$tax_idx1,
+                          idx2 = amboseli$tax_idx2,
+                          score = scores,
+                          rho = rho)
+
+plot_df_or <- data.frame(x = either0,
+                         y = joint_cor,
+                         idx1 = amboseli$tax_idx1,
+                         idx2 = amboseli$tax_idx2,
+                         score = scores,
+                         rho = rho)
+
+ggplot(plot_df_and, aes(x = x, y = y, fill = score)) +
+  geom_point(size = 2.5, shape = 21) +
+  geom_smooth(method = "loess", color = "black") +
+  labs(x = "frequency of 0-and-0", y = "ASV-ASV CLR correlation", fill = "Universality score") +
+  scale_fill_distiller(palette = "RdBu") +
+  theme_bw()
+
+ggplot(plot_df_or, aes(x = x, y = y, fill = score)) +
+  geom_point(size = 2.5, shape = 21) +
+  geom_smooth(method = "loess", color = "black") +
+  labs(x = "frequency of 0-or-0", y = "ASV-ASV CLR correlation", fill = "Universality score") +
+  scale_fill_distiller(palette = "RdBu") +
+  theme_bw()
+
+# ggplot(data.frame(joint00 = joint0, either00 = either0, score = scores),
+#        aes(x = either00, y = joint00, fill = score)) +
+#   geom_point(size = 2.5, shape = 21) +
+#   geom_smooth(method = "loess", color = "black") +
+#   labs(x = "frequency of either 0", y = "frequency of joint 0-0", fill = "Universality score") +
+#   scale_fill_distiller(palette = "RdBu") +
+#   theme_bw()
+```
+
+What do some of these frequently 0-0 but highly universal pairs look like?
+
+```{r}
+ex <- plot_df_and %>%
+  filter(x >= 0.35 & x <= 0.4 & y > 0.5 & score > 0.6)
+
+ggplot(data.frame(x = clr_y$Eta[ex$idx1[1],,1], y = clr_y$Eta[ex$idx2[1],,1]),
+       aes(x = x, y = y)) +
+  geom_point(size = 2) +
+  theme_bw() +
+  labs(x = paste0("CLR abundance taxon ", ex$idx1[1]),
+       y = paste0("CLR abundance taxon ", ex$idx2[2]),
+       title = "fido::basset logratio latent representation")
+
+ggplot(data.frame(x = clr_x[ex$idx1[1],], y = clr_x[ex$idx2[1],]),
+       aes(x = x, y = y)) +
+  geom_point(size = 2) +
+  theme_bw() +
+  labs(x = paste0("CLR abundance taxon ", ex$idx1[1]),
+       y = paste0("CLR abundance taxon ", ex$idx2[2]),
+       title = "Empirical estimate")
+```
+
+What do some of these frequently 0-or-0 pairs look like?
+
+```{r}
+ex <- plot_df_or %>%
+  filter(x > 0.5 & x < 1 & rho < -0.4)
+```
+
+```{r}
+# idx <- sample(1:nrow(ex), size = 1)
+idx <- 37
+
+# But basset estimates something a little noisier
+ggplot(data.frame(x = clr_y$Eta[ex$idx1[idx],,1], y = clr_y$Eta[ex$idx2[idx],,1]),
+       aes(x = x, y = y)) +
+  geom_point(size = 2) +
+  theme_bw() +
+  labs(x = paste0("model eta estimate of taxon ", ex$idx1[idx]),
+       y = paste0("model eta estimate of taxon ", ex$idx2[idx]),
+       title = "fido::basset logratio latent representation")
+
+# Discrete modes of low/zero abundance are clear
+ggplot(data.frame(x = clr_x[ex$idx1[idx],], y = clr_x[ex$idx2[idx],]),
+       aes(x = x, y = y)) +
+  geom_point(size = 2) +
+  theme_bw() +
+  labs(x = paste0("CLR abundance of taxon ", ex$idx1[idx]),
+       y = paste0("CLR abundance of taxon ", ex$idx2[idx]),
+       title = "Empirical estimate")
+```
+
+Is proportionality affected by this? See definitions here: https://www.nature.com/articles/s41598-017-16520-0
+
+```{r}
+prop <- propr(t(x), metric = "rho")
+prop_mat <- prop@matrix[1:125,1:125]
+prop_rho <- prop_mat[lower.tri(prop_mat, diag = FALSE)]
+
+prop <- propr(t(x), metric = "phi")
+prop_mat <- prop@matrix[1:125,1:125]
+prop_phi <- prop_mat[lower.tri(prop_mat, diag = FALSE)]
+
+prop <- propr(t(x), metric = "phs")
+prop_mat <- prop@matrix[1:125,1:125]
+prop_phs <- prop_mat[lower.tri(prop_mat, diag = FALSE)]
+
+plot_df_and2 <- data.frame(x = joint0,
+                           y1 = prop_rho,
+                           y2 = prop_phi,
+                           y3 = prop_phs,
+                           idx1 = amboseli$tax_idx1,
+                           idx2 = amboseli$tax_idx2,
+                           score = scores)
+
+ggplot(plot_df_and2, aes(x = x, y = y1, fill = score)) +
+  geom_point(size = 2.5, shape = 21) +
+  geom_smooth(method = "loess", color = "black") +
+  labs(x = "frequency of 0-0", y = "ASV-ASV CLR proportionality (rho)", fill = "Universality score") +
+  scale_fill_distiller(palette = "RdBu") +
+  theme_bw()
+
+ggplot(plot_df_and2, aes(x = x, y = y2, fill = score)) +
+  geom_point(size = 2.5, shape = 21) +
+  geom_smooth(method = "loess", color = "black") +
+  labs(x = "frequency of 0-0", y = "ASV-ASV CLR proportionality (phi)", fill = "Universality score") +
+  scale_fill_distiller(palette = "RdBu") +
+  theme_bw()
+
+ggplot(plot_df_and2, aes(x = x, y = y3, fill = score)) +
+  geom_point(size = 2.5, shape = 21) +
+  geom_smooth(method = "loess", color = "black") +
+  labs(x = "frequency of 0-0", y = "ASV-ASV CLR proportionality (phi_s)", fill = "Universality score") +
+  scale_fill_distiller(palette = "RdBu") +
+  theme_bw()
+```
+
+COAT has this problem too.
+
+```{r}
+# Get estimate from COAT
+coat_estimate <- coat(t(x + 0.5), soft = 1)$corr
+coat_estimate <- coat_estimate[1:125,1:125]
+coat_v <- coat_estimate[lower.tri(coat_estimate, diag = FALSE)]
+
+plot_df_and2 <- plot_df_and
+plot_df_and2$y <- coat_v
+ggplot(plot_df_and2, aes(x = x, y = y, fill = score)) +
+  geom_point(size = 2.5, shape = 21) +
+  geom_smooth(method = "loess", color = "black") +
+  labs(x = "frequency of 0-and-0", y = "ASV-ASV CLR correlation", fill = "Universality score") +
+  scale_fill_distiller(palette = "RdBu") +
+  theme_bw()
+
+plot_df_or2 <- plot_df_or
+plot_df_or2$y <- coat_v
+ggplot(plot_df_or2, aes(x = x, y = y, fill = score)) +
+  geom_point(size = 2.5, shape = 21) +
+  geom_smooth(method = "loess", color = "black") +
+  labs(x = "frequency of 0-or-0", y = "ASV-ASV CLR correlation", fill = "Universality score") +
+  scale_fill_distiller(palette = "RdBu") +
+  theme_bw()
+```
+
+Joint zero observations aren't an issue at the family (shown) or phylum level because sparsity is low there.
+
+```{r}
+data_f <- load_data("family")
+xf <- data_f$counts[,data_f$metadata$sname == sname]
+clr_xf <- clr_array(xf + 0.5, parts = 1)
+
+zf <- combn(1:(nrow(xf)-1), m = 2)
+
+joint0_f <- sapply(1:ncol(zf), function(i) {
+  sum(xf[zf[1,i],] == 0 & xf[zf[2,i],] == 0)/length(xf[zf[1,i],])
+})
+
+yf <- readRDS(paste0("C:/Users/kimbe/Documents/rulesoflife/output/model_fits/fam_days90_diet25_scale1/MAP/", sname, ".rds"))
+cormat_f <- cov2cor(yf$Sigma[,,1])
+
+joint_cor_f <- sapply(1:ncol(zf), function(i) {
+  cormat[zf[1,i],zf[2,i]]
+})
+
+amboseli_f <- summarize_Sigmas("fam_days90_diet25_scale1")
+scores_f <- apply(amboseli_f$rug, 2, function(x) calc_universality_score(x))
+
+plot_df_and_f <- data.frame(x = joint0_f,
+                            y = joint_cor_f,
+                            idx1 = amboseli_f$tax_idx1,
+                            idx2 = amboseli_f$tax_idx2,
+                            score = scores_f)
+
+ggplot(plot_df_and_f, aes(x = x, y = y, fill = score)) +
+  geom_point(size = 2.5, shape = 21) +
+  geom_smooth(method = "loess", color = "black") +
+  labs(x = "frequency of 0-0", y = "ASV-ASV CLR correlation", fill = "Universality score") +
+  scale_fill_distiller(palette = "RdBu") +
+  theme_bw()
+```
+
+How different does the rug look like if pairs with double-0 frequency higher 
+than 5% are omitted?
+
+```{r}
+not_sus <- plot_df_and %>%
+  filter(x < 0.05)
+
+mapping <- data.frame(use_tax1 = not_sus$idx1,
+                      use_tax2 = not_sus$idx2) %>%
+  left_join(data.frame(use_tax1 = amboseli$tax_idx1,
+                       use_tax2 = amboseli$tax_idx2,
+                       index = 1:length(amboseli$tax_idx1)), by = c("use_tax1",
+                                                                    "use_tax2"))
+
+# Full (normal) rug
+use_order <- order(colMeans(amboseli$rug))
+dump <- plot_rug(amboseli$rug, canonical_col_order = use_order)
+
+# No more than 10% 0-0 rug
+use_order <- order(colMeans(amboseli$rug[,mapping$index]))
+dump <- plot_rug(amboseli$rug[,mapping$index], canonical_col_order = use_order)
+```
+
+And what does the network of most universal pairs look like if we exclude these 
+pairs.
+
+```{r}
+percent <- 5
+k <- round(length(scores[mapping$index])*(percent/100))
+top_pairs <- order(scores[mapping$index], decreasing = TRUE)[1:k]
+
+consensus_signs <- apply(amboseli$rug[,mapping$index], 2, calc_consensus_sign)
+
+pair_idx1 <- amboseli$tax_idx1[mapping$index][top_pairs]
+pair_idx2 <- amboseli$tax_idx2[mapping$index][top_pairs]
+
+# Build a mapping of taxon indices to new labels 1..n
+map_df <- data.frame(taxon_idx = unique(c(pair_idx1, pair_idx2)))
+map_df$name <- 1:nrow(map_df)
+
+# Build a node data.frame with columns name (index 1..n) and family
+node_df <- map_df
+node_df$Family <- sapply(node_df$taxon_idx, function(x) {
+  highest_tax_level <- max(which(!is.na(data$taxonomy[x,])))
+  if(highest_tax_level >= 6) {
+    data$taxonomy[x,6]
+  } else {
+    "Unknown"
+  }
+})
+node_df <- node_df[,c(2:3,1)]
+
+# Build an edge data.frame with columns from, to, sign, and score
+edge1 <- data.frame(taxon_idx = pair_idx1)
+edge1 <- left_join(edge1, map_df, by = "taxon_idx")$name
+edge2 <- data.frame(taxon_idx = pair_idx2)
+edge2 <- left_join(edge2, map_df, by = "taxon_idx")$name
+
+edge_df <- data.frame(from = edge1,
+                      to = edge2,
+                      Sign = factor(consensus_signs[top_pairs], levels = c("1", "-1")),
+                      score = scores[mapping$index][top_pairs])
+levels(edge_df$Sign) <- c("positive", "negative")
+
+fam_df <- edge_df %>%
+  left_join(node_df, by = c("from" = "name")) %>%
+  dplyr::select(to, Family1 = Family)
+fam_df <- fam_df %>%
+  left_join(node_df, by = c("to" = "name")) %>%
+  dplyr::select(Family1, Family2 = Family)
+
+graph <- graph_from_data_frame(edge_df, node_df, directed = FALSE)
+
+# Not specifying the layout - defaults to "auto"
+# fr and kk layouts are ok here
+ggraph(graph, layout = "fr") +
+  geom_edge_link(aes(color = Sign), width = 1.5, alpha = 1) +
+  geom_node_point(aes(color = Family), size = 5) +
+  geom_node_label(aes(label = taxon_idx), size = 4, label.size = NA, repel = TRUE, label.padding = unit(0.08, "lines")) +
+  # scale_colour_manual(values = family_palette[order(names(family_palette))]) +
+  scale_color_manual(values = lacroix_palette("PeachPear", n = 16, type = "continuous")) +
+  scale_edge_colour_manual(values = c(negative = "gray", positive = "black")) +
+  labs(x = "dimension 1",
+       y = "dimension 2") +
+  theme_bw() +
+  guides(edge_color = "none") +
+  theme(
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.x = element_blank(),
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor.y = element_blank(),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.title.x = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    axis.title.y = element_blank())
+```
+
+Print out the top pairs under this scheme.
+
+```{r}
+tax_short <- cbind(index = 1:nrow(data$taxonomy),
+                   data$taxonomy[,5:7]) %>%
+  rowwise() %>%
+  mutate(taxon = paste(family, genus)) %>%
+  select(index, taxon)
+
+selected_df <- edge_df %>%
+  left_join(node_df %>%
+              select(name, taxon_idx),
+            by = c("from" = "name")) %>%
+  rename(`from2` = taxon_idx) %>%
+  left_join(node_df %>%
+              select(name, taxon_idx),
+            by = c("to" = "name")) %>%
+  rename(`to2` = taxon_idx) %>%
+  left_join(plot_df_and %>%
+              select(idx1, idx2, x),
+            by = c("from2" = "idx1",
+                   "to2" = "idx2")) %>%
+  select(from2, to2, score, x, Sign) %>%
+  left_join(tax_short,
+            by = c("from2" = "index")) %>%
+  left_join(tax_short,
+            by = c("to2" = "index")) %>%
+  select(from2, to2, taxon.x, taxon.y, Sign, score, x)
+
+selected_df %>%
+  rename(`id1` = from2,
+         `id2` = to2,
+         `taxon 1` = taxon.x,
+         `taxon 2` = taxon.y,
+         `0-0 frequency` = x,
+         `universality score` = score,
+         `consensus sign` = Sign)
+```
+
+What do the pair of taxa with the largest frequency of 0-0 instances look like 
+in this filtered setting?
+
+```{r}
+ex <- selected_df %>%
+  arrange(desc(x)) %>%
+  filter(row_number() <= 3)
+
+for(i in 1:nrow(ex)) {
+  plot_df <- data.frame(x = clr_x[ex$from2[i],], y = clr_x[ex$to2[i],], type = "empirical")
+  plot_df <- rbind(plot_df,
+                   data.frame(x = clr_y$Eta[ex$from2[i],,1], y = clr_y$Eta[ex$to2[i],,1], type = "basset"))
+  show(ggplot(plot_df, aes(x = x, y = y)) +
+         geom_point(size = 2) +
+         facet_wrap(. ~ type) +
+         theme_bw() +
+         labs(x = paste0("CLR abundance taxon ", ex$from2[i]),
+              y = paste0("CLR abundance taxon ", ex$to2[i])))
+}
+```
+
+Can we get similar results with SPIEC-EASI?
+
+```{r}
+
+# Start with synthetic data from the Github example: https://github.com/zdk123/SpiecEasi
+# Basically the only tutorial?
+# data(amgut1.filt)
+# depths <- rowSums(amgut1.filt)
+# amgut1.filt.n  <- t(apply(amgut1.filt, 1, norm_to_total)) # relative abundances?
+# amgut1.filt.cs <- round(amgut1.filt.n * min(depths)) # scaled to same counts
+# 
+# d <- ncol(amgut1.filt.cs)
+# n <- nrow(amgut1.filt.cs)
+# e <- d
+# 
+# set.seed(10010)
+# graph <- make_graph('cluster', d, e) # very sparse adjacency matrix?
+# Prec  <- graph2prec(graph)
+# Cor   <- cov2cor(prec2cov(Prec))
+# 
+# X <- synth_comm_from_counts(amgut1.filt.cs, mar=2, distr='zinegbin', Sigma=Cor, n=n)
+# 
+# # 3 min.-ish
+# se <- spiec.easi(X, method='glasso', lambda.min.ratio=1e-2, nlambda=15)
+# 
+# plot(c(Cor), c(cov2cor(as.matrix(getOptCov(se)))))
+
+
+# I'm really not sure how to tune these parameters.
+# Note that only method='glasso' returns a covariance matrix.
+# All results I've obtained so far are VERY VERY sparse.
+# Runtime 5-10 min.
+saved_se <- "spieceasi_output_saved.rds"
+if(file.exists(saved_se)) {
+  se <- readRDS(saved_se)
+} else {
+  se <- spiec.easi(t(x), method='glasso', lambda.min.ratio=1e-2, nlambda=15)
+  saveRDS(se, saved_se)
+}
+secor  <- cov2cor(as.matrix(getOptCov(se)))
+
+saved_scc <- "sparcc_output_saved.rds"
+if(file.exists(saved_scc)) {
+  scc <- readRDS(saved_scc)
+} else {
+  scc <- sparcc(t(x))
+  saveRDS(scc, saved_scc)
+}
+
+# Compare to empirical CLR correlation matrix
+# emp <- cov2cor(cov(t(clr_x)))
+
+c1 <- cormat
+c1 <- c1[lower.tri(c1, diag = FALSE)]
+c2 <- cov2cor(as.matrix(getOptCov(se)))[1:125,1:125]
+c2 <- c2[lower.tri(c2, diag = FALSE)]
+c3 <- scc$Cor[1:125,1:125]
+c3 <- c3[lower.tri(c3, diag = FALSE)]
+
+ggplot(data.frame(x = c(c1), y = c(c3), score = scores), aes(x = x, y = y, fill = score)) +
+  geom_point(size = 2, shape = 21) +
+  theme_bw() +
+  scale_fill_distiller(palette = "RdBu") +
+  labs(x = "basset correlations", y = "SparCC correlations")
+
+ggplot(data.frame(x = c(c1), y = c(c2), score = scores), aes(x = x, y = y, fill = score)) +
+  geom_point(size = 2, shape = 21) +
+  theme_bw() +
+  scale_fill_distiller(palette = "RdBu") +
+  labs(x = "basset correlations", y = "SPIEC-EASI weights")
+```
+
+Are SparCC's correlations subject to this 0-0 effect too?
+
+```{r}
+sparcc_m <- scc$Cor[1:125,1:125]
+sparcc_v <- sparcc_m[lower.tri(sparcc_m, diag = FALSE)]
+
+plot_df_and <- data.frame(x = joint0,
+                          y = sparcc_v,
+                          idx1 = amboseli$tax_idx1,
+                          idx2 = amboseli$tax_idx2,
+                          score = scores)
+
+ggplot(plot_df_and, aes(x = x, y = y, fill = score)) +
+  geom_point(size = 2.5, shape = 21) +
+  geom_smooth(method = "loess", color = "black") +
+  labs(x = "frequency of 0-0", y = "ASV-ASV CLR correlation", fill = "Universality score") +
+  scale_fill_distiller(palette = "RdBu") +
+  theme_bw()
+```
+
+If we really restricted to ASVs with few zeros - i.e. more heavily filtering out
+taxa overall - what would the results look like? Answer: if we restrict to taxa
+with no more than 10% zero-observations in any host, we're left with **7 ASVs**.
+
+```{r}
+threshold <- 90
+output_dir <- paste0("asv_days90_diet25_scale1_", threshold, "p")
+
+data_thr <- load_data(tax_level = "ASV", host_sample_min = 75,
+                      count_threshold = 1, sample_threshold = round(threshold/100, 2))
+
+cat(paste0("N taxa = ", nrow(data_thr$counts), "\n"))
+```
+
+## Simulations
+
+The point of this section is to plot error in the model's estimate of CLR
+correlations as a function of the frequency of paired zeros in the data. That
+could give us some idea of a rational cutoff for taxon pairs with high numbers
+of zeros in their paired observations since, presumably, model performance will
+start to decline at high frequencies of zeros.
+
+```{r}
+sample_ar <- function(total_N, keep_N, ar = 0.1) {
+  yy <- arima.sim(n = total_N, list(ar = c(ar)), sd = 1)
+  qq <- quantile(yy, probs = c((total_N - keep_N)/total_N))
+  (1:total_N)[as.numeric(yy) >= qq]
+}
+
+# Simulate from model using these combined dynamics
+rho <- calc_se_decay(min_correlation = 0.1,
+                     days_to_min_autocorrelation = 90)
+Gamma <- function(X) {
+  jitter <- 1e-08
+  SE(X[1,,drop=F], sigma = 3, rho = rho, jitter = jitter)
+}
+
+# Simulate some data
+D <- 100
+T <- 3500
+
+# Simulate fully independent independent taxa
+# taxon_dynamics <- diag(D)
+
+# Simulate taxa with a block correlation structure, kind of like the observed
+# data. I'm commenting this out because its really fussy and not necessarily 
+# better than simulating from an inverse Wishart with a block correlated scale
+# matrix.
+# series <- as.numeric(arima.sim(n = 20, list(ar = c(0.8)), sd = 1))
+# series <- series + abs(min(series))
+# dynamic_rawmat <- matrix(NA, 20, D)
+# for(i in 1:D) {
+#   if(i < D/2) {
+#     sd_scale <- 3
+#     dynamic_rawmat[,i] <- rmatrixnormal(n = 1, M = series, U = diag(length(series))*sd_scale, V = diag(1))[,1,1]
+#   } else {
+#     sd_scale <- 8
+#     dynamic_rawmat[,i] <- -rmatrixnormal(n = 1, M = series, U = diag(length(series))*sd_scale, V = diag(1))[,1,1]
+#   }
+# }
+# taxon_dynamics <- cov2cor(cov(dynamic_rawmat))
+
+# Simulate taxa with a block correlation structure (from an inverse Wishart)
+scale_mat <- matrix(0, D, D)
+scale_mat[1:10,1:10] <- 0.3
+diag(scale_mat) <- 1
+taxon_dynamics <- cov2cor(matrixsampling::rinvwishart(1, D + 8, scale_mat)[,,1])
+
+# Simulate taxa with an arbitrary, strong-ish correlation structure
+# taxon_dynamics <- cov2cor(matrixsampling::rinvwishart(1, D + 5, diag(D))[,,1])
+
+# Make symmetric and convert to ALR
+taxon_dynamics <- (taxon_dynamics + t(taxon_dynamics))/2
+taxon_dynamics_alr <- clrvar2alrvar(taxon_dynamics, D) + diag(D-1)*1e-6
+
+# Sample time points in a somewhat clustered fashion, like the observed data
+X <- sample_ar(T, 100)
+T_observed <- length(X)
+dim(X) <- c(1, T_observed)
+
+# Sample a random composition, transform to ALR
+global_baseline <- LaplacesDemon::rdirichlet(1, rep(10/D, D))
+global_baseline <- global_baseline[order(global_baseline, decreasing = T)]
+Theta <- function(X) matrix(alr(global_baseline), D-1, ncol(X))
+
+Lambda <- rmatrixnormal(1, Theta(X), taxon_dynamics_alr, Gamma(X))[,,1]
+Eta <- rmatrixnormal(1, Lambda, taxon_dynamics_alr, diag(T_observed)*2)[,,1]
+proportions <- alrInv_array(Eta, d = D, coords = 1)
+Y <- apply(proportions, 2, function(p) {
+  # rmultinom(1, p, size = rpois(1, 5000)) # less variation in total abundance
+  rmultinom(1, p, size = sample(colSums(x), size = 1)) # more variation
+})
+
+# Filter out highly zero guys
+filter_vec <- apply(Y, 1, function(z) {
+  sum(z == 0)/length(z) < 0.8
+})
+
+# Proportion zeros overall
+cat(paste0("Overall proportion of zeros in simulated data: ",
+           sum(Y == 0)/(nrow(Y)*ncol(Y)),
+           "\n"))
+
+cat(paste0("Proportion of zeros after filtering: ",
+           round(sum(Y[filter_vec,] == 0)/(nrow(Y[filter_vec,])*ncol(Y)), 2),
+           "\n"))
+
+# We'll just estimate on these filtered taxa
+prior_cov_taxa <- get_Xi(D - sum(!filter_vec), total_variance = 1)
+Theta <- function(X) matrix(alr(global_baseline[filter_vec]), D - sum(!filter_vec) - 1, ncol(X))
+# Fit model on simulated data
+fit <- fido::basset(Y = Y[filter_vec,], X = X, upsilon = prior_cov_taxa$upsilon,
+                    Xi = prior_cov_taxa$Xi, Theta, Gamma,
+                    n_samples = 0, ret_mean = TRUE)
+# Transform to CLR and extract the estimated correlation matrix
+fit.clr <- to_clr(fit)
+est_Sigma <- cov2cor(fit.clr$Sigma[,,1])
+
+est_Sigma_vec <- est_Sigma[lower.tri(est_Sigma, diag = F)]
+true_Sigma_vec <- taxon_dynamics[filter_vec, filter_vec]
+true_Sigma_vec <- true_Sigma_vec[lower.tri(true_Sigma_vec, diag = F)]
+ggplot(data.frame(x = true_Sigma_vec, y = est_Sigma_vec),
+       aes(x = x, y = y)) +
+  geom_point(size = 2) +
+  theme_bw() +
+  labs(x = "simulated CLR correlation", y = "estimated CLR correlation")
+```
+
+```{r}
+cat(paste0("R^2 of true, estimated CLR correlation: ",
+           round(cor(true_Sigma_vec, est_Sigma_vec)**2, 3),
+           "\n"))
+```
+
+```{r}
+# Gather up the frequency of zeros and pair with the estimates of correlation
+
+z <- combn(1:(nrow(Y)-1), m = 2)
+clr_Y <- driver::clr_array(Y[filter_vec,] + 0.5, parts = 1)
+results <- NULL
+for(i in 1:(nrow(Y[filter_vec,])-1)) {
+  for(j in (i+1):nrow(Y[filter_vec,])) {
+    results <- rbind(results,
+                     data.frame(i = i,
+                                j = j,
+                                rho = est_Sigma[i,j],
+                                rho_empirical = cor(clr_Y[i,], clr_Y[j,]),
+                                rho_true = taxon_dynamics[i,j],
+                                joint0 = sum(Y[filter_vec,][i,] == 0 & Y[filter_vec,][j,] == 0)/length(Y[filter_vec,][i,]),
+                                either0 = sum(Y[filter_vec,][i,] == 0 | Y[filter_vec,][j,] == 0)/length(Y[filter_vec,][i,])))
+  }
+}
+```
+
+The frequencies of joint zero observations in the real and simulated data are
+reasonably similar. It's hard to get these to match perfectly.
+
+```{r}
+ggplot(data.frame(x = plot_df_and$x), aes(x = x)) +
+  geom_histogram() +
+  theme_bw() +
+  labs(x = paste0("frequency of 0-and-0 (", sname, "'s real data)"))
+
+ggplot(data.frame(x = results$joint0), aes(x = x)) +
+  geom_histogram() +
+  theme_bw() +
+  labs(x = "frequency of 0-and-0 (simulated data)")
+```
+
+We do see a small positive increase (overestimate) of CLR correlation as the
+frequency of double-0 observations increases but it's pretty small! The error
+profile is pretty similar across zero frequencies.
+
+```{r}
+results$rho_delta <- results$rho - results$rho_true
+ggplot(results, aes(x = joint0, rho_delta)) +
+  geom_point() +
+  geom_smooth(method = "loess") +
+  theme_bw() +
+  labs(x = "frequency of 0-and-0", y = "error in CLR corr. estimate")
+```
+
+We tend to see either a small systematic underestimate with a large proportion 
+of zeros in either taxon or no trend at all. The error profile often begins to
+get worse (larger overall error) at around 50-60% zero observations in either 
+taxon in the pair.
+
+```{r}
+ggplot(results, aes(x = either0, rho_delta)) +
+  geom_point() +
+  geom_smooth(method = "loess") +
+  theme_bw() +
+  labs(x = "frequency of 0-or-0", y = "error in CLR corr. estimate")
+```
+
+
+
+
+
+
+
+

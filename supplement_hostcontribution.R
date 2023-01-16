@@ -68,7 +68,7 @@ c_plot <- plot_kernel_or_cov_matrix(0.5*m + 0.5*e) +
   scale_y_continuous(expand = c(0, 0))
 
 p1 <- plot_grid(y_plot, m_plot, e_plot, c_plot,
-               ncol = 4)
+                ncol = 4)
 
 # ------------------------------------------------------------------------------
 #
@@ -89,10 +89,21 @@ p1 <- plot_grid(y_plot, m_plot, e_plot, c_plot,
 # global_mean <- F1$mean
 
 Sigmas <- pull_Sigmas("asv_days90_diet25_scale1")
-cov_mean <- estcov(Sigmas, method = "Euclidean")
+
+data <- load_data(tax_level = "ASV")
+rug_asv <- summarize_Sigmas(output_dir = "asv_days90_diet25_scale1")
+filtered_pairs <- filter_joint_zeros(data$counts, threshold_and = 0.05, threshold_or = 0.5)
+filtered_obj <- rug_asv
+filtered_obj$tax_idx1 <- filtered_obj$tax_idx1[filtered_pairs$threshold]
+filtered_obj$tax_idx2 <- filtered_obj$tax_idx2[filtered_pairs$threshold]
+filtered_obj$rug <- filtered_obj$rug[,filtered_pairs$threshold]
+
+# cov_mean <- estcov(Sigmas, method = "Euclidean")
+cov_mean <- colMeans(filtered_obj$rug)
 
 N <- dim(Sigmas)[3]
-global_mean <- cov_mean$mean
+# global_mean <- cov_mean$mean
+global_mean <- cov_mean
 mix <- seq(from = 0, to = 1, by = 0.05)
 mins <- NULL
 p1_real <- NULL
@@ -100,9 +111,10 @@ legend <- NULL
 # p1 <- NULL
 for(h in 1:N) {
   # host_obs <- F1$Sigmas[,,h]
-  host_obs <- Sigmas[,,h]
+  # host_obs <- Sigmas[,,h]
+  host_obs <- filtered_obj$rug[h,]
   host_residual <- host_obs - global_mean
-  diag(host_residual) <- 1
+  # diag(host_residual) <- 1
   if(is.null(p1)) {
     p1a <- plot_kernel_or_cov_matrix(host_obs) +
       theme(legend.position = "bottom") +
@@ -147,7 +159,12 @@ for(h in 1:N) {
     mins <- rbind(mins,
                   data.frame(host = h,
                              p = mix[j],
-                             dist = dist4cov(host_obs, combined_dynamics)$dist))
+                             # dist = dist4cov(host_obs, combined_dynamics)$dist))
+                             dist = as.numeric(dist(matrix(c(host_obs,
+                                                             combined_dynamics),
+                                                           byrow = T,
+                                                           2,
+                                                           length(host_obs))))))
   }
 }
 
@@ -184,9 +201,9 @@ p_all <- plot_grid(p1_padded, NULL, p2_padded, ncol = 3,
                    label_size = 18,
                    scale = 0.95)
 
-ggsave(file.path("output", "figures", "titration.svg"),
+ggsave(file.path("output", "figures", "titration_alt.png"),
        p_all,
-       dpi = 100,
+       dpi = 200,
        units = "in",
        height = 3.5,
        width = 12)

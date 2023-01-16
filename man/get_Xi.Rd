@@ -4,7 +4,7 @@
 \alias{get_Xi}
 \title{Set up a basic ALR prior}
 \usage{
-get_Xi(D, total_variance = 1)
+get_Xi(D, total_variance = 1, concentration = 10)
 }
 \arguments{
 \item{D}{number of features including reference (where the ALR will represent

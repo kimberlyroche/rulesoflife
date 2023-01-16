@@ -13,7 +13,7 @@ library(magrittr)
 palette_fn <- file.path("output", "family_palette.rds")
 fpalette <- readRDS(palette_fn)
 
-# registerDoParallel(detectCores())
+registerDoParallel(detectCores())
 
 null_case <- TRUE # needed if rendering Figure S9
 
@@ -174,10 +174,17 @@ if(!file.exists(save_fn)) {
 
   # Build data.frame of overlaps
   # This takes < 30 sec.
+  # 2022-12-31: Update - this is a really slow step. One *iteration* of the
+  # outer loop takes about 1 minute.
   sampled_overlap <- NULL
   permuted_overlap <- NULL
   for(it in 1:10) {
+    cat(paste0("Iteration ", it, "\n"))
     for(i in 1:ncol(pairs)) {
+      if(i %% 100 == 0) {
+        cat(paste0("\tPair iteration ", i, "\n"))
+      }
+
       h1 <- hosts[pairs[1,i]]
       h2 <- hosts[pairs[2,i]]
 
@@ -217,6 +224,7 @@ if(!file.exists(save_fn)) {
     }
   }
 
+  # 2022-12-31: This takes about _ minutes.
   sampled_list <- pull_Etas(sampled_overlap, n_tax, Etas, host_dates)
   sampled_list_permuted <- NULL
   if(null_case) {
@@ -238,6 +246,7 @@ if(!file.exists(save_fn)) {
 }
 
 rug_asv <- summarize_Sigmas(output_dir = "asv_days90_diet25_scale1")
+filtered_pairs <- filter_joint_zeros(data$counts, threshold_and = 0.05, threshold_or = 0.5)
 scores <- apply(rug_asv$rug, 2, calc_universality_score)
 mcs <- apply(rug_asv$rug, 2, function(x) median(abs(x)))
 consensus_signs <- apply(rug_asv$rug, 2, calc_consensus_sign)
@@ -304,7 +313,7 @@ write_df <- write_df %>%
   arrange(desc(synchrony))
 write_df <- cbind(rank = 1:nrow(write_df), write_df)
 write.table(write_df,
-            file.path("output", "synchrony_table.tsv"),
+            file.path("output", "synchrony_table_alt.tsv"),
             sep = "\t",
             quote = F,
             row.names = F)
@@ -350,12 +359,15 @@ if(file.exists(save_fn)) {
 } else {
   plot_df <- NULL
   plot_df_permuted <- NULL
-  for(i in 1:length(rug_asv$tax_idx1)) {
-    if(i %% 1000 == 0) {
-      cat(paste0("Taxon pair iteration ", i, " / ", length(rug_asv$tax_idx1), "\n"))
+  # for(i in 1:length(rug_asv$tax_idx1)) {
+  for(i in which(filtered_pairs$threshold)) {
+    if(i %% 100 == 0) {
+      # cat(paste0("Taxon pair iteration ", i, " / ", length(rug_asv$tax_idx1), "\n"))
+      cat(paste0("Taxon pair iteration ", i, " / ", sum(filtered_pairs$threshold), "\n"))
     }
     t1 <- rug_asv$tax_idx1[i]
     t2 <- rug_asv$tax_idx2[i]
+
     plot_df <- rbind(plot_df,
                      data.frame(synchrony = mean(c(correlations[t1], correlations[t2])),
                                 universality = scores[i],
@@ -384,7 +396,7 @@ p0 <- ggplot() +
   geom_point(data = plot_df %>% filter(!is.na(sign)),
              mapping = aes(x = synchrony, y = universality, fill = sign),
              size = 2, shape = 21) +
-  geom_segment(data = data.frame(x = 0, xend = 0.5, y = 0.4, yend = 0.4),
+  geom_segment(data = data.frame(x = 0.05, xend = 0.41, y = 0.4, yend = 0.4),
                mapping = aes(x = x, y = y, xend = xend, yend = yend),
                color = "black",
                linetype = 2,
@@ -394,14 +406,14 @@ p0 <- ggplot() +
                color = "black",
                linetype = 2,
                size = 0.8) +
-  geom_text(data = data.frame(x = 0, y = 0.78, label = "High universality\nLow synchrony"),
+  geom_text(data = data.frame(x = 0.05, y = 0.7, label = "High universality\nLow synchrony"),
             mapping = aes(x = x, y = y, label = label),
-            size = 5,
+            size = 4,
             hjust = 0,
             color = "black") +
-  geom_text(data = data.frame(x = 0.50, y = 0.78, label = "High universality\nHigh synchrony"),
+  geom_text(data = data.frame(x = 0.4, y = 0.7, label = "High universality\nHigh synchrony"),
             mapping = aes(x = x, y = y, label = label),
-            size = 5,
+            size = 4,
             hjust = 1,
             color = "black") +
   theme_bw() +
@@ -432,9 +444,9 @@ if(null_case) {
 
   cat(paste0("R^2: ", round(cor(plot_df_permuted$synchrony, plot_df_permuted$universality)^2, 3), "\n"))
 
-  ggsave(file.path("output", "figures", paste0("synchrony", ifelse(null_case, "_null", ""), ".svg")),
+  ggsave(file.path("output", "figures", paste0("synchrony", ifelse(null_case, "_null", ""), "_alt.png")),
          p1p,
-         dpi = 100,
+         dpi = 200,
          units = "in",
          height = 6,
          width = 9)
@@ -459,8 +471,8 @@ seasonal_families <- list(wet = c("Helicobacteraceae",
                                   "Christensenellaceae",
                                   "Syntrophomonadaceae"))
 
-plot_df$idx1 <- rug_asv$tax_idx1
-plot_df$idx2 <- rug_asv$tax_idx2
+plot_df$idx1 <- rug_asv$tax_idx1[filtered_pairs$threshold]
+plot_df$idx2 <- rug_asv$tax_idx2[filtered_pairs$threshold]
 plot_df$fam1 <- tax[plot_df$idx1,6]
 plot_df$fam2 <- tax[plot_df$idx2,6]
 
@@ -739,8 +751,8 @@ ggsave(file.path("output", "figures", "season_vs_synchrony.svg"),
        width = 7)
 
 # Test for significant enrichment of labeled things and highly synchronous things
-temp$seasonal[temp$fam %in% unlist(seasonal_families)] <- "seasonal"
-temp$seasonal <- factor(temp$seasonal)
+# temp$seasonal[temp$fam %in% unlist(seasonal_families)] <- "seasonal"
+# temp$seasonal <- factor(temp$seasonal)
 # base::summary(aov(synchrony ~ seasonal, temp))
 # p = 0.358
 
@@ -752,22 +764,25 @@ plot_df$n_seasonal <- as.numeric(!sapply(plot_df$fam1, is.na)) + as.numeric(!sap
 plot_df$n_seasonal_factor <- factor(plot_df$n_seasonal)
 levels(plot_df$n_seasonal_factor) <- c("no seasonal partners", "one seasonal partner", "two seasonal partners")
 plot_df$both_seasonal <- plot_df$n_seasonal == 2
+plot_df$one_plus_seasonal <- plot_df$n_seasonal > 0
 
 # Test for differences in average universality scores in seasonal pairs
 # t.test(universality ~ n_seasonal_factor, plot_df %>% filter(n_seasonal %in% c(0,1))) # not signif
 # t.test(universality ~ n_seasonal_factor, plot_df %>% filter(n_seasonal %in% c(0,2)))
-t.test(mcs ~ both_seasonal, plot_df)
-cat(paste0("Difference of means: ", round(mean(plot_df$mcs[plot_df$n_seasonal == 2]) -
-                                            mean(plot_df$mcs[plot_df$n_seasonal != 0]), 3), "\n"))
+# t.test(mcs ~ both_seasonal, plot_df)
+wilcox.test(mcs ~ one_plus_seasonal, plot_df)
+cat(paste0("Difference of means: ", round(mean(plot_df$mcs[plot_df$n_seasonal != 0]) -
+                                            mean(plot_df$mcs[plot_df$n_seasonal == 0]), 3), "\n"))
 
 p <- ggplot(plot_df, aes(x = n_seasonal_factor, y = mcs)) +
-  geom_boxplot() + #width = 0.2) +
+  geom_violin() +
+  geom_boxplot(width = 0.2) +
   theme_bw() +
   labs(x = "", y = "median correlation strength")
 
-ggsave(file.path("output", "figures", "synchrony_seasonal_boxplots.svg"),
+ggsave(file.path("output", "figures", "synchrony_seasonal_boxplots_alt.png"),
        p,
-       dpi = 100,
+       dpi = 200,
        units = "in",
        height = 4,
        width = 6)
@@ -823,6 +838,11 @@ cat(paste0("Significant after FDR: ", round(prop, 3), "\n"))
 # ------------------------------------------------------------------------------
 #   Enrichment of top center and top right-hand parts
 # ------------------------------------------------------------------------------
+
+# The super-high universality pairs is taxa #2 and taxa #3: a couple of
+# Prevotellas
+# plot_df %>%
+#   filter(universality > 0.7)
 
 # Score enrichment of family pairs or families themselves?
 topcenter_pairs <- which(plot_df$synchrony < 0.3 & plot_df$universality > 0.4)
@@ -939,45 +959,45 @@ colnames(enrichment) <- c("ASV family or pair name",
                           "Threshold for small counts",
                           "Adj. p-value (Benjamini-Hochberg)")
 write.table(enrichment,
-            file = file.path("output", "enrichment-synchrony.tsv"),
+            file = file.path("output", "enrichment-synchrony_alt.tsv"),
             sep = "\t",
             quote = FALSE,
             row.names = FALSE)
 
-pcol1 <- plot_grid(p2a, p3a, ncol = 1,
-                   rel_heights = c(1,2.25),
-                   labels = c("B", "C"),
-                   label_size = 20,
-                   label_x = -0.06,
-                   label_y = 1.04,
-                   scale = 0.95)
-pcol2 <- plot_grid(p2b, p3b, ncol = 1,
-                   rel_heights = c(1,2.25),
-                   labels = c("D", "E"),
-                   label_size = 20,
-                   label_x = -0.06,
-                   label_y = 1.04,
-                   scale = 0.95)
+# pcol1 <- plot_grid(p2a, p3a, ncol = 1,
+#                    rel_heights = c(1,2.25),
+#                    labels = c("B", "C"),
+#                    label_size = 20,
+#                    label_x = -0.06,
+#                    label_y = 1.04,
+#                    scale = 0.95)
+# pcol2 <- plot_grid(p2b, p3b, ncol = 1,
+#                    rel_heights = c(1,2.25),
+#                    labels = c("D", "E"),
+#                    label_size = 20,
+#                    label_x = -0.06,
+#                    label_y = 1.04,
+#                    scale = 0.95)
+#
+# pcol3 <- plot_grid(pcol1, NULL, pcol2, ncol = 3,
+#                    rel_widths = c(1, 0.05, 1))
+#
+# p5 <- plot_grid(NULL, p0, ncol = 1, rel_heights = c(0.05, 1),
+#                 labels = c("", "A"),
+#                 label_size = 20,
+#                 label_x = -0.01,
+#                 label_y = 1.07)
+#
+# p <- plot_grid(p5, pcol3, ncol = 2,
+#                rel_heights = c(1, 1),
+#                scale = 0.95)
 
-pcol3 <- plot_grid(pcol1, NULL, pcol2, ncol = 3,
-                   rel_widths = c(1, 0.05, 1))
-
-p5 <- plot_grid(NULL, p0, ncol = 1, rel_heights = c(0.05, 1),
-                labels = c("", "A"),
-                label_size = 20,
-                label_x = -0.01,
-                label_y = 1.07)
-
-p <- plot_grid(p5, pcol3, ncol = 2,
-               rel_heights = c(1, 1),
-               scale = 0.95)
-
-ggsave(file.path("output", "figures", "synchrony_vs_universality.svg"),
-       p,
-       dpi = 100,
+ggsave(file.path("output", "figures", "synchrony_vs_universality_alt.png"),
+       p0,
+       dpi = 200,
        units = "in",
-       height = 6,
-       width = 12)
+       height = 5,
+       width = 6)
 
 # ------------------------------------------------------------------------------
 #   Synchrony calculation "cartoon" figure

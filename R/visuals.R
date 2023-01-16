@@ -428,8 +428,8 @@ get_trajectory_df <- function(dates, coord, common_baseline, predictions,
                               center = NULL, mean_only = FALSE) {
   # Get days from common baseline
   days <- round(unname(sapply(dates, function(x) {
-      difftime(x, common_baseline, units = "days")
-    }))) + 1
+    difftime(x, common_baseline, units = "days")
+  }))) + 1
   # Recalculate the "days" index for this host given the new baseline
   offset <- days[1] - 1
 
@@ -697,19 +697,19 @@ plot_trajectories_top_pairs <- function(output_dir, metadata, taxonomy) {
   consensus_signs <- apply(rug, 2, calc_consensus_sign)
   # Most universal positive associations
   render_universal_pairs(select_idx = which(consensus_signs > 0),
-               scores = scores,
-               tax_idx1 = rug_obj$tax_idx1,
-               tax_idx2 = rug_obj$tax_idx2,
-               taxonomy = taxonomy,
-               output_dir = output_dir)
+                         scores = scores,
+                         tax_idx1 = rug_obj$tax_idx1,
+                         tax_idx2 = rug_obj$tax_idx2,
+                         taxonomy = taxonomy,
+                         output_dir = output_dir)
 
   # Most universal negative associations
   render_universal_pairs(select_idx = which(consensus_signs < 0),
-               scores = scores,
-               tax_idx1 = rug_obj$tax_idx1,
-               tax_idx2 = rug_obj$tax_idx2,
-               taxonomy = taxonomy,
-               output_dir = output_dir)
+                         scores = scores,
+                         tax_idx1 = rug_obj$tax_idx1,
+                         tax_idx2 = rug_obj$tax_idx2,
+                         taxonomy = taxonomy,
+                         output_dir = output_dir)
 }
 
 #' Render line plot of a given CLR taxon against diet PC1 for a given host.
@@ -774,10 +774,10 @@ plot_clr_vs_diet <- function(sname, tax_idx, counts, metadata) {
 #' @import cowplot
 #' @export
 plot_enrichment_old <- function(frequencies_subset1, frequencies_subset2 = NULL, frequencies,
-                            significant_families1, significant_families2 = NULL,
-                            plot_height, plot_width, legend_topmargin, use_pairs = TRUE,
-                            rel_widths = c(1, 0.35, 1, 0, 4.5), labels = NULL,
-                            palette = NULL, save_name = NULL, suppress_y = FALSE) {
+                                significant_families1, significant_families2 = NULL,
+                                plot_height, plot_width, legend_topmargin, use_pairs = TRUE,
+                                rel_widths = c(1, 0.35, 1, 0, 4.5), labels = NULL,
+                                palette = NULL, save_name = NULL, suppress_y = FALSE) {
   labeled_families <- sort(unique(c(significant_families1, significant_families2)))
 
   # Define a huge color palette over all observed family-family pairs
@@ -954,16 +954,16 @@ plot_enrichment_old <- function(frequencies_subset1, frequencies_subset2 = NULL,
 #' @import dplyr
 #' @export
 plot_enrichment <- function(frequencies,
-                             frequencies_subset,
-                             type_label,
-                             location_label,
-                             enrichment = NULL,
-                             count_threshold = 10,
-                             cap_size = 5,
-                             pt_sz = 3,
-                             title_text_sz = 12,
-                             text_sz = 10,
-                             stroke_sz = 1.25) {
+                            frequencies_subset,
+                            type_label,
+                            location_label,
+                            enrichment = NULL,
+                            count_threshold = 10,
+                            cap_size = 5,
+                            pt_sz = 3,
+                            title_text_sz = 12,
+                            text_sz = 10,
+                            stroke_sz = 1.25) {
 
   all_family_palette <- readRDS(file.path("output", "family_palette.rds"))
   all_family_pair_palette <- readRDS(file.path("output", "family-family_palette.rds"))

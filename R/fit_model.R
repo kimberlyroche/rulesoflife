@@ -16,6 +16,12 @@
 #' taxa
 #' @param var_scale_samples scale of the hyperparameter associated with the
 #' covariance over samples
+#' @param concentration optional concentration parameter for the prior over
+#' taxon-taxon covariance
+#' @param age_min optional mimimum age; samples collected before this age for
+#' this animal will be omitted
+#' @param age_max optional maximum age; samples collected after this age for
+#' this animal will be omitted
 #' @param use_adam optimize with Adam (occasionally this converges more reliably
 #' @param scramble_sample optional flag to scramble taxonomic identity within a
 #' sample
@@ -29,14 +35,21 @@
 #' @export
 fit_GP <- function(sname, counts, metadata, output_dir, MAP = TRUE,
                    days_to_min_autocorrelation = 90, diet_weight = 0,
-                   var_scale_taxa = 1, var_scale_samples = 1, use_adam = FALSE,
-                   scramble_sample = FALSE, scramble_spacing = FALSE, scramble_order = FALSE) {
+                   var_scale_taxa = 1, var_scale_samples = 1,
+                   concentration = 10, age_min = -Inf, age_max = Inf,
+                   use_adam = FALSE, scramble_sample = FALSE,
+                   scramble_spacing = FALSE, scramble_order = FALSE) {
   if(diet_weight > 1 | diet_weight < 0) {
     stop("Invalid weight assigned to diet components of kernel!")
   }
   sname_idx <- which(metadata$sname == sname)
   sub_md <- metadata[sname_idx,]
   sub_counts <- counts[,sname_idx]
+
+  ages <- sub_md$age
+  age_vec <- ages >= age_min & ages <= age_max
+  sub_md <- sub_md[age_vec,]
+  sub_counts <- sub_counts[,age_vec]
 
   # Response
   Y <- sub_counts
@@ -94,7 +107,7 @@ fit_GP <- function(sname, counts, metadata, output_dir, MAP = TRUE,
 
   # Prior/hyperparameters for taxonomic covariance and sample covariance
   min_correlation <- 0.1
-  cov_taxa <- get_Xi(D, total_variance = var_scale_taxa)
+  cov_taxa <- get_Xi(D, total_variance = var_scale_taxa, concentration = concentration)
   cov_sample <- get_Gamma(kernel_scale = var_scale_samples,
                           diet_weight = diet_weight,
                           min_correlation = min_correlation,
@@ -121,7 +134,8 @@ fit_GP <- function(sname, counts, metadata, output_dir, MAP = TRUE,
              paste0("Days to min. autocorrelation: ", days_to_min_autocorrelation),
              paste0("Diet kernel proportion: ", diet_weight),
              paste0("Taxa cov scale: ", var_scale_taxa),
-             paste0("Sample cov scale: ", var_scale_samples)),
+             paste0("Sample cov scale: ", var_scale_samples),
+             paste0("Age range: ", age_min, " - ", age_max)),
              collapse = "\n\t"), "\n")
   if(use_adam) {
     fit <- fido::basset(Y = Y, X = X, upsilon = cov_taxa$upsilon, Xi = cov_taxa$Xi,
@@ -153,8 +167,8 @@ fit_GP <- function(sname, counts, metadata, output_dir, MAP = TRUE,
 #' @return list containing inverse Wishart parameters degrees of freedom and
 #' scale matrix
 #' @export
-get_Xi <- function(D, total_variance = 1) {
-  upsilon <- D - 1 + 10 # specify low certainty/concentration
+get_Xi <- function(D, total_variance = 1, concentration = 10) {
+  upsilon <- D - 1 + concentration # specify low certainty/concentration
   GG <- cbind(diag(D-1), -1) # log contrast for ALR with last taxon as reference
   Xi <- GG%*%(diag(D)*total_variance)%*%t(GG) # take diag as covariance over log
                                               # abundances

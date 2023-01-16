@@ -13,6 +13,14 @@ library(ggforce)
 data <- load_data(tax_level = "ASV")
 rug_asv <- summarize_Sigmas(output_dir = "asv_days90_diet25_scale1")
 
+filtered_pairs <- filter_joint_zeros(data$counts, threshold_and = 0.05, threshold_or = 0.5)
+filtered_obj <- rug_asv
+filtered_obj$tax_idx1 <- filtered_obj$tax_idx1[filtered_pairs$threshold]
+filtered_obj$tax_idx2 <- filtered_obj$tax_idx2[filtered_pairs$threshold]
+filtered_obj$rug <- filtered_obj$rug[,filtered_pairs$threshold]
+
+rug_asv <- filtered_obj
+
 phy_dist <- rug_phylogenetic_distances(rug_asv, data$taxonomy, as_matrix = FALSE)
 scores <- apply(rug_asv$rug, 2, calc_universality_score)
 signs <- apply(rug_asv$rug, 2, calc_consensus_sign)
@@ -33,11 +41,12 @@ phylo_neg_mean <- mean(phy_dist[signs < 0])
 phylo_pos_mean <- mean(phy_dist[signs > 0])
 
 p1 <- ggplot(plot_df %>%
-         filter(sign == "positive") %>%
-         mutate(binned_d = cut(d, seq(from = 0, to = 0.6, by = 0.1))),
-       aes(x = binned_d, y = score)) +
+               filter(!is.na(d)) %>%
+               filter(sign == "positive") %>%
+               mutate(binned_d = cut(d, seq(from = 0, to = 0.6, by = 0.1))),
+             aes(x = binned_d, y = score)) +
   geom_sina(size = 2, shape = 21, fill = "red") +
-  geom_boxplot(width = 0.25, outlier.shape = NA) +
+  geom_boxplot(width = 0.25, outlier.shape = NA, alpha = 0.65) +
   theme_bw() +
   labs(x = "phylogenetic distance",
        y = "universality score",
@@ -46,11 +55,12 @@ p1 <- ggplot(plot_df %>%
         axis.text.x = element_text(angle = 45, vjust = 1, hjust=1))
 
 p2 <- ggplot(plot_df %>%
-         filter(sign == "negative") %>%
-         mutate(binned_d = cut(d, seq(from = 0, to = 0.6, by = 0.1))),
-       aes(x = binned_d, y = score)) +
+               filter(!is.na(d)) %>%
+               filter(sign == "negative") %>%
+               mutate(binned_d = cut(d, seq(from = 0, to = 0.6, by = 0.1))),
+             aes(x = binned_d, y = score)) +
   geom_sina(size = 2, shape = 21, fill = muted("navy")) +
-  geom_boxplot(width = 0.25, outlier.shape = NA) +
+  geom_boxplot(width = 0.25, outlier.shape = NA, alpha = 0.65) +
   theme_bw() +
   labs(x = "phylogenetic distance",
        y = "universality score",
@@ -152,31 +162,27 @@ prow1 <- plot_grid(p1,
                    # p2 + ggtitle("Consensus negatively associated ASVs"),
                    legend,
                    ncol = 3,
-               labels = c("A", "B", ""),
-               label_size = 18,
-               scale = common_scale,
-               rel_widths = c(1, 1, 0.3))
-# prow2 <- plot_grid(NULL, p3, NULL, p4, NULL, ncol = 5,
-#                labels = c("", "C", "", "D", ""),
-#                label_size = 18,
-#                label_x = -0.03,
-#                label_y = 1.02,
-#                scale = common_scale,
-#                rel_widths = c(0.45, 0.85, 0.1, 1.1, 0.5))
-prow2 <- plot_grid(p3, p4, NULL, ncol = 3,
-                   labels = c("C", "D", ""),
+                   labels = c("A", "B", ""),
                    label_size = 18,
-                   label_x = 0,
-                   label_y = 1.02,
                    scale = common_scale,
                    rel_widths = c(1, 1, 0.3))
-p <- plot_grid(prow1, prow2, ncol = 1,
-               rel_heights = c(1, 0.5))
-ggsave(file.path("output", "figures", "phylogenetic.svg"),
-       p,
-       dpi = 100,
+
+# prow2 <- plot_grid(p3, p4, NULL, ncol = 3,
+#                    labels = c("C", "D", ""),
+#                    label_size = 18,
+#                    label_x = 0,
+#                    label_y = 1.02,
+#                    scale = common_scale,
+#                    rel_widths = c(1, 1, 0.3))
+
+# p <- plot_grid(prow1, prow2, ncol = 1,
+#                rel_heights = c(1, 0.5))
+
+ggsave(file.path("output", "figures", "phylogenetic_alt.png"),
+       prow1,
+       dpi = 200,
        units = "in",
-       height = 7,
+       height = 5,
        width = 11)
 
 # ------------------------------------------------------------------------------
@@ -186,16 +192,16 @@ ggsave(file.path("output", "figures", "phylogenetic.svg"),
 enrichment %<>%
   arrange(type, name) %>%
   dplyr::select(name, type, location, oddsratio, lower95, upper95, pvalue, qvalue) %>%
-  rename(`ASV family or pair name` = name,
-         `Type` = type,
-         `Enrichment evaluated in` = location,
-         `Odds ratio` = oddsratio,
-         `Lower 95% CI` = lower95,
-         `Upper 95% CI` = upper95,
-         `P-value (Fisher's exact test)` = pvalue,
-         `Adj. p-value (Benjamini-Hochberg)` = qvalue)
+  dplyr::rename(`ASV family or pair name` = name,
+                `Type` = type,
+                `Enrichment evaluated in` = location,
+                `Odds ratio` = oddsratio,
+                `Lower 95% CI` = lower95,
+                `Upper 95% CI` = upper95,
+                `P-value (Fisher's exact test)` = pvalue,
+                `Adj. p-value (Benjamini-Hochberg)` = qvalue)
 write.table(enrichment,
-            file = file.path("output", "enrichment_closely-related.tsv"),
+            file = file.path("output", "enrichment_closely-related_alt.tsv"),
             sep = "\t",
             quote = FALSE,
             row.names = FALSE)

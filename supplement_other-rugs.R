@@ -16,16 +16,25 @@ rugs <- list(ASV = summarize_Sigmas(output_dir = "asv_days90_diet25_scale1"),
 # ------------------------------------------------------------------------------
 
 # Phylum
-phylum_sign <- sign(c(rugs$phylum$rug))
+filtered_pairs <- filter_joint_zeros(load_data(tax_level = "phylum")$counts, threshold_and = 0.05, threshold_or = 0.5)$threshold
+signif(median(c(rugs$phylum$rug[,filtered_pairs])), 3)
+phylum_sign <- sign(c(rugs$phylum$rug[,filtered_pairs]))
 binom.test(table(phylum_sign)[2], length(phylum_sign), 0.5)
+round(table(phylum_sign)[1]/length(phylum_sign), 2)
 
 # Family/order/class
-family_sign <- sign(c(rugs$family$rug))
+filtered_pairs <- filter_joint_zeros(load_data(tax_level = "family")$counts, threshold_and = 0.05, threshold_or = 0.5)$threshold
+signif(median(c(rugs$family$rug[,filtered_pairs])), 3)
+family_sign <- sign(c(rugs$family$rug[,filtered_pairs]))
 binom.test(table(family_sign)[2], length(family_sign), 0.5)
+round(table(family_sign)[1]/length(family_sign), 2)
 
 # ASV
-ASV_sign <- sign(c(rugs$ASV$rug))
+filtered_pairs <- filter_joint_zeros(load_data(tax_level = "ASV")$counts, threshold_and = 0.05, threshold_or = 0.5)$threshold
+signif(median(c(rugs$ASV$rug[,filtered_pairs])), 3)
+ASV_sign <- sign(c(rugs$ASV$rug[,filtered_pairs]))
 binom.test(table(ASV_sign)[2], length(ASV_sign), 0.5)
+round(table(ASV_sign)[1]/length(ASV_sign), 2)
 
 asv_column_order <- NULL
 plots <- list()

@@ -192,17 +192,24 @@ p2 <- plot_ac(scores_aper)
 # F1 <- readRDS(file.path("output", "Frechet_1_corr.rds"))
 # F1$mean <- CovFMean(F1$Sigmas)$Mout[[1]]
 
-Sigmas <- pull_Sigmas("asv_days90_diet25_scale1")
-F1 <- estcov(Sigmas, method = "Euclidean")
-D <- dim(F1$mean)[1]
+# Sigmas <- pull_Sigmas("asv_days90_diet25_scale1")
+rug <- summarize_Sigmas(output_dir = "asv_days90_diet25_scale1")$rug
+data <- load_data(tax_level = "ASV")
+filtered_pairs <- filter_joint_zeros(data$counts, threshold_and = 0.05, threshold_or = 0.5)
+y <- c(colMeans(rug[,filtered_pairs$threshold]))
 
 # Estimate correlation from aperiodic/season-less joint model
+# F1 <- estcov(Sigmas, method = "Euclidean")
+# D <- dim(F1$mean)[1]
 cov_after <- cov(t(clr_aper))
 cor_after <- cov2cor(cov_after)
 cor_after <- cor_after[1:D,1:D] # omit "other"
 
-x <- c(cor_after[upper.tri(cor_after, diag = FALSE)])
-y <- c(F1$mean[upper.tri(F1$mean, diag = FALSE)])
+x <- cor_after[lower.tri(cor_after, diag = FALSE)]
+x <- x[filtered_pairs$threshold]
+
+# x <- c(cor_after[upper.tri(cor_after, diag = FALSE)])
+# y <- c(F1$mean[upper.tri(F1$mean, diag = FALSE)])
 
 # Plot correlation of CLR correlation estimates
 p3 <- ggplot(data.frame(x = x,
@@ -221,16 +228,17 @@ p <- plot_grid(p1, NULL, p2, NULL, p3,
                label_y = 1.01,
                label_x = -0.015)
 
-ggsave(file.path("output", "figures", "lmer_results.svg"),
+ggsave(file.path("output", "figures", "lmer_results_alt.png"),
        p,
-       dpi = 100,
+       dpi = 200,
        units = "in",
        height = 4,
        width = 13)
 
 summary(lm(y ~ x))
 
-cat(paste0("R^2 of estimates: ", round(cor(c(F1$mean), c(cor_after)), 3)**2, "\n"))
+# cat(paste0("R of estimates: ", round(cor(c(F1$mean), c(cor_after)), 3), "\n"))
+cat(paste0("R of estimates: ", round(cor(x, y), 3), "\n"))
 
 # ------------------------------------------------------------------------------
 #   Is R^2 different for Johannes' "seasonal" taxa? (Ans: No)

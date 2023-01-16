@@ -38,30 +38,43 @@ for(i in 1:psamples) {
   }
 }
 
-correlation_phy <- NULL
-pdir <- "phy_days90_diet25_scale1"
-fits <- list.files(file.path("output", "model_fits", pdir, "MAP"), full.names = TRUE)
-for(j in 1:length(fits)) {
-  Sigma <- cov2cor(to_clr(readRDS(fits[j]))$Sigma[,,1])
-  D <- nrow(Sigma)
-  Sigma <- Sigma[1:(D-1),1:(D-1)]
-  if(is.null(correlation_phy)) {
-    D_combos <- ((D-1)^2 - (D-1))/2
-    correlation_phy <- matrix(NA, D_combos, length(fits))
-  }
-  correlation_phy[,j] <- Sigma[upper.tri(Sigma)]
-}
+# correlation_phy <- NULL
+# pdir <- "phy_days90_diet25_scale1"
+# fits <- list.files(file.path("output", "model_fits", pdir, "MAP"), full.names = TRUE)
+# for(j in 1:length(fits)) {
+#   Sigma <- cov2cor(to_clr(readRDS(fits[j]))$Sigma[,,1])
+#   D <- nrow(Sigma)
+#   Sigma <- Sigma[1:(D-1),1:(D-1)]
+#   if(is.null(correlation_phy)) {
+#     D_combos <- ((D-1)^2 - (D-1))/2
+#     correlation_phy <- matrix(NA, D_combos, length(fits))
+#   }
+#   correlation_phy[,j] <- Sigma[upper.tri(Sigma)]
+# }
+# corr_distros <- rbind(corr_distros,
+#                       data.frame(x = sample(c(correlation_phy)),
+#                                  type = "Phylum",
+#                                  scheme = "observed",
+#                                  host = unname(sapply(fits, function(x) str_match(x, ".*MAP\\/(.*?)\\.rds")[[2]]))))
+
+data <- load_data(tax_level = "phylum")
+rug_phy <- summarize_Sigmas(output_dir = "phy_days90_diet25_scale1")
+filtered_pairs <- filter_joint_zeros(data$counts, threshold_and = 0.05, threshold_or = 0.5)
+rug <- rug_phy$rug[,filtered_pairs$threshold]
 
 # corr_distros <- data.frame(x = sample(c(permuted_correlation_phy), size = 10000),
 corr_distros <- data.frame(x = c(permuted_correlation_phy),
                            type = "Phylum",
                            scheme = "permuted",
                            host = NA)
-corr_distros <- rbind(corr_distros,
-                      data.frame(x = sample(c(correlation_phy)),
-                                 type = "Phylum",
-                                 scheme = "observed",
-                                 host = unname(sapply(fits, function(x) str_match(x, ".*MAP\\/(.*?)\\.rds")[[2]]))))
+
+for(h in 1:nrow(rug)) {
+  corr_distros <- rbind(corr_distros,
+                        data.frame(x = rug[h,],
+                                   type = "Phylum",
+                                   scheme = "observed",
+                                   host = rug_phy$hosts[h]))
+}
 
 # ------------------------------------------------------------------------------
 #   Family
@@ -86,19 +99,24 @@ for(i in 1:psamples) {
   }
 }
 
-correlation_fam <- NULL
-pdir <- "fam_days90_diet25_scale1"
-fits <- list.files(file.path("output", "model_fits", pdir, "MAP"), full.names = TRUE)
-for(j in 1:length(fits)) {
-  Sigma <- cov2cor(to_clr(readRDS(fits[j]))$Sigma[,,1])
-  D <- nrow(Sigma)
-  Sigma <- Sigma[1:(D-1),1:(D-1)]
-  if(is.null(correlation_fam)) {
-    D_combos <- ((D-1)^2 - (D-1))/2
-    correlation_fam <- matrix(NA, D_combos, length(fits))
-  }
-  correlation_fam[,j] <- Sigma[upper.tri(Sigma)]
-}
+# correlation_fam <- NULL
+# pdir <- "fam_days90_diet25_scale1"
+# fits <- list.files(file.path("output", "model_fits", pdir, "MAP"), full.names = TRUE)
+# for(j in 1:length(fits)) {
+#   Sigma <- cov2cor(to_clr(readRDS(fits[j]))$Sigma[,,1])
+#   D <- nrow(Sigma)
+#   Sigma <- Sigma[1:(D-1),1:(D-1)]
+#   if(is.null(correlation_fam)) {
+#     D_combos <- ((D-1)^2 - (D-1))/2
+#     correlation_fam <- matrix(NA, D_combos, length(fits))
+#   }
+#   correlation_fam[,j] <- Sigma[upper.tri(Sigma)]
+# }
+# corr_distros <- rbind(corr_distros,
+#                       data.frame(x = sample(c(correlation_fam)),
+#                                  type = "Family",
+#                                  scheme = "observed",
+#                                  host = unname(sapply(fits, function(x) str_match(x, ".*MAP\\/(.*?)\\.rds")[[2]]))))
 
 corr_distros <- rbind(corr_distros,
                       # data.frame(x = sample(c(permuted_correlation_fam), size = 10000),
@@ -106,11 +124,19 @@ corr_distros <- rbind(corr_distros,
                                  type = "Family",
                                  scheme = "permuted",
                                  host = NA))
-corr_distros <- rbind(corr_distros,
-                      data.frame(x = sample(c(correlation_fam)),
-                                 type = "Family",
-                                 scheme = "observed",
-                                 host = unname(sapply(fits, function(x) str_match(x, ".*MAP\\/(.*?)\\.rds")[[2]]))))
+
+data <- load_data(tax_level = "family")
+rug_fam <- summarize_Sigmas(output_dir = "fam_days90_diet25_scale1")
+filtered_pairs <- filter_joint_zeros(data$counts, threshold_and = 0.05, threshold_or = 0.5)
+rug <- rug_fam$rug[,filtered_pairs$threshold]
+
+for(h in 1:nrow(rug)) {
+  corr_distros <- rbind(corr_distros,
+                        data.frame(x = rug[h,],
+                                   type = "Family",
+                                   scheme = "observed",
+                                   host = rug_fam$hosts[h]))
+}
 
 # ------------------------------------------------------------------------------
 #   ASV
@@ -135,19 +161,24 @@ for(i in 1:psamples) {
   }
 }
 
-correlation_asv <- NULL
-pdir <- "asv_days90_diet25_scale1"
-fits <- list.files(file.path("output", "model_fits", pdir, "MAP"), full.names = TRUE)
-for(j in 1:length(fits)) {
-  Sigma <- cov2cor(to_clr(readRDS(fits[j]))$Sigma[,,1])
-  D <- nrow(Sigma)
-  Sigma <- Sigma[1:(D-1),1:(D-1)]
-  if(is.null(correlation_asv)) {
-    D_combos <- ((D-1)^2 - (D-1))/2
-    correlation_asv <- matrix(NA, D_combos, length(fits))
-  }
-  correlation_asv[,j] <- Sigma[upper.tri(Sigma)]
-}
+# correlation_asv <- NULL
+# pdir <- "asv_days90_diet25_scale1"
+# fits <- list.files(file.path("output", "model_fits", pdir, "MAP"), full.names = TRUE)
+# for(j in 1:length(fits)) {
+#   Sigma <- cov2cor(to_clr(readRDS(fits[j]))$Sigma[,,1])
+#   D <- nrow(Sigma)
+#   Sigma <- Sigma[1:(D-1),1:(D-1)]
+#   if(is.null(correlation_asv)) {
+#     D_combos <- ((D-1)^2 - (D-1))/2
+#     correlation_asv <- matrix(NA, D_combos, length(fits))
+#   }
+#   correlation_asv[,j] <- Sigma[upper.tri(Sigma)]
+# }
+# corr_distros <- rbind(corr_distros,
+#                       data.frame(x = sample(c(correlation_asv)),
+#                                  type = "ASV",
+#                                  scheme = "observed",
+#                                  host = unname(sapply(fits, function(x) str_match(x, ".*MAP\\/(.*?)\\.rds")[[2]]))))
 
 corr_distros <- rbind(corr_distros,
                       # data.frame(x = sample(c(permuted_correlation_asv), size = 10000),
@@ -155,11 +186,20 @@ corr_distros <- rbind(corr_distros,
                                  type = "ASV",
                                  scheme = "permuted",
                                  host = NA))
-corr_distros <- rbind(corr_distros,
-                      data.frame(x = sample(c(correlation_asv)),
-                                 type = "ASV",
-                                 scheme = "observed",
-                                 host = unname(sapply(fits, function(x) str_match(x, ".*MAP\\/(.*?)\\.rds")[[2]]))))
+
+data <- load_data(tax_level = "ASV")
+rug_asv <- summarize_Sigmas(output_dir = "asv_days90_diet25_scale1")
+filtered_pairs <- filter_joint_zeros(data$counts, threshold_and = 0.05, threshold_or = 0.5)
+rug <- rug_asv$rug[,filtered_pairs$threshold]
+
+# This takes ~ 30 sec.
+for(h in 1:nrow(rug)) {
+  corr_distros <- rbind(corr_distros,
+                        data.frame(x = rug[h,],
+                                   type = "ASV",
+                                   scheme = "observed",
+                                   host = rug_asv$hosts[h]))
+}
 
 corr_distros$type <- factor(corr_distros$type, levels = c("ASV", "Family", "Phylum"))
 levels(corr_distros$type) <- c("ASV", "Family/order/class", "Phylum")
@@ -183,7 +223,8 @@ p1 <- ggplot() +
   scale_fill_manual(values = c("#59AAD7", "#aaaaaa")) +
   theme_bw() +
   labs(fill = "Source",
-       x = "correlation")
+       x = "correlation",
+       y = "density")
 
 # ------------------------------------------------------------------------------
 #
@@ -197,11 +238,15 @@ iterations <- 100
 #   Phylum
 # ------------------------------------------------------------------------------
 
+data <- load_data(tax_level = "phylum")
 rug_phy <- summarize_Sigmas(output_dir = "phy_days90_diet25_scale1")
+filtered_pairs <- filter_joint_zeros(data$counts, threshold_and = 0.05, threshold_or = 0.5)
+rug <- rug_phy$rug[,filtered_pairs$threshold]
+
 permuted_scores_phy <- NULL
 for(i in 1:iterations) {
-  rug_scrambled <- rug_phy$rug
-  for(j in 1:nrow(rug_phy$rug)) {
+  rug_scrambled <- rug
+  for(j in 1:nrow(rug)) {
     rug_scrambled[j,] <- sample(rug_scrambled[j,])
   }
   scores <- apply(rug_scrambled, 2, calc_universality_score)
@@ -215,7 +260,7 @@ score_distros <- data.frame(x = c(permuted_scores_phy),
                             type = "Phylum",
                             scheme = "permuted")
 score_distros <- rbind(score_distros,
-                       data.frame(x = apply(rug_phy$rug, 2, calc_universality_score),
+                       data.frame(x = apply(rug, 2, calc_universality_score),
                                   type = "Phylum",
                                   scheme = "observed"))
 
@@ -223,11 +268,15 @@ score_distros <- rbind(score_distros,
 #   Family
 # ------------------------------------------------------------------------------
 
+data <- load_data(tax_level = "family")
 rug_fam <- summarize_Sigmas(output_dir = "fam_days90_diet25_scale1")
+filtered_pairs <- filter_joint_zeros(data$counts, threshold_and = 0.05, threshold_or = 0.5)
+rug <- rug_fam$rug[,filtered_pairs$threshold]
+
 permuted_scores_fam <- NULL
 for(i in 1:iterations) {
-  rug_scrambled <- rug_fam$rug
-  for(j in 1:nrow(rug_fam$rug)) {
+  rug_scrambled <- rug
+  for(j in 1:nrow(rug)) {
     rug_scrambled[j,] <- sample(rug_scrambled[j,])
   }
   scores <- apply(rug_scrambled, 2, calc_universality_score)
@@ -242,7 +291,7 @@ score_distros <- rbind(score_distros,
                                   type = "Family",
                                   scheme = "permuted"))
 score_distros <- rbind(score_distros,
-                       data.frame(x = apply(rug_fam$rug, 2, calc_universality_score),
+                       data.frame(x = apply(rug, 2, calc_universality_score),
                                   type = "Family",
                                   scheme = "observed"))
 
@@ -250,14 +299,18 @@ score_distros <- rbind(score_distros,
 #   ASV
 # ------------------------------------------------------------------------------
 
+data <- load_data(tax_level = "ASV")
 rug_asv <- summarize_Sigmas(output_dir = "asv_days90_diet25_scale1")
+filtered_pairs <- filter_joint_zeros(data$counts, threshold_and = 0.05, threshold_or = 0.5)
+rug <- rug_asv$rug[,filtered_pairs$threshold]
+
 permuted_scores_asv <- NULL
 for(i in 1:iterations) {
   if(i %% 10 == 0) {
     cat(paste0("Processing permutation iteration ", i,"\n"))
   }
-  rug_scrambled <- rug_asv$rug
-  for(j in 1:nrow(rug_asv$rug)) {
+  rug_scrambled <- rug
+  for(j in 1:nrow(rug)) {
     rug_scrambled[j,] <- sample(rug_scrambled[j,])
   }
   scores <- apply(rug_scrambled, 2, calc_universality_score)
@@ -267,7 +320,7 @@ for(i in 1:iterations) {
   permuted_scores_asv[,i] <- scores
 }
 
-obs_scores <- apply(rug_asv$rug, 2, calc_universality_score)
+obs_scores <- apply(rug, 2, calc_universality_score)
 
 score_distros <- rbind(score_distros,
                        data.frame(x = c(permuted_scores_asv),
@@ -299,9 +352,10 @@ p2 <- ggplot() +
   facet_wrap(. ~ type) +
   scale_fill_manual(values = c("#59AAD7", "#aaaaaa")) +
   theme_bw() +
-  xlim(c(0, 0.7)) +
+  xlim(c(-0.05, 0.7)) +
   labs(fill = "Source",
-       x = "universality score")
+       x = "universality score",
+       y = "density")
 
 p <- plot_grid(p1, p2,
                ncol = 1,
@@ -310,9 +364,9 @@ p <- plot_grid(p1, p2,
                label_size = 16,
                scale = 0.95)
 
-ggsave(file.path("output", "figures", "null_distros.svg"),
+ggsave(file.path("output", "figures", "null_distros_alt.png"),
        p,
-       dpi = 100,
+       dpi = 200,
        units = "in",
        height = 5,
        width = 8)
@@ -540,6 +594,12 @@ for(ttype in unique(corr_distros$type)) {
 
   cat(paste0("LEVEL: ", toupper(ttype), "\n"))
 
+  signif_values <- values[signif_vec]
+  pos_threshold <- min(signif_values[signif_values > 0])
+  neg_threshold <- max(signif_values[signif_values < 0])
+  cat(paste0("Negative corr. signif value (cutoff): ", round(neg_threshold, 3), "\n"))
+  cat(paste0("Positive corr. signif value (cutoff): ", round(pos_threshold, 3), "\n"))
+
   cat(paste0("Overall:\n"))
   cat(paste0("\tMedian: ", round(median(values), 3), "\n"))
   cat(paste0("\tPercent positive: ", round(sum(values > 0)/length(values), 3), "\n"))
@@ -618,6 +678,6 @@ for(ttype in unique(score_distros$type)) {
 
   asv_scores_piecewise <- apply(rug_asv$rug[,lower_than_chance], 2, function(x) calc_universality_score(x, return_pieces = TRUE))
 
-  hist(rug_asv$rug[,higher_than_chance])
+  # hist(rug_asv$rug[,higher_than_chance])
 }
 
