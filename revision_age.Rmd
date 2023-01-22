@@ -33,6 +33,11 @@ group1 <- c("ACA", "CAI", "DAS", "EAG", "ELV", "LIW",
 # Prime age vs. older adult with minimum number of samples (n=35)
 group2 <- c("COB", "ECH", "GAB", "HOL", "LAD", "NAP",
             "NOB", "TAL", "VEI", "VET", "VIN", "WAD", "WHE")
+
+# Convert these to the labels used in the paper
+# map <- read.table("output/host_labels.tsv", header = T)
+map %>% filter(sname %in% group1) %>% pull(host_label) %>% sort() %>% paste0(collapse = ", ")
+map %>% filter(sname %in% group2) %>% pull(host_label) %>% sort() %>% paste0(collapse = ", ")
 ```
 
 We'll split into age ranges **juvenile** (0-6 years), **prime age adult** (6-13 
@@ -217,14 +222,46 @@ centroid_df <- host_groups %>%
   group_by(group) %>%
   summarize(x_mean = mean(x), y_mean = mean(y))
 
+edge_df <- rbind(host_groups %>%
+                   filter(sname %in% group1) %>%
+                   group_by(sname) %>%
+                   select(-c(index, y)) %>%
+                   pivot_wider(id_cols = sname, names_from = group, values_from = x) %>%
+                   rename(x = juvenile, xend = prime),
+                 host_groups %>%
+                   filter(sname %in% group2) %>%
+                   group_by(sname) %>%
+                   select(-c(index, y)) %>%
+                   pivot_wider(id_cols = sname, names_from = group, values_from = x) %>%
+                   rename(x = prime, xend = older)) %>%
+  left_join(rbind(host_groups %>%
+                    filter(sname %in% group1) %>%
+                    group_by(sname) %>%
+                    select(-c(index, x)) %>%
+                    pivot_wider(id_cols = sname, names_from = group, values_from = y) %>%
+                    rename(y = juvenile, yend = prime),
+                  host_groups %>%
+                    filter(sname %in% group2) %>%
+                    group_by(sname) %>%
+                    select(-c(index, x)) %>%
+                    pivot_wider(id_cols = sname, names_from = group, values_from = y) %>%
+                    rename(y = prime, yend = older)),
+            by = "sname")
+```
+
+```{r, fig.height = 5, fig.width = 7}
 ggplot() +
-  geom_point(data = host_groups,
+  geom_segment(data = edge_df,
+               mapping = aes(x = x, xend = xend, y = y, yend = yend),
+               color = "#aaaaaa") +
+  geom_point(data = centroid_df %>% mutate(group = factor(group, levels = c("juvenile", "prime", "older"))),
+             mapping = aes(x = x_mean, y = y_mean, fill = group),
+             size = 3, shape = 23, stroke = 1.25) +
+  geom_point(data = host_groups %>% mutate(group = factor(group, levels = c("juvenile", "prime", "older"))),
              mapping = aes(x = x, y = y, fill = group),
              size = 3, shape = 21) +
-  geom_point(data = centroid_df,
-             mapping = aes(x = x_mean, y = y_mean, color = group),
-             size = 3, shape = 7) +
   theme_bw() +
+  # guides(color = FALSE) +
   labs(x = "PCA 1", y = "PCA 2", fill = "Age bin", color = "Age bin")
 ```
 
@@ -269,15 +306,24 @@ Plot the "rug". Note that rows are juvenile (rows 1-13), prime age (rows 14-39),
 and older adult (rows 40-52).
 
 ```{r}
-col_order <- order(apply(rug, 2, median))
-plot_rug <- rug[,col_order]
+library(cowplot)
 
-plot_rug <- cbind(1:nrow(plot_rug), plot_rug)
+col_order <- order(apply(rug, 2, median))
+
+# Juvenile vs. prime age adult
+use_rows <- host_groups %>%
+  filter(group == "juvenile") %>%
+  left_join(host_groups %>%
+              filter(group == "prime"),
+            by = "sname") %>%
+  select(index.x, index.y)
+
+plot_rug <- cbind(1:nrow(plot_rug), rug[use_rows$index.x, col_order])
 colnames(plot_rug) <- c("host", paste0(1:(ncol(plot_rug)-1)))
 plot_rug <- pivot_longer(as.data.frame(plot_rug), !host, names_to = "pair", values_to = "correlation")
 plot_rug$pair <- as.numeric(plot_rug$pair)
 
-ggplot(plot_rug, aes(x = pair, y = host)) +
+p1 <- ggplot(plot_rug, aes(x = pair, y = host)) +
   geom_raster(aes(fill = correlation)) +
   scale_fill_gradient2(low = "navy", mid = "white", high = "red",
                        midpoint = 0) +
@@ -286,9 +332,94 @@ ggplot(plot_rug, aes(x = pair, y = host)) +
   scale_x_continuous(expand = c(0,0)) +
   scale_y_continuous(expand = c(0,0)) +
   theme(axis.text.x = element_blank(),
+        axis.text.y  = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.title.x = element_blank(),
+        legend.position = "none") +
+  labs(fill = "correlation\nmetric")
+
+plot_rug <- cbind(1:nrow(plot_rug), rug[use_rows$index.y, col_order])
+colnames(plot_rug) <- c("host", paste0(1:(ncol(plot_rug)-1)))
+plot_rug <- pivot_longer(as.data.frame(plot_rug), !host, names_to = "pair", values_to = "correlation")
+plot_rug$pair <- as.numeric(plot_rug$pair)
+
+p2 <- ggplot(plot_rug, aes(x = pair, y = host)) +
+  geom_raster(aes(fill = correlation)) +
+  scale_fill_gradient2(low = "navy", mid = "white", high = "red",
+                       midpoint = 0) +
+  labs(y = "") +
+  theme_bw() +
+  scale_x_continuous(expand = c(0,0)) +
+  scale_y_continuous(expand = c(0,0)) +
+  theme(axis.text.x = element_blank(),
+        axis.text.y  = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.title.x = element_blank(),
+        legend.position = "none") +
+  labs(fill = "correlation\nmetric")
+
+# Prime age adult vs. older adult
+use_rows <- host_groups %>%
+  filter(group == "older") %>%
+  left_join(host_groups %>%
+              filter(group == "prime"),
+            by = "sname") %>%
+  select(index.x, index.y)
+
+plot_rug <- cbind(1:nrow(plot_rug), rug[use_rows$index.y, col_order])
+colnames(plot_rug) <- c("host", paste0(1:(ncol(plot_rug)-1)))
+plot_rug <- pivot_longer(as.data.frame(plot_rug), !host, names_to = "pair", values_to = "correlation")
+plot_rug$pair <- as.numeric(plot_rug$pair)
+
+p3 <- ggplot(plot_rug, aes(x = pair, y = host)) +
+  geom_raster(aes(fill = correlation)) +
+  scale_fill_gradient2(low = "navy", mid = "white", high = "red",
+                       midpoint = 0) +
+  labs(y = "") +
+  theme_bw() +
+  scale_x_continuous(expand = c(0,0)) +
+  scale_y_continuous(expand = c(0,0)) +
+  theme(axis.text.x = element_blank(),
+        axis.text.y  = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.title.x = element_blank(),
+        legend.position = "none") +
+  labs(fill = "correlation\nmetric")
+
+plot_rug <- cbind(1:nrow(plot_rug), rug[use_rows$index.x, col_order])
+colnames(plot_rug) <- c("host", paste0(1:(ncol(plot_rug)-1)))
+plot_rug <- pivot_longer(as.data.frame(plot_rug), !host, names_to = "pair", values_to = "correlation")
+plot_rug$pair <- as.numeric(plot_rug$pair)
+
+p4 <- ggplot(plot_rug, aes(x = pair, y = host)) +
+  geom_raster(aes(fill = correlation)) +
+  scale_fill_gradient2(low = "navy", mid = "white", high = "red",
+                       midpoint = 0) +
+  labs(y = "") +
+  theme_bw() +
+  scale_x_continuous(expand = c(0,0)) +
+  scale_y_continuous(expand = c(0,0)) +
+  theme(axis.text.x = element_blank(),
+        axis.text.y  = element_blank(),
         axis.ticks.x = element_blank(),
         axis.ticks.y = element_blank()) +
   labs(fill = "correlation\nmetric")
+
+legend <- get_legend(p4)
+p4 <- p4 +
+  theme(legend.position = "none")
+
+pcol1 <- plot_grid(p1, p2, p3, p4, ncol = 1,
+                   labels = c("A", "B", "C", "D"),
+                   label_y = 1.04, label_x = -0.01,
+                   rel_heights = c(1, 1, 1, 1.15))
+```
+
+```{r, fig.height = 6, fig.width = 8}
+plot_grid(pcol1, legend, ncol = 2, rel_widths = c(1, 0.2))
 ```
 
 Do any pairs change their consensus sign across age bins? In "significantly"
@@ -569,5 +700,15 @@ ggplot(cor_df, aes(x = 1:nrow(cor_df), y = quantile, fill = groups)) +
   labs(x = "quantile obs. r in null r distribution")
 ```
 
-
+```{r, fig.height = 5, fig.width = 6}
+ggplot() +
+  geom_density(data = data.frame(x = r_samples),
+               mapping = aes(x = x)) +
+  geom_segment(data = cor_df %>% select(r),
+               mapping = aes(x = r, xend = r, y = 0, yend = 0.25)) +
+  theme_bw() +
+  labs(x = "correlation of subsampled estimates") +
+  xlim(c(0.35, 1)) +
+  labs(y = "density")
+```
 
