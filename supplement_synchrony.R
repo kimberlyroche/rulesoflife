@@ -392,6 +392,8 @@ if(file.exists(save_fn)) {
   saveRDS(list(plot_df = plot_df, plot_df_permuted = plot_df_permuted), save_fn)
 }
 
+median_synchrony <- median(plot_df$synchrony)
+
 p0 <- ggplot() +
   geom_point(data = plot_df %>% filter(!is.na(sign)),
              mapping = aes(x = synchrony, y = universality, fill = sign),
@@ -401,7 +403,7 @@ p0 <- ggplot() +
                color = "black",
                linetype = 2,
                size = 0.8) +
-  geom_segment(data = data.frame(x = 0.3, xend = 0.3, y = 0.4, yend = 0.8),
+  geom_segment(data = data.frame(x = median_synchrony, xend = median_synchrony, y = 0.4, yend = 0.8),
                mapping = aes(x = x, y = y, xend = xend, yend = yend),
                color = "black",
                linetype = 2,
@@ -743,12 +745,12 @@ p <- ggplot(temp, aes(x = reorder(label, synchrony), y = synchrony, fill = seaso
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1, size = 9),
         legend.position = "bottom")
 
-ggsave(file.path("output", "figures", "season_vs_synchrony.svg"),
+ggsave(file.path("output", "figures", "season_vs_synchrony.png"),
        p,
        dpi = 100,
        units = "in",
-       height = 14,
-       width = 7)
+       height = 7,
+       width = 14)
 
 # Test for significant enrichment of labeled things and highly synchronous things
 # temp$seasonal[temp$fam %in% unlist(seasonal_families)] <- "seasonal"
@@ -757,7 +759,7 @@ ggsave(file.path("output", "figures", "season_vs_synchrony.svg"),
 # p = 0.358
 
 # ------------------------------------------------------------------------------
-#   Boxplots
+#   Violin plots
 # ------------------------------------------------------------------------------
 
 plot_df$n_seasonal <- as.numeric(!sapply(plot_df$fam1, is.na)) + as.numeric(!sapply(plot_df$fam2, is.na))

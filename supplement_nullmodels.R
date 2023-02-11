@@ -201,6 +201,10 @@ for(h in 1:nrow(rug)) {
                                    host = rug_asv$hosts[h]))
 }
 
+# Get rid of NAs that have resulted from joint zero filtering
+corr_distros %<>%
+  filter(!is.na(x))
+
 corr_distros$type <- factor(corr_distros$type, levels = c("ASV", "Family", "Phylum"))
 levels(corr_distros$type) <- c("ASV", "Family/order/class", "Phylum")
 corr_distros$scheme <- factor(corr_distros$scheme, levels = c("observed", "permuted"))

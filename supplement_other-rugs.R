@@ -16,25 +16,29 @@ rugs <- list(ASV = summarize_Sigmas(output_dir = "asv_days90_diet25_scale1"),
 # ------------------------------------------------------------------------------
 
 # Phylum
-filtered_pairs <- filter_joint_zeros(load_data(tax_level = "phylum")$counts, threshold_and = 0.05, threshold_or = 0.5)$threshold
-signif(median(c(rugs$phylum$rug[,filtered_pairs])), 3)
-phylum_sign <- sign(c(rugs$phylum$rug[,filtered_pairs]))
+filtered_pairs_phy <- filter_joint_zeros(load_data(tax_level = "phylum")$counts, threshold_and = 0.05, threshold_or = 0.5)$threshold
+signif(median(c(rugs$phylum$rug[,filtered_pairs_phy])), 3)
+phylum_sign <- sign(c(rugs$phylum$rug[,filtered_pairs_phy]))
 binom.test(table(phylum_sign)[2], length(phylum_sign), 0.5)
 round(table(phylum_sign)[1]/length(phylum_sign), 2)
 
 # Family/order/class
-filtered_pairs <- filter_joint_zeros(load_data(tax_level = "family")$counts, threshold_and = 0.05, threshold_or = 0.5)$threshold
-signif(median(c(rugs$family$rug[,filtered_pairs])), 3)
-family_sign <- sign(c(rugs$family$rug[,filtered_pairs]))
+filtered_pairs_fam <- filter_joint_zeros(load_data(tax_level = "family")$counts, threshold_and = 0.05, threshold_or = 0.5)$threshold
+signif(median(c(rugs$family$rug[,filtered_pairs_fam])), 3)
+family_sign <- sign(c(rugs$family$rug[,filtered_pairs_fam]))
 binom.test(table(family_sign)[2], length(family_sign), 0.5)
 round(table(family_sign)[1]/length(family_sign), 2)
 
 # ASV
-filtered_pairs <- filter_joint_zeros(load_data(tax_level = "ASV")$counts, threshold_and = 0.05, threshold_or = 0.5)$threshold
-signif(median(c(rugs$ASV$rug[,filtered_pairs])), 3)
-ASV_sign <- sign(c(rugs$ASV$rug[,filtered_pairs]))
+filtered_pairs_asv <- filter_joint_zeros(load_data(tax_level = "ASV")$counts, threshold_and = 0.05, threshold_or = 0.5)$threshold
+signif(median(c(rugs$ASV$rug[,filtered_pairs_asv])), 3)
+ASV_sign <- sign(c(rugs$ASV$rug[,filtered_pairs_asv]))
 binom.test(table(ASV_sign)[2], length(ASV_sign), 0.5)
 round(table(ASV_sign)[1]/length(ASV_sign), 2)
+
+filtered_rugs <- list(ASV = rugs[["ASV"]]$rug[,filtered_pairs_asv],
+                      family = rugs[["family"]]$rug[,filtered_pairs_fam],
+                      phylum = rugs[["phylum"]]$rug[,filtered_pairs_phy])
 
 asv_column_order <- NULL
 plots <- list()
@@ -58,7 +62,8 @@ for(rtype in names(rugs)) {
   row_order <- hclust(baseline_distances)$order
 
   # Compute column order
-  rug <- rugs[[rtype]]$rug
+  # rug <- rugs[[rtype]]$rug
+  rug <- filtered_rugs[[rtype]]
   canonical_col_order <- order(colMeans(rug))
   canonical_row_order <- row_order
   rug <- rug[canonical_row_order,canonical_col_order]
@@ -127,7 +132,7 @@ p1 <- plot_grid(plots[[2]], NULL, plots[[3]],
 # Append legend to the row
 p2 <- plot_grid(p1, legend, ncol = 1, rel_heights = c(1, 0.13))
 
-ggsave(file.path("output", "figures", "other-rugs.svg"),
+ggsave(file.path("output", "figures", "other-rugs.png"),
        p2,
        dpi = 100,
        units = "in",
