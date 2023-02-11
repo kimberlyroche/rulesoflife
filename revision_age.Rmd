@@ -16,8 +16,16 @@ library(caret)
 library(ggridges)
 library(tidyverse)
 library(kableExtra)
+library(cowplot)
+library(conflicted)
+library(ggfortify)
 
 source("thresholds.R")
+
+conflict_prefer("filter", "dplyr")
+conflict_prefer("select", "dplyr")
+conflict_prefer("mutate", "dplyr")
+conflict_prefer("arrange", "dplyr")
 
 data <- load_data(tax_level = "ASV")
 filter_obj <- filter_joint_zeros(data$counts)
@@ -36,8 +44,8 @@ group2 <- c("COB", "ECH", "GAB", "HOL", "LAD", "NAP",
 
 # Convert these to the labels used in the paper
 # map <- read.table("output/host_labels.tsv", header = T)
-map %>% filter(sname %in% group1) %>% pull(host_label) %>% sort() %>% paste0(collapse = ", ")
-map %>% filter(sname %in% group2) %>% pull(host_label) %>% sort() %>% paste0(collapse = ", ")
+# map %>% filter(sname %in% group1) %>% pull(host_label) %>% sort() %>% paste0(collapse = ", ")
+# map %>% filter(sname %in% group2) %>% pull(host_label) %>% sort() %>% paste0(collapse = ", ")
 ```
 
 We'll split into age ranges **juvenile** (0-6 years), **prime age adult** (6-13 
@@ -212,11 +220,28 @@ for(i in 1:length(group2)) {
   host_groups[(offset+i+length(group2)),]$group <- "older"
 }
 
-d <- dist(rug)
-d_mat <- as.matrix(d)
-coords <- cmdscale(d, k = 2)
-host_groups$x <- coords[,1]
-host_groups$y <- coords[,2]
+# 1 PCA plot
+# d <- dist(rug)
+# d_mat <- as.matrix(d)
+# coords <- cmdscale(d, k = 2)
+
+# 2 PCA plots
+coords1_data <- rug[1:(length(group1)*2),]
+colnames(coords1_data) <- pairs_df %>%
+  filter(threshold) %>%
+  mutate(label = paste0("ASV", idx1, " x ASV", idx2)) %>%
+  pull(label)
+coords1 <- prcomp(coords1_data)
+
+coords2_data <- rug[(length(group1)*2 + 1):nrow(rug),]
+colnames(coords2_data) <- pairs_df %>%
+  filter(threshold) %>%
+  mutate(label = paste0("ASV", idx1, " x ASV", idx2)) %>%
+  pull(label)
+coords2 <- prcomp(coords2_data)
+
+host_groups$x <- c(coords1$x[,1], coords2$x[,1])
+host_groups$y <- c(coords2$x[,2], coords2$x[,2])
 
 centroid_df <- host_groups %>%
   group_by(group) %>%
@@ -247,22 +272,124 @@ edge_df <- rbind(host_groups %>%
                     pivot_wider(id_cols = sname, names_from = group, values_from = y) %>%
                     rename(y = prime, yend = older)),
             by = "sname")
-```
 
-```{r, fig.height = 5, fig.width = 7}
-ggplot() +
-  geom_segment(data = edge_df,
+p1 <- ggplot() +
+  geom_segment(data = edge_df %>%
+                 filter(sname %in% group1),
                mapping = aes(x = x, xend = xend, y = y, yend = yend),
                color = "#aaaaaa") +
-  geom_point(data = centroid_df %>% mutate(group = factor(group, levels = c("juvenile", "prime", "older"))),
+  geom_point(data = centroid_df  %>%
+                 filter(group %in% c("juvenile", "prime")) %>%
+               mutate(group = factor(group, levels = c("juvenile", "prime"))),
              mapping = aes(x = x_mean, y = y_mean, fill = group),
              size = 3, shape = 23, stroke = 1.25) +
-  geom_point(data = host_groups %>% mutate(group = factor(group, levels = c("juvenile", "prime", "older"))),
+  geom_point(data = host_groups %>%
+                 filter(sname %in% group1) %>%
+               mutate(group = factor(group, levels = c("juvenile", "prime"))),
              mapping = aes(x = x, y = y, fill = group),
              size = 3, shape = 21) +
   theme_bw() +
+  theme(legend.position = "bottom") +
+  scale_fill_manual(values = c("#FC7300", "#BFDB38")) +
   # guides(color = FALSE) +
   labs(x = "PCA 1", y = "PCA 2", fill = "Age bin", color = "Age bin")
+
+p2 <- ggplot() +
+  geom_segment(data = edge_df %>%
+                 filter(sname %in% group2),
+               mapping = aes(x = x, xend = xend, y = y, yend = yend),
+               color = "#aaaaaa") +
+  geom_point(data = centroid_df  %>%
+                 filter(group %in% c("older", "prime")) %>%
+               mutate(group = factor(group, levels = c("prime", "older"))),
+             mapping = aes(x = x_mean, y = y_mean, fill = group),
+             size = 3, shape = 23, stroke = 1.25) +
+  geom_point(data = host_groups %>%
+                 filter(sname %in% group2) %>%
+               mutate(group = factor(group, levels = c("prime", "older"))),
+             mapping = aes(x = x, y = y, fill = group),
+             size = 3, shape = 21) +
+  theme_bw() +
+  theme(legend.position = "bottom") +
+  scale_fill_manual(values = c("#BFDB38", "#1F8A70")) +
+  # guides(color = FALSE) +
+  labs(x = "PCA 1", y = "PCA 2", fill = "Age bin", color = "Age bin")
+```
+
+```{r, fig.height = 5, fig.width = 10}
+plot_grid(p1, p2, ncol = 2, labels = c("A", "B"), label_y = 1.015)
+```
+
+Look at the loadings for the first couple of PCs. Which ASVs most contribute?
+
+```{r}
+# We can visualize the loadings by hand in a biplot but this is messy
+
+coords_obj <- coords2
+
+# Top 2 loadings in PC 1
+loadings <- coords_obj$rotation[,1]
+top2 <- c(which.min(loadings), which.max(loadings))
+labels <-  pairs_df %>%
+  filter(threshold) %>%
+  mutate(label = paste0("ASV", idx1, " x ASV", idx2)) %>%
+  pull(label)
+labels[top2]
+
+# Biplot
+# p0 <- autoplot(coords1, data = coords1_data, loadings = TRUE, loadings.label = 1) # color = 'species'
+# p0$layers[[2]]$data <- p0$layers[[2]]$data[labels[top2],]
+# p0$layers[[3]]$data <- p0$layers[[3]]$data[labels[top2],]
+# p0
+
+loadings_df <- data.frame(loading = unname(coords_obj$rotation[,1]),
+                          pair = names(coords_obj$rotation[,1]), PC = 1)
+loadings_df <- rbind(loadings_df,
+                     data.frame(loading = unname(coords_obj$rotation[,2]),
+                                pair = names(coords_obj$rotation[,2]), PC = 2))
+
+loadings_df %>%
+  filter(PC == 1) %>%
+  mutate(abs_loading = abs(loading)) %>%
+  arrange(desc(abs_loading)) %>%
+  filter(row_number() <= 3)
+
+loadings_df %>%
+  filter(PC == 2) %>%
+  mutate(abs_loading = abs(loading)) %>%
+  arrange(desc(abs_loading)) %>%
+  filter(row_number() <= 3)
+
+# Next: look up what the top (e.g.) 5 are
+```
+
+Does amount of variance change with age group? (We'll want to adjust for sample
+number...)
+
+```{r}
+# (1) Calculate variation in a host's estimates within an age group
+# (2) Pull an host's sample number from the data
+# (3) DUmp this in a model
+
+lm_df <- NULL
+for(i in 1:nrow(host_groups)) {
+  if(host_groups$group[i] == "juvenile") {
+    # age_vec <- ages >= age_min & ages <= age_max
+    n <- sum(data$metadata$age <= 6 & data$metadata$sname == host_groups$sname[i])
+  } else if(host_groups$group[i] == "prime") {
+    n <- sum(data$metadata$age >= 6 & data$metadata$age <= 13 & data$metadata$sname == host_groups$sname[i])
+  } else {
+    n <- sum(data$metadata$age >= 13 & data$metadata$sname == host_groups$sname[i])
+  }
+  lm_df <- rbind(lm_df,
+                 data.frame(obs_var = var(rug[i,]),
+                            group = host_groups$group[i],
+                            n = n))
+}
+lm_df$group <- factor(lm_df$group,
+                      levels = c("prime", "juvenile", "older"))
+
+summary(lm(obs_var ~ group + n, data = lm_df))
 ```
 
 ANOVA: Does being in the same age bin explain some of the variation we see in 
