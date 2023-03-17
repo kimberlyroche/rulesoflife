@@ -132,9 +132,10 @@ p1 <- plot_grid(plots[[2]], NULL, plots[[3]],
 # Append legend to the row
 p2 <- plot_grid(p1, legend, ncol = 1, rel_heights = c(1, 0.13))
 
-ggsave(file.path("output", "figures", "other-rugs.png"),
+ggsave(file.path("output", "figures", "Figure_2_Supplement_1.png"),
        p2,
-       dpi = 100,
+       dpi = 200,
        units = "in",
        height = 5,
-       width = 10)
+       width = 10,
+       bg = "white")

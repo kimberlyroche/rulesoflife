@@ -213,7 +213,7 @@ prow2 <- plot_grid(p2,
                    scale = 0.98)
 
 prow1 <- plot_grid(ggdraw() +
-                     draw_image(file.path("output", "figures", "placeholder_overview.png")),
+                     draw_image(file.path("output", "figures", "Figure_1_include.png")),
                    ncol = 1,
                    labels = c("A"),
                    label_size = 20,
@@ -224,9 +224,10 @@ prow1 <- plot_grid(ggdraw() +
 p <- plot_grid(prow1, prow2, ncol = 1,
                rel_heights = c(1, 1))
 
-ggsave(file.path("output", "figures", "overview.svg"),
+ggsave(file.path("output", "figures", "Figure_1.png"),
        p,
        units = "in",
-       dpi = 100,
+       dpi = 200,
        height = 10,
-       width = 13)
+       width = 13,
+       bg = "white")

@@ -201,9 +201,10 @@ p_all <- plot_grid(p1_padded, NULL, p2_padded, ncol = 3,
                    label_size = 18,
                    scale = 0.95)
 
-ggsave(file.path("output", "figures", "titration_alt.png"),
+ggsave(file.path("output", "figures", "Figure_3_Supplement_2"),
        p_all,
        dpi = 200,
        units = "in",
        height = 3.5,
-       width = 12)
+       width = 12,
+       bg = "white")

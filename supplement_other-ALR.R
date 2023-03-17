@@ -79,11 +79,13 @@ p <- ggplot(plot_df, aes(x = x, y = y)) +
   ylab("CLR correlation (ALR ref. median)") +
   theme_bw()
 
-ggsave(file.path("output", "figures", "alternative-ALR.svg"),
+ggsave(file.path("output", "figures", "UNUSED_alternative-ALRmedian-estimates.png"),
        p,
+       dpi = 200,
        units = "in",
        height = 4,
-       width = 4)
+       width = 4,
+       bg = "white")
 
 cat("Correlation of estimates:", round(cor(x, y), 3), "\n")
 cat("R^2:", round(summary(lm(y ~ x, data = plot_df))$r.squared, 3), "\n")

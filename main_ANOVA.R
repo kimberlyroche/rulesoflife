@@ -260,6 +260,22 @@ p1_comp <- p1_comp +
 res1_comp <- mantel(baseline_distances, as.dist(dynamics_distances))
 cat(paste0("P-value from Mantel test (composition): ", round(res1_comp$signif, 3), "\n"))
 
+# Partial Mantel on pedigree
+# Let's control for this KNOWN host-host similarity in baseline composition
+res1_ped_partial <- mantel.partial(as.dist(ped_dist), as.dist(dynamics_distances), baseline_distances)
+cat(paste0("P-value from PARTIAL Mantel test (kinship): ", round(res1_ped_partial$signif, 3), "\n"))
+
+# Estimate R^2 for pedigree from the partial correlation coefficient after
+# removing the effect of baseline distance
+rxy <- cor(ped_vec,dynamics_dist_vec)
+rxz <- cor(ped_vec,baseline_dist_vec)
+ryz <- cor(dynamics_dist_vec,baseline_dist_vec)
+
+# From vegan package partial.mantel source:
+# https://rdrr.io/cran/vegan/src/R/mantel.partial.R
+r_partial <- (rxy - rxz * ryz)/sqrt(1-rxz*rxz)/sqrt(1-ryz*ryz)
+# r_partial**2 # r^2 = 0.009 after controlling for baseline composition
+
 # ------------------------------------------------------------------------------
 #   Null distribution - baseline composition
 #
@@ -321,12 +337,13 @@ p_all <- plot_grid(p_row, legend,
                    ncol = 1,
                    rel_heights = c(1, 0.1))
 
-ggsave(file.path("output", "figures", "anova_alt.png"),
+ggsave(file.path("output", "figures", "Figure_5.png"),
        plot = p_all,
        dpi = 200,
        units = "in",
        height = 4,
-       width = 8)
+       width = 8,
+       bg = "white")
 
 # ------------------------------------------------------------------------------
 #
@@ -397,35 +414,6 @@ cat(paste0("Observed R^2: ", round(obs_Rsq_lifespan, 3), "\n"))
 #   Pseudo-ANOVA
 #
 # ------------------------------------------------------------------------------
-
-# Plotting function
-heatmap_cov <- function(K, label) {
-  K <- cbind(1:nrow(K), K)
-  colnames(K) <- c("sample1", 1:nrow(K))
-  K <- pivot_longer(as.data.frame(K), !sample1, names_to = "sample2", values_to = "covariance")
-  K$sample2 <- as.numeric(K$sample2)
-  p <- ggplot(K, aes(x = sample1, y = sample2)) +
-    geom_raster(aes(fill = covariance)) +
-    scale_fill_gradient2(low = "navy", mid = "white", high = "red",
-                         midpoint = 0) +
-    scale_x_continuous(expand = c(0, 0)) +
-    scale_y_continuous(expand = c(0, 0)) +
-    theme(axis.text.x = element_blank(),
-          axis.text.y = element_blank(),
-          axis.ticks.x = element_blank(),
-          axis.ticks.y = element_blank()) +
-    labs(x = "",
-         y = "",
-         fill = "Covariance")
-  show(p)
-  output_dir <- check_dir(c("output", "figures"))
-  ggsave(file.path(output_dir, paste0(label, ".svg")),
-         plot = p,
-         units = "in",
-         dpi = 100,
-         height = 3,
-         width = 4.25)
-}
 
 # ------------------------------------------------------------------------------
 #   Load dynamics estimates and Frechet mean
@@ -521,10 +509,10 @@ cat(paste0("P-value for pseudo-ANOVA on GROUP (F=",
 
 # Visualize as boxplots
 # Get all distances
-coords <- cmdscale(dist(filtered_obj$rug))
-ggplot(data.frame(x = coords[,1], y = coords[,2], label = host_groups$grp),
-       aes(x = x, y = y, fill = factor(label))) +
-  geom_point(size = 2, shape = 21)
+# coords <- cmdscale(dist(filtered_obj$rug))
+# ggplot(data.frame(x = coords[,1], y = coords[,2], label = host_groups$grp),
+#        aes(x = x, y = y, fill = factor(label))) +
+#   geom_point(size = 2, shape = 21)
 
 # ------------------------------------------------------------------------------
 #   ANOVA on sex
@@ -568,7 +556,7 @@ cat(paste0("P-value for pseudo-ANOVA on SEX (F=",
 
 # Visualize as boxplots
 # Get all distances
-ggplot(data.frame(x = coords[,1], y = coords[,2], label = host_sex$sex),
-       aes(x = x, y = y, fill = factor(label))) +
-  geom_point(size = 2, shape = 21)
+# ggplot(data.frame(x = coords[,1], y = coords[,2], label = host_sex$sex),
+#        aes(x = x, y = y, fill = factor(label))) +
+#   geom_point(size = 2, shape = 21)
 

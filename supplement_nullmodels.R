@@ -1,6 +1,7 @@
 source("path_fix.R")
 
 library(tidyverse)
+library(magrittr)
 library(rulesoflife)
 library(driver)
 library(cowplot)
@@ -148,8 +149,14 @@ for(i in 1:psamples) {
   cat(paste0("Loading permutation #", i, "...\n"))
   pdir <- paste0("asv_days90_diet25_scale1_scramble-sample-", sprintf("%02d", i))
   fits <- list.files(file.path("output", "model_fits", pdir, "MAP"), full.names = TRUE)
+  # full_Y <- matrix(NA, 126, 5534) # hard-code these dimensions for simplicity
+  # Y_offset <- 1
   for(j in 1:length(fits)) {
-    Sigma <- cov2cor(to_clr(readRDS(fits[j]))$Sigma[,,1])
+    clr_fit <- to_clr(readRDS(fits[j]))
+    # Y <- clr_fit$Y
+    # full_Y[,Y_offset:(Y_offset + ncol(Y) - 1)] <- Y
+    # Y_offset <- Y_offset + ncol(Y)
+    Sigma <- cov2cor(clr_fit$Sigma[,,1])
     D <- nrow(Sigma)
     Sigma <- Sigma[1:(D-1),1:(D-1)]
     if(is.null(D_combos)) {
@@ -159,6 +166,12 @@ for(i in 1:psamples) {
     offset <- length(fits)*(i-1) + j
     permuted_correlation_asv[,offset] <- Sigma[upper.tri(Sigma)]
   }
+  # filtered_pairs <- filter_joint_zeros(full_Y)
+  # Show that permuted pairs don't have the systematic effect whereby increasing
+  # frequency of joint zeros is associated with positive correlation. In fact,
+  # the ranges for joint zeros and correlation are really small in permuted
+  # data!
+  # plot(filtered_pairs$frequency_00, rowMeans(permuted_correlation_asv, na.rm = T))
 }
 
 # correlation_asv <- NULL
@@ -368,12 +381,13 @@ p <- plot_grid(p1, p2,
                label_size = 16,
                scale = 0.95)
 
-ggsave(file.path("output", "figures", "null_distros_alt.png"),
+ggsave(file.path("output", "figures", "Figure_2_Supplement_3.png"),
        p,
        dpi = 200,
        units = "in",
        height = 5,
-       width = 8)
+       width = 8,
+       bg = "white")
 
 # ------------------------------------------------------------------------------
 #   Report stats: How many ASV-level universality scores are lower than

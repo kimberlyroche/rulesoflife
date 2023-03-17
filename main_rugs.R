@@ -7,6 +7,8 @@ library(rulesoflife)
 library(RColorBrewer)
 library(cowplot)
 
+source("thresholds.R")
+
 data <- load_data(tax_level = "ASV")
 md <- data$metadata
 hosts <- unique(md$sname)
@@ -80,6 +82,22 @@ canonical_row_order <- row_order
 rug <- rug[canonical_row_order,canonical_col_order]
 asv_column_order <- canonical_col_order
 
+# cmeans <- colMeans(rug)
+# temp <- data.frame(index = 1:ncol(rug),
+#                    cmean = colMeans(rug))
+# temp$above_upper <- temp$cmean > thresholds$upper[thresholds$type == "ASV"]
+# temp$below_lower <- temp$cmean < thresholds$lower[thresholds$type == "ASV"]
+# x_lower <- temp %>%
+#   filter(below_lower) %>%
+#   arrange(desc(cmean)) %>%
+#   slice_head() %>%
+#   pull(index)
+# x_upper <- temp %>%
+#   filter(above_upper) %>%
+#   arrange(cmean) %>%
+#   slice_head() %>%
+#   pull(index)
+
 rug <- cbind(1:nrow(rug), rug)
 colnames(rug) <- c("host", paste0(1:(ncol(rug)-1)))
 rug <- cbind(host_name = host_labels$host_label, rug)
@@ -100,6 +118,10 @@ plot_breaks <- names(name_map)
 
 p2 <- ggplot(rug, aes(x = pair, y = host)) +
   geom_raster(aes(fill = correlation)) +
+  # geom_segment(data = data.frame(x_lower = x_lower),
+  #              mapping = aes(x = x_lower, xend = x_lower, y = 1, yend = 56), size = 0.5, linetype = "dashed") +
+  # geom_segment(data = data.frame(x_upper = x_upper),
+  #              mapping = aes(x = x_upper, xend = x_upper, y = 1, yend = 56), size = 0.5, linetype = "dashed") +
   scale_fill_gradientn(limits = c(-1,1), colors = c("navy", "white", "red"),
                        guide = guide_colorbar(frame.colour = "black",
                                               ticks.colour = "black")) +
@@ -114,10 +136,42 @@ p2 <- ggplot(rug, aes(x = pair, y = host)) +
         axis.title = element_text(size = 12, face = "plain"),
         plot.title = element_blank(),
         plot.margin = margin(t = 20, r = 10, b = 10, l = 10))
-
 legend <- get_legend(p2)
 p2 <- p2 +
   theme(legend.position = "none")
+
+rug_na <- rug %>%
+  mutate(correlation = case_when(
+    correlation >= thresholds$upper[thresholds$type == "ASV"] ~ correlation,
+    correlation <= thresholds$lower[thresholds$type == "ASV"] ~ correlation,
+    T ~ NA_real_
+  ))
+
+p2_na <- ggplot(rug_na, aes(x = pair, y = host)) +
+  geom_raster(aes(fill = correlation)) +
+  scale_fill_gradientn(limits = c(-1,1), colors = c("navy", "white", "red"),
+                       na.value = "black",
+                       guide = guide_colorbar(frame.colour = "black",
+                                              ticks.colour = "black")) +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_discrete(labels = name_map, breaks = plot_breaks) +
+  labs(fill = "Correlation",
+       x = "ASV pairs",
+       y = "hosts",
+       title = "ASVs") +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.title = element_text(size = 12, face = "plain"),
+        plot.title = element_blank(),
+        plot.margin = margin(t = 20, r = 10, b = 10, l = 10))
+
+ggsave(file.path("output", "figures", "Figure_2_Supplement_4.png"),
+       p2_na,
+       dpi = 200,
+       units = "in",
+       height = 5,
+       width = 8,
+       bg = "white")
 
 # ------------------------------------------------------------------------------
 #   Scrambled/permuted "rug"
@@ -276,12 +330,30 @@ render_trajectories <- function(tax_indices, host_shortlist, host_labels, host_y
   p3
 }
 
-# Order to match the "rug" row order
-# p_test <- render_trajectories(c(1,9), host_shortlist[c(2,3,4,5,1)], use_labels[c(1,5,3,4,2)], host_y_offset = 5, with_season = TRUE)
+# Pick a strongly correlated pair
+column_median <- apply(rug_obj$rug, 2, median)
+strongest_correlators <- order(column_median, decreasing = T)
+positive1 <- rug_obj$tax_idx1[strongest_correlators[10]]
+positive2 <- rug_obj$tax_idx2[strongest_correlators[10]]
+p3 <- render_trajectories(c(positive1, positive2), host_shortlist[c(2,3,4,5,1)], use_labels[c(1,5,3,4,2)], host_y_offset = 12)
 
-p3 <- render_trajectories(c(2,3), host_shortlist[c(2,3,4,5,1)], use_labels[c(1,5,3,4,2)], host_y_offset = 5)
-# p4 <- render_trajectories(c(15,107), host_shortlist[c(2,3,4,5,1)], use_labels[c(1,5,3,4,2)], host_y_offset = 10)
-p4 <- render_trajectories(c(2, 105), host_shortlist[c(2,3,4,5,1)], use_labels[c(1,5,3,4,2)], host_y_offset = 10)
+# Pick a strongly negatively correlated pair
+strongest_inverse <- order(column_median)
+negative1 <- rug_obj$tax_idx1[strongest_inverse[10]]
+negative2 <- rug_obj$tax_idx2[strongest_inverse[10]]
+p4 <- render_trajectories(c(20, 25), host_shortlist[c(2,3,4,5,1)], use_labels[c(1,5,3,4,2)], host_y_offset = 12)
+
+representation <- represented_taxa(filtered_pairs)
+cat(paste0("Strongly positively correlated pair are ASV",
+           renumber_taxon(representation, positive1),
+           " and ASV",
+           renumber_taxon(representation, positive2),
+           " (median r = ", round(column_median[strongest_correlators[10]], 3), ")\n"))
+cat(paste0("Strongly negatively correlated pair are ASV",
+           renumber_taxon(representation, negative1),
+           " and ASV",
+           renumber_taxon(representation, negative2),
+           " (median r = ", round(column_median[strongest_inverse[10]], 3), ")\n"))
 
 prow2 <- plot_grid(p4, NULL, p3, NULL, ncol = 4,
                    labels = c("C", "", "D", ""),
@@ -293,10 +365,11 @@ prow2 <- plot_grid(p4, NULL, p3, NULL, ncol = 4,
 p_out <- plot_grid(prow1, prow2, ncol = 1,
                    rel_heights = c(1, 0.75))
 
-ggsave(file.path("output", "figures", "rugs_alt.png"),
+ggsave(file.path("output", "figures", "Figure_2.png"),
        p_out,
        # dpi = 50,
        dpi = 200,
        units = "in",
        height = 9,
-       width = 12)
+       width = 12,
+       bg = "white")

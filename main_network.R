@@ -231,7 +231,7 @@ enrichment %<>%
          `P-value (Fisher's exact test)` = pvalue,
          `Adj. p-value (Benjamini-Hochberg)` = qvalue)
 write.table(enrichment,
-            file = file.path("output", "enrichment_top-pairs_alt.tsv"),
+            file = file.path("output", "Table_S5.tsv"),
             sep = "\t",
             quote = FALSE,
             row.names = FALSE)
@@ -395,7 +395,8 @@ cat(paste("\tObserved number: ", matched_in_sample, "\n"))
 
 # Build a mapping of taxon indices to new labels 1..n
 map_df <- data.frame(taxon_idx = unique(c(pair_idx1, pair_idx2)))
-map_df$name <- 1:nrow(map_df)
+map_df$name <- map_df$taxon_idx
+# map_df$name <- 1:nrow(map_df)
 
 # Build a node data.frame with columns name (index 1..n) and family
 node_df <- map_df
@@ -410,13 +411,16 @@ node_df$Family <- sapply(node_df$taxon_idx, function(x) {
 node_df <- node_df[,c(2:3,1)]
 
 # Build an edge data.frame with columns from, to, sign, and score
-edge1 <- data.frame(taxon_idx = pair_idx1)
-edge1 <- left_join(edge1, map_df, by = "taxon_idx")$name
-edge2 <- data.frame(taxon_idx = pair_idx2)
-edge2 <- left_join(edge2, map_df, by = "taxon_idx")$name
-
-edge_df <- data.frame(from = edge1,
-                      to = edge2,
+# edge1 <- data.frame(taxon_idx = pair_idx1)
+# edge1 <- left_join(edge1, map_df, by = "taxon_idx")$name
+# edge2 <- data.frame(taxon_idx = pair_idx2)
+# edge2 <- left_join(edge2, map_df, by = "taxon_idx")$name
+# edge_df <- data.frame(from = edge1,
+#                       to = edge2,
+#                       Sign = factor(consensus_signs[top_pairs], levels = c("1", "-1")),
+#                       score = scores[top_pairs])
+edge_df <- data.frame(from = pair_idx1,
+                      to = pair_idx2,
                       Sign = factor(consensus_signs[top_pairs], levels = c("1", "-1")),
                       score = scores[top_pairs])
 levels(edge_df$Sign) <- c("positive", "negative")
@@ -428,12 +432,20 @@ fam_df <- fam_df %>%
   left_join(node_df, by = c("to" = "name")) %>%
   dplyr::select(Family1, Family2 = Family)
 
+# Fix the numbers here
+representation <- represented_taxa(filtered_pairs)
+node_df$name <- sapply(node_df$name, function(x) renumber_taxon(representation, x))
+node_df$taxon_idx <- sapply(node_df$taxon_idx, function(x) renumber_taxon(representation, x))
+edge_df$from <- sapply(edge_df$from, function(x) renumber_taxon(representation, x))
+edge_df$to <- sapply(edge_df$to, function(x) renumber_taxon(representation, x))
+
 graph <- graph_from_data_frame(edge_df, node_df, directed = FALSE)
 
 family_palette <- readRDS(file.path("output", "family_palette.rds"))
 
 # Not specifying the layout - defaults to "auto"
 # fr and kk layouts are ok here
+
 p3 <- ggraph(graph, layout = "fr") +
   geom_edge_link(aes(color = Sign), width = 1.5, alpha = 1) +
   geom_node_point(aes(color = Family), size = 5) +
@@ -493,19 +505,20 @@ col1 <- plot_grid(p1b, NULL, p1a,
                   label_y = 1.02,
                   scale = 1)
 
-col2_bottom <- plot_grid(p2, p4,
-                         ncol = 2,
-                         rel_widths = c(1, 1),
-                         labels = c("D", "E"),
-                         label_size = 18,
-                         label_y = 1.02,
-                         scale = 1)
+col2_top <- plot_grid(NULL, p2, p4, NULL,
+                      ncol = 4,
+                      rel_widths = c(-0.05, 1, 1, 0.1),
+                      labels = c("", "C", "E", ""),
+                      label_size = 18,
+                      label_y = 1.02,
+                      scale = 1)
 
-col2 <- plot_grid(p3, NULL, col2_bottom,
+col2 <- plot_grid(col2_top, NULL, p3,
                   ncol = 1,
-                  rel_heights = c(1, 0.05, 0.5),
-                  labels = c("C", "", ""),
+                  rel_heights = c(0.5, 0.05, 1),
+                  labels = c("", "", "D"),
                   label_size = 18,
+                  label_x = -0.01,
                   label_y = 1.01,
                   scale = 0.95)
 
@@ -513,7 +526,7 @@ p <- plot_grid(col1, NULL, col2,
                ncol = 3,
                rel_widths = c(1, 0.05, 1.8))
 
-ggsave(file.path("output", "figures", "network_alt2.png"),
+ggsave(file.path("output", "figures", "Figure_3.png"),
        p,
        units = "in",
        dpi = 200,

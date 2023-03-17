@@ -228,7 +228,7 @@ p <- plot_grid(p1, NULL, p2, NULL, p3,
                label_y = 1.01,
                label_x = -0.015)
 
-ggsave(file.path("output", "figures", "lmer_results_alt.png"),
+ggsave(file.path("output", "figures", "Figure_4_Supplement_1.png"),
        p,
        dpi = 200,
        units = "in",

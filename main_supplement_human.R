@@ -667,20 +667,42 @@ signif(quantile(all_scores %>%
 #   Spearman correlation between consistency and median association strength
 # ------------------------------------------------------------------------------
 
+fit_power_model <- function(pieces) {
+  fit_summ <- summary(lm(log(X2) ~ log(X1), data = pieces))
+  # a <- exp(coef(fit_summ)[1,1])
+  b <- coef(fit_summ)[2,1]
+  p <- coef(fit_summ)[2,4]
+
+  # Plot
+  # pieces$z <- a*pieces$X1^b
+  # ggplot() +
+  #   geom_point(data = pieces, aes(x = X1, y = X2)) +
+  #   geom_point(data = pieces, aes(x = X1, y = z), color = "red", size = 4)
+
+  return(list(b = b, p = p))
+}
+
 pieces <- all_scores %>%
   filter(dataset == "Johnson et al.") %>%
   select(X1, X2)
-cor.test(pieces$X1, pieces$X2, alternative = "two.sided", method = "spearman")
+# cor.test(pieces$X1, pieces$X2, alternative = "two.sided", method = "spearman")
+# Power model: y = a*x^b
+fit <- fit_power_model(pieces)
+cat(paste0("Johnson et al. power model exponent: b = ", round(fit$b, 2), ", p = ", signif(fit$p, 5), "\n"))
 
 pieces <- all_scores %>%
   filter(dataset == "DIABIMMUNE") %>%
   select(X1, X2)
-cor.test(pieces$X1, pieces$X2, alternative = "two.sided", method = "spearman")
+# cor.test(pieces$X1, pieces$X2, alternative = "two.sided", method = "spearman")
+fit <- fit_power_model(pieces)
+cat(paste0("DIABIMMUNE power model exponent: b = ", round(fit$b, 2), ", p = ", signif(fit$p, 5), "\n"))
 
 pieces <- all_scores %>%
   filter(dataset == "Amboseli") %>%
   select(X1, X2)
-cor.test(pieces$X1, pieces$X2, alternative = "two.sided", method = "spearman")
+# cor.test(pieces$X1, pieces$X2, alternative = "two.sided", method = "spearman")
+fit <- fit_power_model(pieces)
+cat(paste0("ABRP power model exponent: b = ", round(fit$b, 2), ", p = ", signif(fit$p, 5), "\n"))
 
 # ------------------------------------------------------------------------------
 #   Figure panels
@@ -978,7 +1000,7 @@ p <- plot_grid(s12,
                label_x = 0,
                scale = 0.95)
 
-ggsave(file.path("output", "figures", "human_studies_alt.png"),
+ggsave(file.path("output", "figures", "Figure_6.png"),
        p,
        dpi = 200,
        units = "in",
@@ -1016,161 +1038,21 @@ comp_scores %>%
   dim()
 
 # ------------------------------------------------------------------------------
-#   Supplemental Figure 12 panels
+#   Supplemental
 # ------------------------------------------------------------------------------
-
-# ------------------------------------------------------------------------------
-#
-#   "Titration"-type analyses
-#
-# ------------------------------------------------------------------------------
-
-# output_dir_full <- check_dir(c("output", "model_fits", "asv_days90_diet25_scale1", "MAP"))
-# file_list <- list.files(path = output_dir_full, pattern = "*.rds")
-# if(length(file_list) == 0) {
-#   output_dir_full <- check_dir(c("output", "model_fits", output_dir, "full_posterior"))
-#   file_list <- list.files(path = output_dir_full, pattern = "*.rds")
-# }
-# # Get taxa number and posterior sample number
-# fit <- readRDS(file.path(output_dir_full, file_list[1]))
-# D <- fit$D
-# amboseli <- array(NA, dim=c(D, D, length(file_list)))
-# for(f in 1:length(file_list)) {
-#   file <- file_list[f]
-#   fit <- readRDS(file.path(output_dir_full, file))
-#   # Convert to CLR
-#   if(fit$coord_system != "clr") {
-#     fit <- to_clr(fit)
-#   }
-#   amboseli[,,f] <- cov2cor(fit$Sigma[,,1])
-# }
-#
-# datasets <- list("Amboseli" = amboseli,
-#                  "DIABIMMUNE" = diabimmune,
-#                  "Johnson et al." = johnson)
-# mins <- NULL
-# for(i in 1:length(datasets)) {
-#   dataset <- datasets[[i]]
-#   D <- dim(dataset)[1]
-#   N <- dim(dataset)[3]
-#   global_mean <- CovFMean(dataset)$Mout[[1]]
-#   addend <- diag(D)*1e-06
-#   mix <- seq(from = 0, to = 1, by = 0.05)
-#   for(h in 1:N) {
-#     host_obs <- dataset[,,h]
-#     host_residual <- host_obs - global_mean
-#     diag(host_residual) <- 1
-#
-#     for(j in 1:length(mix)) {
-#       combined_dynamics <- (1-mix[j])*global_mean + mix[j]*host_residual
-#       mins <- rbind(mins,
-#                     data.frame(host = h,
-#                                p = mix[j],
-#                                dist = dist4cov(host_obs, combined_dynamics)$dist,
-#                                dataset = names(datasets)[i]))
-#     }
-#   }
-# }
-#
-# minimizing_proportions <- mins %>%
-#   group_by(dataset, host) %>%
-#   arrange(dist) %>%
-#   slice(1) %>%
-#   ungroup()
-#
-# minimizing_proportions$dataset <- factor(minimizing_proportions$dataset, levels = names(datasets)[3:1])
-#
-# s3 <- ggplot(minimizing_proportions, aes(x = p, y = dataset, fill = dataset)) +
-#   geom_density_ridges(stat = "binline", binwidth = 0.05, scale = 0.95) +
-#   theme_bw() +
-#   scale_alpha_continuous(range = c(0.25, 1.0)) +
-#   scale_fill_manual(values = dataset_palette) +
-#   scale_y_discrete(expand = expansion(add = c(0.15, 1.05))) +
-#   coord_cartesian(clip = "off") +
-#   guides(fill = "none",
-#          alpha = "none") +
-#   labs(x = "host-level proportion",
-#        y = "")
-#
-# p <- plot_grid(s1, s2, NULL, s3, ncol = 4,
-#                rel_widths = c(1, 1, -0.05, 0.8),
-#                labels = c("A", "B", "", "C"),
-#                label_size = 18,
-#                label_y = 1.01,
-#                label_x = -0.01,
-#                scale = 0.95)
-
-# legend <- get_legend(s1)
-# s1 <- s1 +
-#   theme(legend.position = "none")
-# s2 <- s2 +
-#   theme(legend.position = "none")
-#
-# p <- plot_grid(s1, s2, legend, ncol = 3,
-#                rel_widths = c(1, 1, 0.25),
-#                labels = c("A", "B", ""),
-#                label_size = 18,
-#                label_y = 1.01,
-#                label_x = -0.01,
-#                scale = 0.95)
-
-# ggsave(file.path("output", "figures", "rug_johnson.svg"),
-#        s1,
-#        dpi = 100,
-#        units = "in",
-#        height = 4,
-#        width = 6)
-#
-# ggsave(file.path("output", "figures", "rug_diabimmune.svg"),
-#        s2,
-#        dpi = 100,
-#        units = "in",
-#        height = 4,
-#        width = 6)
-#
-# ggsave(file.path("output", "figures", "S12.svg"),
-#        p,
-#        dpi = 100,
-#        units = "in",
-#        height = 4,
-#        width = 9)
-
-# cat(paste0("Median host-level contribution (Amboseli): ",
-#            round(median(minimizing_proportions %>% filter(dataset == "Amboseli") %>% pull(p)), 2), "\n"))
-# cat(paste0("Median host-level contribution (DIABIMMUNE): ",
-#            round(median(minimizing_proportions %>% filter(dataset == "DIABIMMUNE") %>% pull(p)), 2), "\n"))
-# cat(paste0("Median host-level contribution (Johnson et al.): ",
-#            round(median(minimizing_proportions %>% filter(dataset == "Johnson et al.") %>% pull(p)), 2), "\n"))
 
 # ------------------------------------------------------------------------------
 #
 #   ADDITIONAL ANALYSES
 #
-#   QUESTION 1: Are strong relationships (large median unsigned association)
-#               the most universal? I.e. what is the rank-correlation of the
-#               median association and the universality score? Does large median
-#               association imply large universality score in this data set?
-# ------------------------------------------------------------------------------
-
-for(this_dataset in c("Johnson et al.", "DIABIMMUNE", "Amboseli")) {
-  x <- all_scores[all_scores$dataset == this_dataset,]$X2
-  y <- all_scores[all_scores$dataset == this_dataset,]$X1
-
-  cat(paste0(toupper(this_dataset),
-             " Spearman cor. betw. % agreement and median assoc.: ",
-             round(cor(x, y, method = "spearman"), 3),
-             "\n"))
-}
-
-# ------------------------------------------------------------------------------
-#   QUESTION 2: Are the top 5% most universal pairs also skewed towards
+#   QUESTION 1: Are the top 5% most universal pairs also skewed towards
 #               positive associations? This doesn't make much sense to ask of
 #               Johnson et al. because there is so little evidence of
 #               "universality"...
 # ------------------------------------------------------------------------------
 
 # for(this_dataset in c("Johnson et al.", "DIABIMMUNE", "Amboseli")) {
-for(this_dataset in c("Johnson et al.", "Amboseli", "DIABIMMUNE")) {
+for(this_dataset in c("Amboseli", "DIABIMMUNE")) {
   subset_scores <- all_scores %>%
     filter(dataset == this_dataset) %>%
     mutate(score = X1*X2) %>%
@@ -1193,6 +1075,22 @@ for(this_dataset in c("Johnson et al.", "Amboseli", "DIABIMMUNE")) {
              pn_tally %>% filter(sign == 1) %>% pull(n),
              " of ", sum(pn_tally$n), " pairs)",
              "\n"))
+
+  test_df <- subset_scores %>%
+    slice(1:top_5) %>%
+    pull(sign) %>%
+    sort() %>%
+    table() %>%
+    stack() %>%
+    mutate(ind = as.numeric(ind))
+  if(test_df %>% filter(ind == 2) %>% nrow() == 0) {
+    test_df <- test_df %>%
+      rbind(data.frame(values = 0, ind = 1))
+  }
+  test_df <- unlist(unstack(test_df))
+  names(test_df) <- c('-1', '1')
+  fit <- binom.test(test_df, length(test_df), 0.5)
+  cat(paste0("Enrichment for positive values in top 5%: p = ", signif(fit$p.value, 5), "\n"))
 }
 
 ------------------------------------------------------------------------------

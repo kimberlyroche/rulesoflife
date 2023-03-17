@@ -124,9 +124,10 @@ p <- plot_grid(row1, row2,
                ncol = 1,
                rel_heights = c(1, 0.8))
 
-ggsave(file.path("output", "figures", "other-hockeysticks.svg"),
+ggsave(file.path("output", "figures", "Figure_3_Supplement_1.png"),
        p,
-       dpi = 100,
+       dpi = 200,
        units = "in",
        height = 7,
-       width = 10)
+       width = 10,
+       bg = "white")

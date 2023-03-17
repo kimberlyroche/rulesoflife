@@ -40,10 +40,14 @@ levels(plot_df$sign) <- c("positive", NA, "negative")
 phylo_neg_mean <- mean(phy_dist[signs < 0])
 phylo_pos_mean <- mean(phy_dist[signs > 0])
 
-p1 <- ggplot(plot_df %>%
-               filter(!is.na(d)) %>%
-               filter(sign == "positive") %>%
-               mutate(binned_d = cut(d, seq(from = 0, to = 0.6, by = 0.1))),
+plot_df_p1 <- plot_df %>%
+  filter(!is.na(d)) %>%
+  filter(sign == "positive") %>%
+  mutate(binned_d = as.character(cut(d, seq(from = 0, to = 0.6, by = 0.1))),
+         binned_d = str_replace(binned_d, "\\(", ""),
+         binned_d = str_replace(binned_d, "\\]", ""),
+         binned_d = str_replace(binned_d, ",", " - "))
+p1 <- ggplot(plot_df_p1,
              aes(x = binned_d, y = score)) +
   geom_sina(size = 2, shape = 21, fill = "red") +
   geom_boxplot(width = 0.25, outlier.shape = NA, alpha = 0.65) +
@@ -54,10 +58,14 @@ p1 <- ggplot(plot_df %>%
   theme(legend.position = "none",
         axis.text.x = element_text(angle = 45, vjust = 1, hjust=1))
 
-p2 <- ggplot(plot_df %>%
-               filter(!is.na(d)) %>%
-               filter(sign == "negative") %>%
-               mutate(binned_d = cut(d, seq(from = 0, to = 0.6, by = 0.1))),
+plot_df_p2 <- plot_df %>%
+  filter(!is.na(d)) %>%
+  filter(sign == "negative") %>%
+  mutate(binned_d = as.character(cut(d, seq(from = 0, to = 0.6, by = 0.1))),
+         binned_d = str_replace(binned_d, "\\(", ""),
+         binned_d = str_replace(binned_d, "\\]", ""),
+         binned_d = str_replace(binned_d, ",", " - "))
+p2 <- ggplot(plot_df_p2,
              aes(x = binned_d, y = score)) +
   geom_sina(size = 2, shape = 21, fill = muted("navy")) +
   geom_boxplot(width = 0.25, outlier.shape = NA, alpha = 0.65) +
@@ -178,12 +186,13 @@ prow1 <- plot_grid(p1,
 # p <- plot_grid(prow1, prow2, ncol = 1,
 #                rel_heights = c(1, 0.5))
 
-ggsave(file.path("output", "figures", "phylogenetic_alt.png"),
+ggsave(file.path("output", "figures", "Figure_4.png"),
        prow1,
        dpi = 200,
        units = "in",
        height = 5,
-       width = 11)
+       width = 11,
+       bg = "white")
 
 # ------------------------------------------------------------------------------
 #   Write out enrichment results
@@ -201,7 +210,7 @@ enrichment %<>%
                 `P-value (Fisher's exact test)` = pvalue,
                 `Adj. p-value (Benjamini-Hochberg)` = qvalue)
 write.table(enrichment,
-            file = file.path("output", "enrichment_closely-related_alt.tsv"),
+            file = file.path("output", "Table_S6.tsv"),
             sep = "\t",
             quote = FALSE,
             row.names = FALSE)

@@ -67,9 +67,12 @@ p <- ggplot(plot_df) +
        y = paste0("PC2 (", round(PoV[2], 3)*100 ,"% variance expl.)")) +
   theme_bw()
 
-ggsave(file.path("output", "figures", "PCA.svg"),
+p
+
+ggsave(file.path("output", "figures", "Figure_1_Supplement_2.png"),
        p,
        units = "in",
-       dpi = 100,
+       dpi = 200,
        height = 6,
-       width = 10)
+       width = 10,
+       bg = "white")

@@ -552,3 +552,55 @@ pull_Sigmas <- function(output_dir) {
   }
   return(Sigmas)
 }
+
+# Internal functions
+
+# Return a D-length logical vector indicating whether a given taxon participates
+# in any non-filtered pairs. We'll later use this to excluded (in labeling) any
+# taxa whose associations with other taxa are fully filtered out.
+#' @import dplyr
+#' @import tidyr
+#' @export
+represented_taxa <- function(filtered_pairs) {
+  temp <- filtered_pairs %>%
+    select(idx1, idx2, threshold) %>%
+    pivot_longer(cols = c(idx1, idx2), names_to = "source") %>%
+    group_by(value) %>%
+    mutate(passes_threshold = any(threshold)) %>%
+    ungroup() %>%
+    select(index = value, passes_threshold) %>%
+    distinct()
+
+  D <- nrow(temp)
+  keep <- logical(D)
+  for(i in 1:D) {
+    if(temp$passes_threshold[i]) {
+      keep[i] <- TRUE
+    }
+  }
+  keep
+}
+
+# Reindex remaining taxa after excluding those who do not participate in any
+# unfiltered pairs
+#' @import dplyr
+#' @import tidyr
+#' @export
+renumber_taxon <- function(representation, taxon_idx) {
+  if(representation[taxon_idx]) {
+    data.frame(orig_index = 1:length(representation),
+               represented = representation) %>%
+      group_by(represented) %>%
+      mutate(new_index = case_when(
+        represented ~ row_number(),
+        T ~ NA_integer_
+      )) %>%
+      ungroup() %>%
+      as.data.frame() %>%
+      filter(row_number() == taxon_idx) %>%
+      pull(new_index)
+  } else {
+    NA
+  }
+}
+
