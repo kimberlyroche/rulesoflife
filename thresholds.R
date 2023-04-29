@@ -3,7 +3,7 @@
 #                                 x0 = c(0.162, 0.140, 0.136))
 
 thresholds_scores <- data.frame(type = factor(c("Phylum", "Family", "ASV")),
-                                x0 = c(0.183, 0.154, 0.174))
+                                x0 = c(0.176, 0.154, 0.174))
 
 # Correlation thresholds.
 # thresholds <- data.frame(type = factor(c("Phylum", "Family", "ASV")),
@@ -12,5 +12,5 @@ thresholds_scores <- data.frame(type = factor(c("Phylum", "Family", "ASV")),
 
 # Correlation thresholds.
 thresholds <- data.frame(type = factor(c("Phylum", "Family", "ASV")),
-                         lower = c(-0.372, -0.335, -0.344),
-                         upper = c(0.222, 0.286, 0.337))
+                         lower = c(-0.370, -0.329, -0.342),
+                         upper = c(0.217, 0.279, 0.328))

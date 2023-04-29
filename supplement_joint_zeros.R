@@ -21,7 +21,7 @@ conflict_prefer("alr", "driver")
 
 source("COAT.R")
 
-global_x_label <- "Frequency of joint zeros (overall samples)"
+global_x_label <- "Proportion of joint zeros (overall samples)"
 
 # ------------------------------------------------------------------------------
 #   Plot effect of joint zeros in fido::basset
@@ -74,6 +74,7 @@ plot_df_or <- data.frame(x = either0,
 p1 <- ggplot(plot_df_and, aes(x = x, y = y, fill = score)) +
   geom_point(size = 2.5, shape = 21) +
   geom_smooth(method = "loess", color = "black") +
+  geom_vline(xintercept = 0.05, linetype = "dashed", linewidth = 1) +
   labs(x = global_x_label, y = "ASV-ASV CLR correlation", fill = "Universality score") +
   scale_fill_distiller(palette = "RdBu") +
   theme_bw()
@@ -112,6 +113,7 @@ plot_df_and2 <- data.frame(x = joint0,
 p2 <- ggplot(plot_df_and2, aes(x = x, y = y1, fill = score)) +
   geom_point(size = 2.5, shape = 21) +
   geom_smooth(method = "loess", color = "black") +
+  geom_vline(xintercept = 0.05, linetype = "dashed", linewidth = 1) +
   labs(x = global_x_label, y = "ASV-ASV CLR proportionality (rho)", fill = "Universality score") +
   scale_fill_distiller(palette = "RdBu") +
   theme_bw()
@@ -129,6 +131,7 @@ plot_df_and2$y <- coat_v
 p3 <- ggplot(plot_df_and2, aes(x = x, y = y, fill = score)) +
   geom_point(size = 2.5, shape = 21) +
   geom_smooth(method = "loess", color = "black") +
+  geom_vline(xintercept = 0.05, linetype = "dashed", linewidth = 1) +
   labs(x = global_x_label, y = "ASV-ASV CLR correlation", fill = "Universality score") +
   scale_fill_distiller(palette = "RdBu") +
   theme_bw()
@@ -136,6 +139,14 @@ p3 <- ggplot(plot_df_and2, aes(x = x, y = y, fill = score)) +
 # ------------------------------------------------------------------------------
 #   Plot effect of joint zeros when using SparCC
 # ------------------------------------------------------------------------------
+
+saved_scc <- "sparcc_output_saved.rds"
+if(file.exists(saved_scc)) {
+  scc <- readRDS(saved_scc)
+} else {
+  scc <- sparcc(t(x))
+  saveRDS(scc, saved_scc)
+}
 
 sparcc_m <- scc$Cor[1:125,1:125]
 sparcc_v <- sparcc_m[lower.tri(sparcc_m, diag = FALSE)]
@@ -149,6 +160,7 @@ plot_df_and <- data.frame(x = joint0,
 p4 <- ggplot(plot_df_and, aes(x = x, y = y, fill = score)) +
   geom_point(size = 2.5, shape = 21) +
   geom_smooth(method = "loess", color = "black") +
+  geom_vline(xintercept = 0.05, linetype = "dashed", linewidth = 1) +
   labs(x = global_x_label, y = "ASV-ASV CLR correlation", fill = "Universality score") +
   scale_fill_distiller(palette = "RdBu") +
   theme_bw() +

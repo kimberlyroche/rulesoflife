@@ -1009,12 +1009,12 @@ ggsave(file.path("output", "figures", "Figure_6.png"),
        bg = 'white')
 
 # Association -- ABRP x DIABIMMUNE
-summary(lm(score.y ~ score.x, data = comp_scores %>% filter(dataset != "Johnson et al.")))
-# beta = 0.78431, p-value = 0.00161
+summary(lm(scale(score.y) ~ scale(score.x), data = comp_scores %>% filter(dataset != "Johnson et al.")))
+# beta = 0.562, p-value = 0.00161
 
 # Association -- ABRP x Johnson et al.
-summary(lm(score.y ~ score.x, data = comp_scores %>% filter(dataset != "DIABIMMUNE")))
-# beta = -0.22314, p-value = 0.0699
+summary(lm(scale(score.y) ~ scale(score.x), data = comp_scores %>% filter(dataset != "DIABIMMUNE")))
+# beta = -0.402, p-value = 0.0699
 
 # ------------------------------------------------------------------------------
 #   Counts of overlapping pairs

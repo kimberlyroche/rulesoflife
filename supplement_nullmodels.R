@@ -21,42 +21,29 @@ psamples <- 10
 # ------------------------------------------------------------------------------
 
 D_combos <- NULL
-permuted_correlation_phy <- NULL
+# permuted_correlation_phy <- NULL
+permuted_correlation_phy <- c()
 for(i in 1:psamples) {
   cat(paste0("Loading permutation #", i, "...\n"))
   pdir <- paste0("phy_days90_diet25_scale1_scramble-sample-", sprintf("%02d", i))
   fits <- list.files(file.path("output", "model_fits", pdir, "MAP"), full.names = TRUE)
   for(j in 1:length(fits)) {
-    Sigma <- cov2cor(to_clr(readRDS(fits[j]))$Sigma[,,1])
+    obj <- readRDS(fits[j])
+    Y <- obj$Y
+    filtered_pairs <- filter_joint_zeros(Y, threshold_and = 0.05, threshold_or = 0.5)
+    Sigma <- cov2cor(to_clr(obj)$Sigma[,,1])
     D <- nrow(Sigma)
     Sigma <- Sigma[1:(D-1),1:(D-1)]
     if(is.null(D_combos)) {
       D_combos <- ((D-1)^2 - (D-1))/2
       permuted_correlation_phy <- matrix(NA, D_combos, length(fits)*psamples)
     }
-    offset <- length(fits)*(i-1) + j
-    permuted_correlation_phy[,offset] <- Sigma[upper.tri(Sigma)]
+    # offset <- length(fits)*(i-1) + j
+    # permuted_correlation_phy[,offset] <- Sigma[upper.tri(Sigma)]
+    permuted_correlation_phy <- c(permuted_correlation_phy,
+                                  Sigma[upper.tri(Sigma)][filtered_pairs$threshold])
   }
 }
-
-# correlation_phy <- NULL
-# pdir <- "phy_days90_diet25_scale1"
-# fits <- list.files(file.path("output", "model_fits", pdir, "MAP"), full.names = TRUE)
-# for(j in 1:length(fits)) {
-#   Sigma <- cov2cor(to_clr(readRDS(fits[j]))$Sigma[,,1])
-#   D <- nrow(Sigma)
-#   Sigma <- Sigma[1:(D-1),1:(D-1)]
-#   if(is.null(correlation_phy)) {
-#     D_combos <- ((D-1)^2 - (D-1))/2
-#     correlation_phy <- matrix(NA, D_combos, length(fits))
-#   }
-#   correlation_phy[,j] <- Sigma[upper.tri(Sigma)]
-# }
-# corr_distros <- rbind(corr_distros,
-#                       data.frame(x = sample(c(correlation_phy)),
-#                                  type = "Phylum",
-#                                  scheme = "observed",
-#                                  host = unname(sapply(fits, function(x) str_match(x, ".*MAP\\/(.*?)\\.rds")[[2]]))))
 
 data <- load_data(tax_level = "phylum")
 rug_phy <- summarize_Sigmas(output_dir = "phy_days90_diet25_scale1")
@@ -82,42 +69,29 @@ for(h in 1:nrow(rug)) {
 # ------------------------------------------------------------------------------
 
 D_combos <- NULL
-permuted_correlation_fam <- NULL
+# permuted_correlation_fam <- NULL
+permuted_correlation_fam <- c()
 for(i in 1:psamples) {
   cat(paste0("Loading permutation #", i, "...\n"))
   pdir <- paste0("fam_days90_diet25_scale1_scramble-sample-", sprintf("%02d", i))
   fits <- list.files(file.path("output", "model_fits", pdir, "MAP"), full.names = TRUE)
   for(j in 1:length(fits)) {
-    Sigma <- cov2cor(to_clr(readRDS(fits[j]))$Sigma[,,1])
+    obj <- readRDS(fits[j])
+    Y <- obj$Y
+    filtered_pairs <- filter_joint_zeros(Y, threshold_and = 0.05, threshold_or = 0.5)
+    Sigma <- cov2cor(to_clr(obj)$Sigma[,,1])
     D <- nrow(Sigma)
     Sigma <- Sigma[1:(D-1),1:(D-1)]
     if(is.null(D_combos)) {
       D_combos <- ((D-1)^2 - (D-1))/2
       permuted_correlation_fam <- matrix(NA, D_combos, length(fits)*psamples)
     }
-    offset <- length(fits)*(i-1) + j
-    permuted_correlation_fam[,offset] <- Sigma[upper.tri(Sigma)]
+    # offset <- length(fits)*(i-1) + j
+    # permuted_correlation_fam[,offset] <- Sigma[upper.tri(Sigma)]
+    permuted_correlation_fam <- c(permuted_correlation_fam,
+                                  Sigma[upper.tri(Sigma)][filtered_pairs$threshold])
   }
 }
-
-# correlation_fam <- NULL
-# pdir <- "fam_days90_diet25_scale1"
-# fits <- list.files(file.path("output", "model_fits", pdir, "MAP"), full.names = TRUE)
-# for(j in 1:length(fits)) {
-#   Sigma <- cov2cor(to_clr(readRDS(fits[j]))$Sigma[,,1])
-#   D <- nrow(Sigma)
-#   Sigma <- Sigma[1:(D-1),1:(D-1)]
-#   if(is.null(correlation_fam)) {
-#     D_combos <- ((D-1)^2 - (D-1))/2
-#     correlation_fam <- matrix(NA, D_combos, length(fits))
-#   }
-#   correlation_fam[,j] <- Sigma[upper.tri(Sigma)]
-# }
-# corr_distros <- rbind(corr_distros,
-#                       data.frame(x = sample(c(correlation_fam)),
-#                                  type = "Family",
-#                                  scheme = "observed",
-#                                  host = unname(sapply(fits, function(x) str_match(x, ".*MAP\\/(.*?)\\.rds")[[2]]))))
 
 corr_distros <- rbind(corr_distros,
                       # data.frame(x = sample(c(permuted_correlation_fam), size = 10000),
@@ -144,27 +118,27 @@ for(h in 1:nrow(rug)) {
 # ------------------------------------------------------------------------------
 
 D_combos <- NULL
-permuted_correlation_asv <- NULL
+# permuted_correlation_asv <- NULL
+permuted_correlation_asv <- c()
 for(i in 1:psamples) {
   cat(paste0("Loading permutation #", i, "...\n"))
   pdir <- paste0("asv_days90_diet25_scale1_scramble-sample-", sprintf("%02d", i))
   fits <- list.files(file.path("output", "model_fits", pdir, "MAP"), full.names = TRUE)
-  # full_Y <- matrix(NA, 126, 5534) # hard-code these dimensions for simplicity
-  # Y_offset <- 1
   for(j in 1:length(fits)) {
-    clr_fit <- to_clr(readRDS(fits[j]))
-    # Y <- clr_fit$Y
-    # full_Y[,Y_offset:(Y_offset + ncol(Y) - 1)] <- Y
-    # Y_offset <- Y_offset + ncol(Y)
-    Sigma <- cov2cor(clr_fit$Sigma[,,1])
+    obj <- readRDS(fits[j])
+    Y <- obj$Y
+    filtered_pairs <- filter_joint_zeros(Y, threshold_and = 0.05, threshold_or = 0.5)
+    Sigma <- cov2cor(to_clr(obj)$Sigma[,,1])
     D <- nrow(Sigma)
     Sigma <- Sigma[1:(D-1),1:(D-1)]
     if(is.null(D_combos)) {
       D_combos <- ((D-1)^2 - (D-1))/2
       permuted_correlation_asv <- matrix(NA, D_combos, length(fits)*psamples)
     }
-    offset <- length(fits)*(i-1) + j
-    permuted_correlation_asv[,offset] <- Sigma[upper.tri(Sigma)]
+    # offset <- length(fits)*(i-1) + j
+    # permuted_correlation_asv[,offset] <- Sigma[upper.tri(Sigma)]
+    permuted_correlation_asv <- c(permuted_correlation_asv,
+                                  Sigma[upper.tri(Sigma)][filtered_pairs$threshold])
   }
   # filtered_pairs <- filter_joint_zeros(full_Y)
   # Show that permuted pairs don't have the systematic effect whereby increasing
@@ -173,25 +147,6 @@ for(i in 1:psamples) {
   # data!
   # plot(filtered_pairs$frequency_00, rowMeans(permuted_correlation_asv, na.rm = T))
 }
-
-# correlation_asv <- NULL
-# pdir <- "asv_days90_diet25_scale1"
-# fits <- list.files(file.path("output", "model_fits", pdir, "MAP"), full.names = TRUE)
-# for(j in 1:length(fits)) {
-#   Sigma <- cov2cor(to_clr(readRDS(fits[j]))$Sigma[,,1])
-#   D <- nrow(Sigma)
-#   Sigma <- Sigma[1:(D-1),1:(D-1)]
-#   if(is.null(correlation_asv)) {
-#     D_combos <- ((D-1)^2 - (D-1))/2
-#     correlation_asv <- matrix(NA, D_combos, length(fits))
-#   }
-#   correlation_asv[,j] <- Sigma[upper.tri(Sigma)]
-# }
-# corr_distros <- rbind(corr_distros,
-#                       data.frame(x = sample(c(correlation_asv)),
-#                                  type = "ASV",
-#                                  scheme = "observed",
-#                                  host = unname(sapply(fits, function(x) str_match(x, ".*MAP\\/(.*?)\\.rds")[[2]]))))
 
 corr_distros <- rbind(corr_distros,
                       # data.frame(x = sample(c(permuted_correlation_asv), size = 10000),
